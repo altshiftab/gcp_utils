@@ -8,6 +8,7 @@ import (
 	motmedelJson "github.com/Motmedel/utils_go/pkg/json"
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	altshiftGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
+	"io"
 	"log/slog"
 	"os"
 	"runtime/debug"
@@ -55,6 +56,15 @@ func getHttpLogAttrs(httpContext *motmedelHttpTypes.HttpContext, logger *slog.Lo
 	return logAttrs
 }
 
+func LogFatalHttpErrorWithExitingMessage(
+	message string,
+	err error,
+	logger *slog.Logger,
+	httpContext *motmedelHttpTypes.HttpContext,
+) {
+	motmedelLog.LogFatalWithExitingMessage(message, err, logger.With(getHttpLogAttrs(httpContext, logger)...))
+}
+
 func LogHttpError(message string, err error, logger *slog.Logger, httpContext *motmedelHttpTypes.HttpContext) {
 	motmedelLog.LogError(message, err, logger.With(getHttpLogAttrs(httpContext, logger)...))
 }
@@ -67,23 +77,19 @@ func LogHttpDebug(message string, logger *slog.Logger, httpContext *motmedelHttp
 	logger.Debug(message, getHttpLogAttrs(httpContext, logger)...)
 }
 
-func MakeLogger(logger *slog.Logger, exit bool) (*slog.Logger, error) {
+func MakeLoggerWithWriter(writer io.Writer) (*slog.Logger, error) {
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(altshiftGcpUtilsEnv.GetLogLevelWithDefault())); err != nil {
-		if logger != nil {
-			motmedelLog.LogError("An error occurred when parsing the log level.", err, logger)
+		return nil, &motmedelErrors.CauseError{
+			Message: "An error occurred when obtaining the default log level.",
+			Cause:   err,
 		}
-		if exit {
-			os.Exit(1)
-		}
-
-		return nil, err
 	}
 
 	outLogger := slog.New(
 		meld.NewHandler(
 			slog.NewJSONHandler(
-				os.Stdout,
+				writer,
 				&slog.HandlerOptions{
 					AddSource:   true,
 					Level:       level,
@@ -108,4 +114,9 @@ func MakeLogger(logger *slog.Logger, exit bool) (*slog.Logger, error) {
 	}
 
 	return outLogger, nil
+
+}
+
+func MakeLogger() (*slog.Logger, error) {
+	return MakeLoggerWithWriter(os.Stdout)
 }
