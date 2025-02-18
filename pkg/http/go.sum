@@ -2,8 +2,6 @@ github.com/Motmedel/ecs_go v0.0.53 h1:X9SGxHM3GR2ChLIY6etvu5PGW9tXsi0cP4IdC18JGR
 github.com/Motmedel/ecs_go v0.0.53/go.mod h1:tBTOQwN77+9yEW7Kjee8H+lEqkY93htiI0I1h4AQ27s=
 github.com/Motmedel/gcp_logging_go v0.0.4 h1:iNUZChQ0yzNm1Tid+fxAL7pCV8wfCR8dHkOBe0JWQGE=
 github.com/Motmedel/gcp_logging_go v0.0.4/go.mod h1:O3hSKH41cA6EpQQT0bbExDbwaSI/EVbUoI4ERmkNZVI=
-github.com/Motmedel/motmedel_gcp_utils v0.0.72 h1:XdUBBSBa2NPFVB6eIh49T8Z8GJwVtmwBIrGS/tC9Cbs=
-github.com/Motmedel/motmedel_gcp_utils v0.0.72/go.mod h1:bUK+7oVCRtEjOJSqaWimRMS1+A6TbjzwDelvWzZ3EN8=
 github.com/Motmedel/parsing_utils v0.0.2 h1:/d5qt3Udp2+EDxbix/MpuHP7nXilXfXiYuw966REU7U=
 github.com/Motmedel/parsing_utils v0.0.2/go.mod h1:rGizDPc8yjPkHYz8LuQB/OScEKkYFLrlTtagQSeFuBs=
 github.com/Motmedel/utils_go v0.0.97 h1:itXi6cdxO+FHUBJtnrmx+iWGwUXbdagyY5tQf1zD04U=
@@ -16,6 +14,8 @@ github.com/Motmedel/utils_go/pkg/http/problem_detail v1.0.2 h1:5lCtKcCT0ntZYTXIL
 github.com/Motmedel/utils_go/pkg/http/problem_detail v1.0.2/go.mod h1:6WyFUwTvzMQkFIf9FPBELKUwVsxtwyyc1w1rpG85QWY=
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.2 h1:4OQ0i7HWdAYAfazWiCR3Nq3v0of600662uVSZbKafkw=
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.2/go.mod h1:Nsbl9CZDl0zkwMMFbnMXRzjfubwkVRq45fY1qWvzM7Y=
+github.com/altshiftab/gcp_utils v0.0.3 h1:VuHIH844EEcZF3fSEEwZv+7py/PTHAa+ZLOz73ixXeg=
+github.com/altshiftab/gcp_utils v0.0.3/go.mod h1:x0Dn3hQC9tUc1MPl7+lV6FsT7p2BblNJjDuQz7tTB+c=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gammazero/deque v1.0.0 h1:LTmimT8H7bXkkCy6gZX7zNLtkbz4NdS2z8LZuor3j34=

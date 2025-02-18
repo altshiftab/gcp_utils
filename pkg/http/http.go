@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/Motmedel/ecs_go/ecs"
 	"github.com/Motmedel/gcp_logging_go/gcp_logging"
-	motmedelGcpUtilsEnv "github.com/Motmedel/motmedel_gcp_utils/pkg/env"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	muxTypes "github.com/Motmedel/utils_go/pkg/http/mux/types"
@@ -12,6 +11,7 @@ import (
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	motmedelJson "github.com/Motmedel/utils_go/pkg/json"
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
+	altshiftGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
 	"log/slog"
 	"net/http"
 )
@@ -212,7 +212,7 @@ func PatchMux(mux *motmedelMux.Mux) {
 		},
 	)
 
-	if motmedelGcpUtilsEnv.GetLogLevelWithDefault() == "DEBUG" {
+	if altshiftGcpUtilsEnv.GetLogLevelWithDefault() == "DEBUG" {
 		mux.SuccessCallback = SuccessLogCallback
 	}
 }
