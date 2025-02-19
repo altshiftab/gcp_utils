@@ -35,7 +35,7 @@ func getHttpLogAttrs(httpContext *motmedelHttpTypes.HttpContext, logger *slog.Lo
 				logAttrs = append(logAttrs, motmedelLog.AttrsFromMap(baseMap)...)
 			} else {
 				msg := "An ECS base object could not be converted into a jsonified map."
-				motmedelLog.LogError(msg, &motmedelErrors.InputError{Message: msg, Input: ecsBase}, logger)
+				motmedelLog.LogError(msg, &motmedelErrors.Error{Message: msg, Input: ecsBase}, logger)
 			}
 		}
 
@@ -48,7 +48,7 @@ func getHttpLogAttrs(httpContext *motmedelHttpTypes.HttpContext, logger *slog.Lo
 				logAttrs = append(logAttrs, motmedelLog.AttrsFromMap(gcpLogEntryMap)...)
 			} else {
 				msg := "A GCP LogEntry object could not be converted into a jsonified map."
-				motmedelLog.LogError(msg, &motmedelErrors.InputError{Message: msg, Input: gcpLogEntry}, logger)
+				motmedelLog.LogError(msg, &motmedelErrors.Error{Message: msg, Input: gcpLogEntry}, logger)
 			}
 		}
 	}
@@ -77,10 +77,10 @@ func LogHttpDebug(message string, logger *slog.Logger, httpContext *motmedelHttp
 	logger.Debug(message, getHttpLogAttrs(httpContext, logger)...)
 }
 
-func MakeLoggerWithWriter(writer io.Writer) (*slog.Logger, error) {
+func MakeLoggerWithWriter(writer io.Writer) (*motmedelLog.Logger, error) {
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(altshiftGcpUtilsEnv.GetLogLevelWithDefault())); err != nil {
-		return nil, &motmedelErrors.CauseError{
+		return nil, &motmedelErrors.Error{
 			Message: "An error occurred when obtaining the default log level.",
 			Cause:   err,
 		}
@@ -113,10 +113,10 @@ func MakeLoggerWithWriter(writer io.Writer) (*slog.Logger, error) {
 		}
 	}
 
-	return outLogger, nil
+	return &motmedelLog.Logger{Logger: outLogger}, nil
 
 }
 
-func MakeLogger() (*slog.Logger, error) {
+func MakeLogger() (*motmedelLog.Logger, error) {
 	return MakeLoggerWithWriter(os.Stdout)
 }

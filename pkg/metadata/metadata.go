@@ -39,7 +39,7 @@ func GetProjectId(httpClient motmedelHttpUtils.HttpClient) (string, *motmedelHtt
 		},
 	)
 	if err != nil {
-		return "", httpContext, &errors.InputError{
+		return "", httpContext, &errors.Error{
 			Message: "An error occurred when sending the request.",
 			Cause:   err,
 			Input:   []any{requestMethod, requestUrl},

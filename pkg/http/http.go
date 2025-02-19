@@ -37,7 +37,7 @@ func getHttpContextLogAttrs(httpContext *motmedelHttpTypes.HttpContext) []any {
 			logAttrs = append(logAttrs, motmedelLog.AttrsFromMap(baseMap)...)
 		} else {
 			msg := "An ECS base object could not be converted into a jsonified map."
-			motmedelLog.LogError(msg, &motmedelErrors.InputError{Message: msg, Input: ecsBase}, logger)
+			motmedelLog.LogError(msg, &motmedelErrors.Error{Message: msg, Input: ecsBase}, logger)
 		}
 	}
 
@@ -50,7 +50,7 @@ func getHttpContextLogAttrs(httpContext *motmedelHttpTypes.HttpContext) []any {
 			logAttrs = append(logAttrs, motmedelLog.AttrsFromMap(gcpLogEntryMap)...)
 		} else {
 			msg := "A GCP LogEntry object could not be converted into a jsonified map."
-			motmedelLog.LogError(msg, &motmedelErrors.InputError{Message: msg, Input: gcpLogEntry}, logger)
+			motmedelLog.LogError(msg, &motmedelErrors.Error{Message: msg, Input: gcpLogEntry}, logger)
 		}
 	}
 
@@ -218,7 +218,6 @@ func PatchMux(mux *motmedelMux.Mux) {
 }
 
 func MakeMux(specifications []*muxTypes.HandlerSpecification, contextKeyValuePairs [][2]any) *motmedelMux.Mux {
-
 	mux := &motmedelMux.Mux{}
 	mux.SetContextKeyValuePairs = contextKeyValuePairs
 	mux.Add(specifications...)
