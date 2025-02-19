@@ -3,7 +3,7 @@ module github.com/altshiftab/gcp_utils/pkg/auth
 go 1.23.5
 
 require (
-	github.com/Motmedel/utils_go v0.0.90
+	github.com/Motmedel/utils_go v0.0.110
 	golang.org/x/oauth2 v0.26.0
 )
 

@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	gcpUtilsCryptoErrors "github.com/altshiftab/gcp_utils/pkg/crypto/errors"
 )
@@ -29,24 +30,18 @@ func ParseCertificateMaterial(pemData []byte) (*ecdsa.PrivateKey, []*x509.Certif
 		switch blockType {
 		case "EC PRIVATE KEY":
 			if key != nil {
-				return nil, nil, gcpUtilsCryptoErrors.ErrMultipleCertificateKeys
+				return nil, nil, motmedelErrors.MakeErrorWithStackTrace(gcpUtilsCryptoErrors.ErrMultipleCertificateKeys)
 			}
 
 			parsedKey, err := x509.ParseECPrivateKey(blockBytes)
 			if err != nil {
-				return nil, nil, &motmedelErrors.CauseError{
-					Message: "An error occurred when parsing block bytes as a private key.",
-					Cause:   err,
-				}
+				return nil, nil, motmedelErrors.MakeErrorWithStackTrace(fmt.Errorf("parse EC private key: %w", err))
 			}
 			key = parsedKey
 		case "CERTIFICATE":
 			certificate, err := x509.ParseCertificate(blockBytes)
 			if err != nil {
-				return nil, nil, &motmedelErrors.CauseError{
-					Message: "An error occurred when parsing block bytes as a certificate.",
-					Cause:   err,
-				}
+				return nil, nil, motmedelErrors.MakeErrorWithStackTrace(fmt.Errorf("parse certificate: %w", err))
 			}
 			if certificate == nil {
 				continue
@@ -54,10 +49,10 @@ func ParseCertificateMaterial(pemData []byte) (*ecdsa.PrivateKey, []*x509.Certif
 
 			certificates = append(certificates, certificate)
 		default:
-			return nil, nil, &motmedelErrors.InputError{
-				Message: "An unexpected PEM block type was encountered.",
-				Input:   blockBytes,
-			}
+			return nil, nil, motmedelErrors.MakeErrorWithStackTrace(
+				fmt.Sprintf("unexpected block type: %s", blockType),
+				blockType,
+			)
 		}
 
 		rest = remaining
