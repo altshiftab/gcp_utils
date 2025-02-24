@@ -24,11 +24,10 @@ func MakeLoggerWithWriter(writer io.Writer) (*motmedelLog.Logger, error) {
 		)
 	}
 
-	// TODO: I'm not sure about the order; must be specific for meld to work?
 	outLogger := slog.New(
-		meld.NewHandler(
-			&motmedelLog.ContextHandler{
-				Handler: slog.NewJSONHandler(
+		&motmedelLog.ContextHandler{
+			Handler: meld.NewHandler(
+				slog.NewJSONHandler(
 					writer,
 					&slog.HandlerOptions{
 						AddSource:   true,
@@ -36,13 +35,13 @@ func MakeLoggerWithWriter(writer io.Writer) (*motmedelLog.Logger, error) {
 						ReplaceAttr: gcp_logging.ReplaceAttr,
 					},
 				),
-				Extractors: []motmedelLog.ContextExtractor{
-					motmedelLog.ErrorContextExtractor,
-					&motmedelHttpLog.HttpContextExtractor{},
-					gcp_logging.HttpContextExtractor,
-				},
+			),
+			Extractors: []motmedelLog.ContextExtractor{
+				motmedelLog.ErrorContextExtractor,
+				&motmedelHttpLog.HttpContextExtractor{},
+				gcp_logging.HttpContextExtractor,
 			},
-		),
+		},
 	)
 
 	if buildInfo, ok := debug.ReadBuildInfo(); ok && buildInfo != nil {
