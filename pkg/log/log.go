@@ -1,47 +1,31 @@
 package log
 
 import (
+	"context"
 	"fmt"
 	"github.com/Motmedel/gcp_logging_go/gcp_logging"
+	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpLog "github.com/Motmedel/utils_go/pkg/http/log"
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
+	motmedelContextLogger "github.com/Motmedel/utils_go/pkg/log/context_logger"
+	motmedelErrorLogger "github.com/Motmedel/utils_go/pkg/log/error_logger"
 	altshiftGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
 	"io"
 	"log/slog"
 	"os"
 	"runtime/debug"
-	"snqk.dev/slog/meld"
 )
 
-func MakeLoggerWithWriter(writer io.Writer) (*motmedelLog.Logger, error) {
-	var level slog.Level
-	levelTextData := []byte(altshiftGcpUtilsEnv.GetLogLevelWithDefault())
-	if err := level.UnmarshalText(levelTextData); err != nil {
-		return nil, motmedelErrors.MakeError(
-			fmt.Errorf("slog level unmarshal text: %w", err),
-			levelTextData,
-		)
-	}
-
-	outLogger := slog.New(
-		&motmedelLog.ContextHandler{
-			Handler: meld.NewHandler(
-				slog.NewJSONHandler(
-					writer,
-					&slog.HandlerOptions{
-						AddSource:   true,
-						Level:       level,
-						ReplaceAttr: gcp_logging.ReplaceAttr,
-					},
-				),
-			),
-			Extractors: []motmedelLog.ContextExtractor{
-				motmedelLog.ErrorContextExtractor,
-				&motmedelHttpLog.HttpContextExtractor{},
-				gcp_logging.HttpContextExtractor,
-			},
-		},
+func New(writer io.Writer, level slog.Level) *motmedelErrorLogger.Logger {
+	slogger := motmedelContextLogger.New(
+		slog.NewJSONHandler(
+			writer,
+			&slog.HandlerOptions{Level: level, ReplaceAttr: gcp_logging.ReplaceAttr},
+		),
+		&motmedelLog.ErrorContextExtractor{},
+		&motmedelHttpLog.HttpContextExtractor{},
+		gcp_logging.HttpContextExtractor,
 	)
 
 	if buildInfo, ok := debug.ReadBuildInfo(); ok && buildInfo != nil {
@@ -54,14 +38,35 @@ func MakeLoggerWithWriter(writer io.Writer) (*motmedelLog.Logger, error) {
 		}
 
 		if len(labelAttrs) > 0 {
-			outLogger = outLogger.With(slog.Group("labels", labelAttrs...))
+			slogger = slogger.With(slog.Group("labels", labelAttrs...))
 		}
 	}
 
-	return &motmedelLog.Logger{Logger: outLogger}, nil
-
+	return &motmedelErrorLogger.Logger{Logger: slogger}
 }
 
-func MakeLogger() (*motmedelLog.Logger, error) {
-	return MakeLoggerWithWriter(os.Stdout)
+func Default() (*motmedelErrorLogger.Logger, error) {
+	var level slog.Level
+	levelTextData := []byte(altshiftGcpUtilsEnv.GetLogLevelWithDefault())
+	if err := level.UnmarshalText(levelTextData); err != nil {
+		return nil, motmedelErrors.NewWithTrace(
+			fmt.Errorf("slog level unmarshal text: %w", err),
+			levelTextData,
+		)
+	}
+
+	return New(os.Stdout, level), nil
+}
+
+func DefaultFatal(ctx context.Context) *motmedelErrorLogger.Logger {
+	logger, err := Default()
+	if err != nil {
+		slog.New(slog.NewJSONHandler(os.Stdout, nil)).ErrorContext(
+			motmedelContext.WithErrorContextValue(ctx, fmt.Errorf("default: %w", err)),
+			"An error occurred when making a default logger.",
+		)
+		os.Exit(1)
+	}
+
+	return logger
 }
