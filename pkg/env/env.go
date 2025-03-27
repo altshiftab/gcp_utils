@@ -1,11 +1,13 @@
 package env
 
 import (
+	"context"
 	"errors"
-	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
+	"fmt"
+	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
+	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"log/slog"
 	"os"
-	"strings"
 )
 
 const (
@@ -23,71 +25,78 @@ const (
 	DefaultDnsServerAddress = "169.254.169.254:53"
 )
 
-const noDataInEnvironmentVariablePrefix = "No data in environment variable"
+var (
+	ErrNotPresent = errors.New("non-present environment variable")
+	ErrEmpty      = errors.New("empty environment variable")
+)
 
-func ReadEnvironmentVariable(name string, logger *slog.Logger, exit bool) string {
-	value := os.Getenv(name)
-	if value == "" {
-		if logger != nil {
-			motmedelLog.LogError(
-				noDataInEnvironmentVariablePrefix+": "+name,
-				errors.New(strings.ToLower(noDataInEnvironmentVariablePrefix)),
-				logger,
-			)
-		}
-		if exit {
-			os.Exit(1)
-		}
+func ReadEnvironmentVariableFatal(ctx context.Context, name string) string {
+	value, found := os.LookupEnv(name)
+
+	var err error
+	if !found {
+		err = motmedelErrors.NewWithTrace(fmt.Errorf("%w: %q", ErrNotPresent, name), name)
+	} else if value == "" {
+		err = motmedelErrors.NewWithTrace(fmt.Errorf("%w: %q", ErrEmpty, name), name)
 	}
+
+	if err != nil {
+		slog.ErrorContext(
+			motmedelContext.WithErrorContextValue(ctx, err),
+			"An environment variable could not be read.",
+		)
+		os.Exit(1)
+	}
+
 	return value
 }
 
-func GetTopicId(logger *slog.Logger, exit bool) string {
-	return ReadEnvironmentVariable(TopicIdVariableName, logger, exit)
+func GetTopicIdFatal(ctx context.Context) string {
+	return ReadEnvironmentVariableFatal(ctx, TopicIdVariableName)
 }
 
-func GetListenAddress(logger *slog.Logger, exit bool) string {
-	return ReadEnvironmentVariable(ListenAddressVariableName, logger, exit)
+func GetListenAddressFatal(ctx context.Context) string {
+	return ReadEnvironmentVariableFatal(ctx, ListenAddressVariableName)
 }
 
 func GetListenAddressWithDefault() string {
-	if listenAddress := GetListenAddress(nil, false); listenAddress == "" {
+	if listenAddress := os.Getenv(ListenAddressVariableName); listenAddress == "" {
 		return DefaultListenAddress
 	} else {
 		return listenAddress
 	}
 }
 
-func GetProjectId(logger *slog.Logger, exit bool) string {
-	return ReadEnvironmentVariable(ProjectIdVariableName, logger, exit)
+func GetProjectIdFatal(ctx context.Context) string {
+	return ReadEnvironmentVariableFatal(ctx, ProjectIdVariableName)
 }
 
 func GetProjectIdWithDefault() string {
-	if projectId := GetProjectId(nil, false); projectId == "" {
+	if projectId := os.Getenv(ProjectIdVariableName); projectId == "" {
 		return DefaultProjectId
 	} else {
 		return projectId
 	}
 }
 
-func GetDnsServerAddress(logger *slog.Logger, exit bool) string {
-	return ReadEnvironmentVariable(DnsServerAddressVariableName, logger, exit)
+func GetDnsServerAddressFatal(ctx context.Context) string {
+	return ReadEnvironmentVariableFatal(ctx, DnsServerAddressVariableName)
 }
 
 func GetDnsServerAddressWithDefault() string {
-	if dnsServerAddress := GetDnsServerAddress(nil, false); dnsServerAddress == "" {
+	if dnsServerAddress := os.Getenv(DnsServerAddressVariableName); dnsServerAddress == "" {
 		return DefaultDnsServerAddress
 	} else {
 		return dnsServerAddress
 	}
 }
 
-func GetLogLevel(logger *slog.Logger, exit bool) string {
-	return ReadEnvironmentVariable(LogLevelVariableName, logger, exit)
+func GetLogLevelFatal(ctx context.Context) string {
+	return ReadEnvironmentVariableFatal(ctx, LogLevelVariableName)
 }
 
 func GetLogLevelWithDefault() string {
-	if logLevel := GetLogLevel(nil, false); logLevel == "" {
+	if logLevel := os.Getenv(LogLevelVariableName); logLevel == "" {
 		return DefaultLogLevel
 	} else {
 		return logLevel

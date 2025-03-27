@@ -4,7 +4,7 @@ import (
 	"context"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	muxTypesEndpointSpecification "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
-	altshiftGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
+	motmedelGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
 	"log/slog"
 )
 
@@ -13,7 +13,7 @@ func PatchMux(mux *motmedelMux.Mux) {
 		return
 	}
 
-	if altshiftGcpUtilsEnv.GetLogLevelWithDefault() == "DEBUG" {
+	if motmedelGcpUtilsEnv.GetLogLevelWithDefault() == "DEBUG" {
 		mux.DoneCallback = func(ctx context.Context) {
 			slog.DebugContext(ctx, "An HTTP response was served.")
 		}
