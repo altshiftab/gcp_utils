@@ -6,7 +6,7 @@ require (
 	github.com/Motmedel/gcp_logging_go v0.0.5
 	github.com/Motmedel/utils_go v0.0.192
 	github.com/Motmedel/utils_go/pkg/http/log v0.0.4
-	github.com/altshiftab/gcp_utils v0.0.4
+	github.com/altshiftab/gcp_utils v0.0.5
 )
 
 require (
