@@ -187,6 +187,21 @@ func PatchCrawlable(
 	return nil
 }
 
+func PatchStrictTransportSecurity(mux *motmedelMux.Mux) error {
+	if mux == nil {
+		return nil
+	}
+
+	defaultHeaders := mux.DefaultHeaders
+	if defaultHeaders == nil {
+		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilDefaultHeaders)
+	}
+
+	defaultHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+	return nil
+}
+
 func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	if mux == nil {
 		return nil
