@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/Motmedel/utils_go v0.0.198
-	github.com/Motmedel/utils_go/pkg/http/mux v0.0.65
+	github.com/Motmedel/utils_go/pkg/http/mux v0.0.66
 	github.com/altshiftab/gcp_utils v0.0.5
 )
 
