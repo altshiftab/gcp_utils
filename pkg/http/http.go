@@ -14,6 +14,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_writer"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/static_content"
 	"github.com/Motmedel/utils_go/pkg/http/mux/utils/generate"
+	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
@@ -27,10 +28,28 @@ import (
 	"time"
 )
 
+func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
+	if mux == nil {
+		return
+	}
+
+	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
+		func(detail *problem_detail.ProblemDetail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
+			data, contentType, err := response_error.ConvertProblemDetail(detail, negotiation)
+			if contentType == "application/problem+xml" {
+				contentType = "application/xml"
+			}
+			return data, contentType, err
+		},
+	)
+}
+
 func PatchMux(mux *motmedelMux.Mux) {
 	if mux == nil {
 		return
 	}
+
+	PatchMuxProblemDetailConverter(mux)
 
 	if motmedelGcpUtilsEnv.GetLogLevelWithDefault() == "DEBUG" {
 		mux.DoneCallback = func(ctx context.Context) {
