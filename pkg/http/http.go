@@ -246,7 +246,14 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	)
 	defaultHeaders["NEL"] = `{"report_to": "network-error-logging", "max_age": 10886400}`
 	defaultDocumentHeaders["Reporting-Endpoints"] = `csp-report-to="/api/report/csp-report-to"`
-	defaultDocumentHeaders["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-sri-for 'script'; report-to csp-report-to; report-uri /api/report/csp-report-uri"
+
+	contentSecurityPolicy := defaultDocumentHeaders["Content-Security-Policy"]
+	if contentSecurityPolicy != "" {
+		contentSecurityPolicy += "; "
+	}
+	contentSecurityPolicy += "report-to csp-report-to; report-uri /api/report/csp-report-uri"
+
+	defaultDocumentHeaders["Content-Security-Policy"] = contentSecurityPolicy
 
 	mux.Add(
 		// TODO: Not sure about the content type.
