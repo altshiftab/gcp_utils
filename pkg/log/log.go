@@ -3,7 +3,8 @@ package log
 import (
 	"context"
 	"fmt"
-	"github.com/Motmedel/gcp_logging_go/gcp_logging"
+	dnsUtilsLog "github.com/Motmedel/dns_utils/pkg/log"
+	gcpLogging "github.com/Motmedel/gcp_logging_go/pkg/log"
 	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpLog "github.com/Motmedel/utils_go/pkg/http/log"
@@ -21,11 +22,17 @@ func New(writer io.Writer, level slog.Level) *motmedelErrorLogger.Logger {
 	slogger := motmedelContextLogger.New(
 		slog.NewJSONHandler(
 			writer,
-			&slog.HandlerOptions{Level: level, ReplaceAttr: gcp_logging.ReplaceAttr},
+			&slog.HandlerOptions{Level: level, ReplaceAttr: gcpLogging.LoggerReplaceAttr},
 		),
-		&motmedelLog.ErrorContextExtractor{},
+		&motmedelLog.ErrorContextExtractor{
+			ContextExtractors: []motmedelLog.ContextExtractor{
+				&motmedelHttpLog.HttpContextExtractor{},
+				&dnsUtilsLog.DnsContextExtractor,
+			},
+		},
 		&motmedelHttpLog.HttpContextExtractor{},
-		gcp_logging.HttpContextExtractor,
+		&gcpLogging.HttpContextExtractor{},
+		&dnsUtilsLog.DnsContextExtractor,
 	)
 
 	if buildInfo, ok := debug.ReadBuildInfo(); ok && buildInfo != nil {
