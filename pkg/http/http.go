@@ -3,9 +3,11 @@ package http
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
+	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	muxTypesEndpointSpecification "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
@@ -18,6 +20,8 @@ import (
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
+	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
+	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
 	motmedelGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
 	altshiftabGcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
 	"log/slog"
@@ -408,7 +412,6 @@ func MakeMux(
 	specifications []*muxTypesEndpointSpecification.EndpointSpecification,
 	contextKeyValuePairs [][2]any,
 ) *motmedelMux.Mux {
-
 	mux := &motmedelMux.Mux{}
 	mux.DefaultHeaders = maps.Clone(response_writer.DefaultHeaders)
 	mux.DefaultDocumentHeaders = maps.Clone(response_writer.DefaultDocumentHeaders)
@@ -418,4 +421,92 @@ func MakeMux(
 	PatchMux(mux)
 
 	return mux
+}
+
+func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
+	if mux == nil {
+		return motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+	}
+
+	if baseUrl == nil {
+		// TODO: Create error in utils go url errors
+		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
+	}
+
+	defaultDocumentHeaders := mux.DefaultDocumentHeaders
+	if defaultDocumentHeaders == nil {
+		// TODO: Create error in mux errors
+		return motmedelErrors.NewWithTrace(errors.New("nil default document headers"))
+	}
+
+	contentSecurityPolicy := defaultDocumentHeaders["Content-Security-Policy"]
+	if contentSecurityPolicy != "" {
+		contentSecurityPolicy += "; "
+	}
+	contentSecurityPolicy += "require-trusted-types-for 'script'; trusted-types lit-html"
+	defaultDocumentHeaders["Content-Security-Policy"] = contentSecurityPolicy
+
+	if err := PatchErrorReporting(mux, baseUrl); err != nil {
+		return motmedelErrors.New(fmt.Errorf("patch error reporting: %w", err), mux, baseUrl)
+	}
+
+	if err := PatchStrictTransportSecurity(mux); err != nil {
+		return motmedelErrors.New(fmt.Errorf("patch strict transport security: %w", err), mux)
+	}
+
+	return nil
+}
+
+func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
+	if mux == nil {
+		return motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+	}
+
+	if baseUrl == nil {
+		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
+	}
+
+	if err := PatchHttpServiceMux(mux, baseUrl); err != nil {
+		return fmt.Errorf("patch http service mux: %w", err)
+	}
+
+	documentEndpointSpecifications := mux.GetDocumentEndpointSpecifications()
+
+	if err := PatchCrawlable(mux, baseUrl, documentEndpointSpecifications); err != nil {
+		return fmt.Errorf("patch crawlable: %w", err)
+	}
+
+	domainBreakdown := domain_breakdown.GetDomainBreakdown(baseUrl.Hostname())
+	if domainBreakdown == nil {
+		return motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilDomainBreakdown)
+	}
+
+	registeredDomain := domainBreakdown.RegisteredDomain
+
+	registeredDomainUrlString := fmt.Sprintf("https://www.%s", registeredDomain)
+	registeredDomainUrl, err := url.Parse(registeredDomainUrlString)
+	if err != nil {
+		return motmedelErrors.NewWithTrace(fmt.Errorf("url parse: %w", err), registeredDomainUrlString)
+	}
+	securityTxtUrl := registeredDomainUrl.JoinPath("/.well-known/security.txt")
+
+	if domainBreakdown.Subdomain == "" {
+		PatchSecurityTxt(
+			mux,
+			[]byte(
+				fmt.Sprintf(
+					"Contact: mailto:security@%s\nPreferred-Languages: sv, en\nCanonical: %s\nExpires: %s\n",
+					registeredDomain,
+					securityTxtUrl.String(),
+					time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02T15:04:05.000Z"),
+				),
+			),
+		)
+	} else {
+		if err := PatchOtherDomainSecurityTxt(mux, securityTxtUrl); err != nil {
+			return motmedelErrors.New(fmt.Errorf("patch other domain security txt: %w", err), securityTxtUrl)
+		}
+	}
+
+	return nil
 }
