@@ -508,5 +508,60 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		}
 	}
 
+	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
+		func(detail *problem_detail.ProblemDetail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
+			data, contentType, err := response_error.ConvertProblemDetail(detail, negotiation)
+			if err != nil {
+				return nil, "", fmt.Errorf("convert problem detail: %w", err)
+			}
+			if contentType == "application/problem+xml" {
+				contentType = "application/xml"
+			}
+			return data, contentType, nil
+		},
+	)
+
 	return nil
+}
+
+func makeHttpService(
+	domain string,
+	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
+	public bool,
+) (*motmedelMux.VhostMux, error) {
+	mux := MakeMux(staticContentEndpointSpecifications, nil)
+	if mux == nil {
+		return nil, motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+	}
+
+	if public {
+		if err := PatchPublicHttpServiceMux(mux, nil); err != nil {
+			return nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), mux)
+		}
+	} else {
+		if err := PatchHttpServiceMux(mux, nil); err != nil {
+			return nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), mux)
+		}
+	}
+
+	vhostMux := &motmedelMux.VhostMux{
+		HostToSpecification: map[string]*motmedelMux.VhostMuxSpecification{domain: {Mux: mux}},
+	}
+	vhostMux.DefaultHeaders = mux.DefaultHeaders
+
+	return vhostMux, nil
+}
+
+func MakePublicHttpService(
+	domain string,
+	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
+) (*motmedelMux.VhostMux, error) {
+	return makeHttpService(domain, staticContentEndpointSpecifications, true)
+}
+
+func MakeHttpService(
+	domain string,
+	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
+) (*motmedelMux.VhostMux, error) {
+	return makeHttpService(domain, staticContentEndpointSpecifications, false)
 }
