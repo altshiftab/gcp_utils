@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	motmedelEnv "github.com/Motmedel/utils_go/pkg/env"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
@@ -24,6 +25,8 @@ import (
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
 	motmedelGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
 	altshiftabGcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -31,6 +34,8 @@ import (
 	"strings"
 	"time"
 )
+
+const DomainVariableName = "domain"
 
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	if mux == nil {
@@ -525,43 +530,59 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 }
 
 func makeHttpService(
-	domain string,
 	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
 	public bool,
-) (*motmedelMux.VhostMux, error) {
+	redirects ...[2]string,
+) (*http.Server, *motmedelMux.Mux, error) {
+	port := motmedelEnv.GetEnvWithDefault("PORT", "8080")
+	domain, err := motmedelEnv.ReadEnv(DomainVariableName)
+	if err != nil {
+		return nil, nil, motmedelErrors.New(fmt.Errorf("read env: %w", err), DomainVariableName)
+	}
+
 	mux := MakeMux(staticContentEndpointSpecifications, nil)
 	if mux == nil {
-		return nil, motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+		return nil, nil, motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
 	}
 
 	if public {
 		if err := PatchPublicHttpServiceMux(mux, nil); err != nil {
-			return nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), mux)
+			return nil, nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), mux)
 		}
 	} else {
 		if err := PatchHttpServiceMux(mux, nil); err != nil {
-			return nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), mux)
+			return nil, nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), mux)
 		}
 	}
 
-	vhostMux := &motmedelMux.VhostMux{
-		HostToSpecification: map[string]*motmedelMux.VhostMuxSpecification{domain: {Mux: mux}},
+	hostToSpecification := map[string]*motmedelMux.VhostMuxSpecification{domain: {Mux: mux}}
+
+	for _, redirect := range redirects {
+		hostToSpecification[redirect[0]] = &motmedelMux.VhostMuxSpecification{RedirectTo: redirect[1]}
 	}
+
+	vhostMux := &motmedelMux.VhostMux{HostToSpecification: hostToSpecification}
 	vhostMux.DefaultHeaders = mux.DefaultHeaders
 
-	return vhostMux, nil
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf(":%s", port),
+		Handler:           h2c.NewHandler(vhostMux, &http2.Server{}),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	return httpServer, mux, nil
 }
 
 func MakePublicHttpService(
-	domain string,
 	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
-) (*motmedelMux.VhostMux, error) {
-	return makeHttpService(domain, staticContentEndpointSpecifications, true)
+	redirects ...[2]string,
+) (*http.Server, *motmedelMux.Mux, error) {
+	return makeHttpService(staticContentEndpointSpecifications, true, redirects...)
 }
 
 func MakeHttpService(
-	domain string,
 	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
-) (*motmedelMux.VhostMux, error) {
-	return makeHttpService(domain, staticContentEndpointSpecifications, false)
+	redirects ...[2]string,
+) (*http.Server, *motmedelMux.Mux, error) {
+	return makeHttpService(staticContentEndpointSpecifications, false, redirects...)
 }
