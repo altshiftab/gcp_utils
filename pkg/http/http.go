@@ -545,12 +545,20 @@ func makeHttpService(
 		return nil, nil, motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
 	}
 
+	baseUrl, err := url.Parse(fmt.Sprintf("https://%s", domain))
+	if err != nil {
+		return nil, nil, motmedelErrors.New(fmt.Errorf("url parse: %w", err), domain)
+	}
+	if baseUrl == nil {
+		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
+	}
+
 	if public {
-		if err := PatchPublicHttpServiceMux(mux, nil); err != nil {
+		if err := PatchPublicHttpServiceMux(mux, baseUrl); err != nil {
 			return nil, nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), mux)
 		}
 	} else {
-		if err := PatchHttpServiceMux(mux, nil); err != nil {
+		if err := PatchHttpServiceMux(mux, baseUrl); err != nil {
 			return nil, nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), mux)
 		}
 	}
