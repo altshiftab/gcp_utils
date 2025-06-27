@@ -35,7 +35,7 @@ import (
 	"time"
 )
 
-const DomainVariableName = "domain"
+const DomainVariableName = "DOMAIN"
 
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	if mux == nil {
@@ -537,7 +537,7 @@ func makeHttpService(
 	port := motmedelEnv.GetEnvWithDefault("PORT", "8080")
 	domain, err := motmedelEnv.ReadEnv(DomainVariableName)
 	if err != nil {
-		return nil, nil, motmedelErrors.New(fmt.Errorf("read env: %w", err), DomainVariableName)
+		return nil, nil, motmedelErrors.New(fmt.Errorf("read env: %q", err), DomainVariableName)
 	}
 
 	mux := MakeMux(staticContentEndpointSpecifications, nil)
