@@ -37,6 +37,11 @@ import (
 
 const DomainVariableName = "DOMAIN"
 
+const (
+	PermissionsPolicyHeader = "Permissions-Policy"
+	ContentSecurityPolicyHeader = "Content-Security-Policy"
+)
+
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	if mux == nil {
 		return
@@ -256,13 +261,13 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	defaultHeaders["NEL"] = `{"report_to": "network-error-logging", "max_age": 10886400}`
 	defaultDocumentHeaders["Reporting-Endpoints"] = `csp-report-to="/api/report/csp-report-to"`
 
-	contentSecurityPolicy := defaultDocumentHeaders["Content-Security-Policy"]
+	contentSecurityPolicy := defaultDocumentHeaders[ContentSecurityPolicyHeader]
 	if contentSecurityPolicy != "" {
 		contentSecurityPolicy += "; "
 	}
 	contentSecurityPolicy += "report-to csp-report-to; report-uri /api/report/csp-report-uri"
 
-	defaultDocumentHeaders["Content-Security-Policy"] = contentSecurityPolicy
+	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy
 
 	mux.Add(
 		// TODO: Not sure about the content type.
@@ -374,6 +379,43 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 			},
 		},
 	)
+}
+
+func PatchFedCm(mux *motmedelMux.Mux, providerUrls ...string) error {
+	if mux == nil {
+		return nil
+	}
+
+	if len(providerUrls) == 0 {
+		return nil
+	}
+
+	defaultDocumentHeaders := mux.DefaultDocumentHeaders
+	if defaultDocumentHeaders == nil {
+		// TODO: Create error in mux errors
+		return motmedelErrors.NewWithTrace(errors.New("nil default document headers"))
+	}
+
+	var permissionPolicyEntries []string
+	for _, providerUrl := range providerUrls {
+		if providerUrl == "" {
+			continue
+		}
+
+		permissionPolicyEntries = append(
+			permissionPolicyEntries,
+			fmt.Sprintf("identity-credentials-get=(self \"%s\")", providerUrl),
+		)
+	}
+
+	permissionsPolicy := defaultDocumentHeaders[PermissionsPolicyHeader]
+	if permissionsPolicy != "" {
+		permissionsPolicy += " "
+	}
+	permissionsPolicy += strings.Join(permissionPolicyEntries, " ")
+	defaultDocumentHeaders[PermissionsPolicyHeader] = permissionsPolicy
+
+	return nil
 }
 
 func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) error {
