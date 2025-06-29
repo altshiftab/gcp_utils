@@ -38,7 +38,7 @@ import (
 const DomainVariableName = "DOMAIN"
 
 const (
-	PermissionsPolicyHeader = "Permissions-Policy"
+	PermissionsPolicyHeader     = "Permissions-Policy"
 	ContentSecurityPolicyHeader = "Content-Security-Policy"
 )
 
@@ -381,7 +381,7 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 	)
 }
 
-func PatchFedCm(mux *motmedelMux.Mux, providerUrls ...string) error {
+func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []string, providerUrls []string) error {
 	if mux == nil {
 		return nil
 	}
@@ -408,11 +408,19 @@ func PatchFedCm(mux *motmedelMux.Mux, providerUrls ...string) error {
 		)
 	}
 
+	// TODO: In future, do this properly; serialize a CSP object.
+	contentSecurityPolicy := defaultDocumentHeaders[ContentSecurityPolicyHeader]
+	if contentSecurityPolicy != "" {
+		contentSecurityPolicy += "; "
+	}
+	contentSecurityPolicy += fmt.Sprintf("connect-src 'self' %s", strings.Join(manifestUrls, " "))
+	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy
+
 	permissionsPolicy := defaultDocumentHeaders[PermissionsPolicyHeader]
 	if permissionsPolicy != "" {
-		permissionsPolicy += " "
+		permissionsPolicy += ", "
 	}
-	permissionsPolicy += strings.Join(permissionPolicyEntries, " ")
+	permissionsPolicy += strings.Join(permissionPolicyEntries, ", ")
 	defaultDocumentHeaders[PermissionsPolicyHeader] = permissionsPolicy
 
 	return nil
