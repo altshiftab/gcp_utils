@@ -12,4 +12,6 @@ var (
 	ErrNilSecurityTxtUrl         = errors.New("nil security.txt url")
 	ErrNilDefaultHeaders         = errors.New("nil default headers")
 	ErrNilDefaultDocumentHeaders = errors.New("nil default document headers")
+	ErrEmptyDomain = errors.New("empty domain")
+	ErrEmptyPort = errors.New("empty port")
 )

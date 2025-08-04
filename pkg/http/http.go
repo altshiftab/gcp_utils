@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	motmedelEnv "github.com/Motmedel/utils_go/pkg/env"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
@@ -580,14 +579,18 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 }
 
 func makeHttpService(
+	domain string,
+	port string,
 	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
 	public bool,
 	redirects ...[2]string,
 ) (*http.Server, *motmedelMux.Mux, error) {
-	port := motmedelEnv.GetEnvWithDefault("PORT", "8080")
-	domain, err := motmedelEnv.ReadEnv(DomainVariableName)
-	if err != nil {
-		return nil, nil, motmedelErrors.New(fmt.Errorf("read env: %q", err), DomainVariableName)
+	if domain == "" {
+		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrEmptyDomain)
+	}
+
+	if port == "" {
+		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrEmptyPort)
 	}
 
 	mux := MakeMux(staticContentEndpointSpecifications, nil)
@@ -632,15 +635,19 @@ func makeHttpService(
 }
 
 func MakePublicHttpService(
+	domain string,
+	port string,
 	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
 	redirects ...[2]string,
 ) (*http.Server, *motmedelMux.Mux, error) {
-	return makeHttpService(staticContentEndpointSpecifications, true, redirects...)
+	return makeHttpService(domain, port, staticContentEndpointSpecifications, true, redirects...)
 }
 
 func MakeHttpService(
+	domain string,
+	port string,
 	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
 	redirects ...[2]string,
 ) (*http.Server, *motmedelMux.Mux, error) {
-	return makeHttpService(staticContentEndpointSpecifications, false, redirects...)
+	return makeHttpService(domain, port, staticContentEndpointSpecifications, false, redirects...)
 }

@@ -13,7 +13,7 @@ import (
 const (
 	LogLevelVariableName         = "LOG_LEVEL"
 	ProjectIdVariableName        = "PROJECT_ID"
-	ListenAddressVariableName    = "LISTEN_ADDRESS"
+	PortVariableName             = "PORT"
 	DnsServerAddressVariableName = "DNS_SERVER_ADDRESS"
 	TopicIdVariableName          = "TOPIC_ID"
 )
@@ -21,8 +21,8 @@ const (
 const (
 	DefaultLogLevel         = "INFO"
 	DefaultProjectId        = "*detect-project-id*"
-	DefaultListenAddress    = "0.0.0.0:8080"
 	DefaultDnsServerAddress = "169.254.169.254:53"
+	DefaultPort             = "8080"
 )
 
 var (
@@ -55,15 +55,11 @@ func GetTopicIdFatal(ctx context.Context) string {
 	return ReadEnvironmentVariableFatal(ctx, TopicIdVariableName)
 }
 
-func GetListenAddressFatal(ctx context.Context) string {
-	return ReadEnvironmentVariableFatal(ctx, ListenAddressVariableName)
-}
-
-func GetListenAddressWithDefault() string {
-	if listenAddress := os.Getenv(ListenAddressVariableName); listenAddress == "" {
-		return DefaultListenAddress
+func GetPortWithDefault() string {
+	if port := os.Getenv(PortVariableName); port != "" {
+		return port
 	} else {
-		return listenAddress
+		return DefaultPort
 	}
 }
 
