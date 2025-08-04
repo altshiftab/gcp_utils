@@ -530,9 +530,10 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return fmt.Errorf("patch crawlable: %w", err)
 	}
 
-	domainBreakdown := domain_breakdown.GetDomainBreakdown(baseUrl.Hostname())
+	baseUrlHostname := baseUrl.Hostname()
+	domainBreakdown := domain_breakdown.GetDomainBreakdown(baseUrlHostname)
 	if domainBreakdown == nil {
-		return motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilDomainBreakdown)
+		return motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilDomainBreakdown, baseUrlHostname)
 	}
 
 	registeredDomain := domainBreakdown.RegisteredDomain
@@ -608,11 +609,11 @@ func makeHttpService(
 
 	if public {
 		if err := PatchPublicHttpServiceMux(mux, baseUrl); err != nil {
-			return nil, nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), mux)
+			return nil, nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), mux, baseUrl)
 		}
 	} else {
 		if err := PatchHttpServiceMux(mux, baseUrl); err != nil {
-			return nil, nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), mux)
+			return nil, nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), mux, baseUrl)
 		}
 	}
 
