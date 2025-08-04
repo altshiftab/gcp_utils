@@ -1,4 +1,4 @@
-module github.com/altshiftab/gcp_utils/jwt
+module github.com/altshiftab/gcp_utils/pkg/jwt
 
 require (
 	github.com/Motmedel/utils_go v0.0.234
