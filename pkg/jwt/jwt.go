@@ -9,12 +9,12 @@ import (
 )
 
 func Validate(claims jwt.Claims) error {
-	var errs []error
-
 	registeredClaims, err := utils.GetNonZeroConversionValue[*jwt.RegisteredClaims](claims)
 	if err != nil {
 		return fmt.Errorf("get non zero conversion value: %w", err)
 	}
+
+	var errs []error
 
 	err = jwt.NewValidator().Validate(claims)
 	if err != nil {
