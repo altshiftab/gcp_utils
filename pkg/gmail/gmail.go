@@ -47,12 +47,12 @@ func MakeGmailUsersMessagesService(
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("gmail new service: %w", err), httpClient)
 	}
 	if gmailService == nil {
-		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilGmailService)
+		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilService)
 	}
 
 	gmailUsersService := gmailService.Users
 	if gmailUsersService == nil {
-		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilGmailUsersService)
+		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilUsersService)
 	}
 
 	return gmailUsersService.Messages, nil
