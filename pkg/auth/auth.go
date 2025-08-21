@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	authErrors "github.com/altshiftab/gcp_utils/pkg/auth/errors"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -14,7 +15,7 @@ const defaultCredentialsScope = "https://www.googleapis.com/auth/cloud-platform"
 
 func GetDefaultCredentialsToken(ctx context.Context, scopes ...string) (*oauth2.Token, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, motmedelErrors.NewWithTrace(err, ctx)
+		return nil, err
 	}
 
 	if len(scopes) == 0 {
@@ -29,8 +30,12 @@ func GetDefaultCredentialsToken(ctx context.Context, scopes ...string) (*oauth2.
 		return nil, motmedelErrors.NewWithTrace(authErrors.ErrNilCredentials)
 	}
 
-	// TODO: Can I check if this interface is nil?
-	credentialsToken, err := credentials.TokenSource.Token()
+	tokenSource := credentials.TokenSource
+	if utils.IsNil(tokenSource) {
+		return nil, motmedelErrors.NewWithTrace(authErrors.ErrNilTokenSource)
+	}
+
+	credentialsToken, err := tokenSource.Token()
 	if err != nil {
 		return nil, motmedelErrors.New(fmt.Errorf("token source token: %w", err))
 	}
@@ -44,12 +49,12 @@ func makeOauthClient(
 	impersonateEmailAddress string,
 	scopes ...string,
 ) (*http.Client, error) {
-	if len(accountKey) == 0 {
-		return nil, motmedelErrors.NewWithTrace(authErrors.ErrEmptyAccountKey)
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	if err := ctx.Err(); err != nil {
-		return nil, motmedelErrors.NewWithTrace(err, ctx)
+	if len(accountKey) == 0 {
+		return nil, motmedelErrors.NewWithTrace(authErrors.ErrEmptyAccountKey)
 	}
 
 	accountKeyConfig, err := google.JWTConfigFromJSON(accountKey, scopes...)
@@ -62,8 +67,12 @@ func makeOauthClient(
 
 	accountKeyConfig.Subject = impersonateEmailAddress
 
-	// TODO: Can I check if this interface is nil?
-	accountKeyToken, err := accountKeyConfig.TokenSource(ctx).Token()
+	tokenSource := accountKeyConfig.TokenSource(ctx)
+	if utils.IsNil(tokenSource) {
+		return nil, motmedelErrors.NewWithTrace(authErrors.ErrNilTokenSource)
+	}
+
+	accountKeyToken, err := tokenSource.Token()
 	if err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("jwt config token source: %w", err))
 	}
@@ -72,12 +81,12 @@ func makeOauthClient(
 }
 
 func MakeOauthClientFromAccountKey(ctx context.Context, accountKey []byte, scopes ...string) (*http.Client, error) {
-	if len(accountKey) == 0 {
-		return nil, nil
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	if err := ctx.Err(); err != nil {
-		return nil, motmedelErrors.NewWithTrace(err, ctx)
+	if len(accountKey) == 0 {
+		return nil, nil
 	}
 
 	return makeOauthClient(ctx, accountKey, "", scopes...)
@@ -89,16 +98,16 @@ func MakeImpersonatedOauthClientFromAccountKey(
 	impersonateEmailAddress string,
 	scopes ...string,
 ) (*http.Client, error) {
-	if len(accountKey) == 0 {
-		return nil, nil
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	if impersonateEmailAddress == "" {
 		return nil, motmedelErrors.NewWithTrace(authErrors.ErrEmptyImpersonateEmailAddress)
 	}
 
-	if err := ctx.Err(); err != nil {
-		return nil, motmedelErrors.NewWithTrace(err, ctx)
+	if len(accountKey) == 0 {
+		return nil, nil
 	}
 
 	return makeOauthClient(ctx, accountKey, impersonateEmailAddress, scopes...)

@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.4
 
 require (
-	github.com/Motmedel/utils_go v0.0.222
+	github.com/Motmedel/utils_go v0.0.257
 	golang.org/x/oauth2 v0.30.0
 )
 
