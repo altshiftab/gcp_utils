@@ -39,6 +39,7 @@ const DomainVariableName = "DOMAIN"
 const (
 	PermissionsPolicyHeader     = "Permissions-Policy"
 	ContentSecurityPolicyHeader = "Content-Security-Policy"
+	IntegrityPolicyHeader       = "Integrity-Policy"
 )
 
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
@@ -258,7 +259,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		baseUrl.String(),
 	)
 	defaultHeaders["NEL"] = `{"report_to": "network-error-logging", "max_age": 10886400}`
-	defaultDocumentHeaders["Reporting-Endpoints"] = `csp-report-to="/api/report/csp-report-to"`
+	defaultDocumentHeaders["Reporting-Endpoints"] = `csp-report-to="/api/report/csp-report-to", integrity-endpoint="/api/report/integrity-policy"`
 
 	contentSecurityPolicy := defaultDocumentHeaders[ContentSecurityPolicyHeader]
 	if contentSecurityPolicy != "" {
@@ -268,6 +269,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 
 	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy
 
+	defaultDocumentHeaders[IntegrityPolicyHeader] = `blocked-destinations=(script,style),sources=(inline),endpoints=(integrity-endpoint)`
 	mux.Add(
 		// TODO: Not sure about the content type.
 		&endpoint_specification.EndpointSpecification{
