@@ -269,7 +269,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 
 	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy
 
-	defaultDocumentHeaders[IntegrityPolicyHeader] = `blocked-destinations=(script,style),sources=(inline),endpoints=(integrity-endpoint)`
+	defaultDocumentHeaders[IntegrityPolicyHeader] = `blocked-destinations=(script), endpoints=(integrity-endpoint)`
 	mux.Add(
 		// TODO: Not sure about the content type.
 		&endpoint_specification.EndpointSpecification{
