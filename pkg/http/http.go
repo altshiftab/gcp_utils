@@ -40,6 +40,10 @@ const (
 	PermissionsPolicyHeader     = "Permissions-Policy"
 	ContentSecurityPolicyHeader = "Content-Security-Policy"
 	IntegrityPolicyHeader       = "Integrity-Policy"
+	CspReportToEndpoint = "/api/report/csp-report-to"
+	CspReportUriEndpoint = "/api/report/csp-report-uri"
+	NetworkErrorLoggingEndpoint = "/api/report/network-error-logging"
+	IntegrityEndpoint = "/api/report/integrity-endpoint"
 )
 
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
@@ -255,17 +259,25 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	}
 
 	defaultHeaders["Report-To"] = fmt.Sprintf(
-		"{\"group\": \"network-error-logging\", \"max-age\": 10886400, \"endpoints\": [{\"url\": \"%s/api/report/network-error-logging\"}]}",
+		"{\"group\": \"network-error-logging\", \"max-age\": 10886400, \"endpoints\": [{\"url\": \"%s%s\"}]}",
 		baseUrl.String(),
+		NetworkErrorLoggingEndpoint,
 	)
 	defaultHeaders["NEL"] = `{"report_to": "network-error-logging", "max_age": 10886400}`
-	defaultDocumentHeaders["Reporting-Endpoints"] = `csp-report-to="/api/report/csp-report-to", integrity-endpoint="/api/report/integrity-policy"`
+	defaultDocumentHeaders["Reporting-Endpoints"] = fmt.Sprintf(
+		"csp-report-to=\"%s\", integrity-endpoint=\"%s\"",
+		CspReportToEndpoint,
+		IntegrityEndpoint,
+	)
 
 	contentSecurityPolicy := defaultDocumentHeaders[ContentSecurityPolicyHeader]
 	if contentSecurityPolicy != "" {
 		contentSecurityPolicy += "; "
 	}
-	contentSecurityPolicy += "report-to csp-report-to; report-uri /api/report/csp-report-uri"
+	contentSecurityPolicy += fmt.Sprintf(
+		"report-to csp-report-to; report-uri %s",
+		CspReportUriEndpoint,
+	)
 
 	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy
 
@@ -273,7 +285,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	mux.Add(
 		// TODO: Not sure about the content type.
 		&endpoint_specification.EndpointSpecification{
-			Path:   "/api/report/csp-report-to",
+			Path:   CspReportToEndpoint,
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
 			BodyParserConfiguration: &parsing.BodyParserConfiguration{
@@ -281,12 +293,12 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "A Content-Security-Report was received.")
+				slog.Default().WarnContext(request.Context(), "A Content-Security-Policy report was received.")
 				return nil, nil
 			},
 		},
 		&endpoint_specification.EndpointSpecification{
-			Path:   "/api/report/csp-report-uri",
+			Path:   CspReportUriEndpoint,
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
 			BodyParserConfiguration: &parsing.BodyParserConfiguration{
@@ -294,7 +306,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "A Content-Security-Report was received.")
+				slog.Default().WarnContext(request.Context(), "A Content-Security-Policy report was received.")
 				return nil, nil
 			},
 		},
@@ -325,7 +337,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 		},
 		&endpoint_specification.EndpointSpecification{
-			Path:   "/api/report/network-error-logging",
+			Path:   NetworkErrorLoggingEndpoint,
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
 			BodyParserConfiguration: &parsing.BodyParserConfiguration{
@@ -334,6 +346,18 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				slog.Default().WarnContext(request.Context(), "Network errors were reported.")
+				return nil, nil
+			},
+		},
+		&endpoint_specification.EndpointSpecification{
+			Path: IntegrityEndpoint,
+			Method: http.MethodPost,
+			BodyParserConfiguration: &parsing.BodyParserConfiguration{
+				ContentType: "application/reports+json",
+				MaxBytes:    8192,
+			},
+			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
+				slog.Default().WarnContext(request.Context(), "An Integrity-Policy report was received.")
 				return nil, nil
 			},
 		},
@@ -547,23 +571,17 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	}
 	securityTxtUrl := registeredDomainUrl.JoinPath("/.well-known/security.txt")
 
-	if domainBreakdown.Subdomain == "" {
-		PatchSecurityTxt(
-			mux,
-			[]byte(
-				fmt.Sprintf(
-					"Contact: mailto:security@%s\nPreferred-Languages: sv, en\nCanonical: %s\nExpires: %s\n",
-					registeredDomain,
-					securityTxtUrl.String(),
-					time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02T15:04:05.000Z"),
-				),
+	PatchSecurityTxt(
+		mux,
+		[]byte(
+			fmt.Sprintf(
+				"Contact: mailto:security@%s\nPreferred-Languages: sv, en\nCanonical: %s\nExpires: %s\n",
+				registeredDomain,
+				securityTxtUrl.String(),
+				time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02T15:04:05.000Z"),
 			),
-		)
-	} else {
-		if err := PatchOtherDomainSecurityTxt(mux, securityTxtUrl); err != nil {
-			return motmedelErrors.New(fmt.Errorf("patch other domain security txt: %w", err), securityTxtUrl)
-		}
-	}
+		),
+	)
 
 	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
 		func(detail *problem_detail.ProblemDetail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
