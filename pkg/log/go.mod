@@ -5,9 +5,9 @@ go 1.24.0
 require (
 	github.com/Motmedel/dns_utils/pkg/log v0.0.10
 	github.com/Motmedel/gcp_logging_go v0.0.7
-	github.com/Motmedel/utils_go v0.0.219
+	github.com/Motmedel/utils_go v0.0.257
 	github.com/Motmedel/utils_go/pkg/http/log v0.0.6
-	github.com/altshiftab/gcp_utils v0.0.5
+	github.com/altshiftab/gcp_utils v0.0.7
 )
 
 require (
