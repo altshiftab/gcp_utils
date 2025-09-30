@@ -5,6 +5,13 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
@@ -26,12 +33,6 @@ import (
 	altshiftabGcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"log/slog"
-	"maps"
-	"net/http"
-	"net/url"
-	"strings"
-	"time"
 )
 
 const DomainVariableName = "DOMAIN"
@@ -557,12 +558,18 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	}
 
 	baseUrlHostname := baseUrl.Hostname()
-	domainBreakdown := domain_breakdown.GetDomainBreakdown(baseUrlHostname)
-	if domainBreakdown == nil {
-		return motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilDomainBreakdown, baseUrlHostname)
-	}
+	var registeredDomain string
 
-	registeredDomain := domainBreakdown.RegisteredDomain
+	if strings.EqualFold(baseUrlHostname, "localhost") {
+		registeredDomain = "localhost"
+	} else {
+		domainBreakdown := domain_breakdown.GetDomainBreakdown(baseUrlHostname)
+		if domainBreakdown == nil {
+			return motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilDomainBreakdown, baseUrlHostname)
+		}
+
+		registeredDomain = domainBreakdown.RegisteredDomain
+	}
 
 	registeredDomainUrlString := fmt.Sprintf("https://www.%s", registeredDomain)
 	registeredDomainUrl, err := url.Parse(registeredDomainUrlString)
@@ -646,9 +653,16 @@ func makeHttpService(
 	vhostMux := &motmedelMux.VhostMux{HostToSpecification: hostToSpecification}
 	vhostMux.DefaultHeaders = mux.DefaultHeaders
 
+	var handler http.Handler
+	if strings.EqualFold(domain, "localhost") {
+		handler = vhostMux
+	} else {
+		handler = h2c.NewHandler(vhostMux, &http2.Server{})
+	}
+
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf(":%s", port),
-		Handler:           h2c.NewHandler(vhostMux, &http2.Server{}),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
