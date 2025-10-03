@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,6 +48,8 @@ const (
 	CspReportUriEndpoint        = "/api/report/csp-report-uri"
 	NetworkErrorLoggingEndpoint = "/api/report/network-error-logging"
 	IntegrityEndpoint           = "/api/report/integrity-endpoint"
+	CspReportToToken            = "csp-report-to"
+	IntegrityEndpointToken      = "integrity-endpoint"
 )
 
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
@@ -268,15 +271,15 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	)
 	defaultHeaders["NEL"] = `{"report_to": "network-error-logging", "max_age": 10886400}`
 	defaultDocumentHeaders["Reporting-Endpoints"] = fmt.Sprintf(
-		"csp-report-to=\"%s\", integrity-endpoint=\"%s\"",
+		"%s=\"%s\", %s=\"%s\"",
+		CspReportToToken,
 		CspReportToEndpoint,
+		IntegrityEndpointToken,
 		IntegrityEndpoint,
 	)
 
-	contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]
-
 	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
-	if contentSecurityPolicyString != "" {
+	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
 		var err error
 		contentSecurityPolicy, err = contentSecurityPolicyParsing.ParseContentSecurityPolicy(
 			[]byte(contentSecurityPolicyString),
@@ -287,24 +290,46 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				contentSecurityPolicyString,
 			)
 		}
+
+		if reportToDirective := contentSecurityPolicy.GetReportTo(); reportToDirective != nil {
+			reportToDirective.Token = CspReportToToken
+		} else {
+			contentSecurityPolicy.Directives = append(
+				contentSecurityPolicy.Directives,
+				&content_security_policy.ReportToDirective{Token: CspReportToToken},
+			)
+		}
+
+		if reportUriDirective := contentSecurityPolicy.GetReportUri(); reportUriDirective != nil {
+			if !slices.Contains(reportUriDirective.UriReferences, CspReportUriEndpoint) {
+				reportUriDirective.UriReferences = append(
+					reportUriDirective.UriReferences,
+					CspReportUriEndpoint,
+				)
+			}
+		} else {
+			contentSecurityPolicy.Directives = append(
+				contentSecurityPolicy.Directives,
+				&content_security_policy.ReportUriDirective{
+					UriReferences: []string{CspReportUriEndpoint},
+				},
+			)
+		}
 	} else {
 		contentSecurityPolicy = &content_security_policy.ContentSecurityPolicy{
 			Directives: []content_security_policy.DirectiveI{
-				&content_security_policy.ReportToDirective{
-					Directive: content_security_policy.Directive{},
-					Token:     "",
-				},
+				&content_security_policy.ReportToDirective{Token: CspReportToToken},
+				&content_security_policy.ReportUriDirective{UriReferences: []string{CspReportUriEndpoint}},
 			},
 		}
 	}
-	contentSecurityPolicy += fmt.Sprintf(
-		"report-to csp-report-to; report-uri %s",
-		CspReportUriEndpoint,
+
+	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy.String()
+
+	defaultDocumentHeaders[IntegrityPolicyHeader] = fmt.Sprintf(
+		"blocked-destinations=(script), endpoints=(%s)",
+		IntegrityEndpointToken,
 	)
-
-	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy
-
-	defaultDocumentHeaders[IntegrityPolicyHeader] = `blocked-destinations=(script), endpoints=(integrity-endpoint)`
 	mux.Add(
 		// TODO: Not sure about the content type.
 		&endpoint_specification.EndpointSpecification{
@@ -429,7 +454,7 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 	)
 }
 
-func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []string, providerUrls []string) error {
+func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*url.URL) error {
 	if mux == nil {
 		return nil
 	}
@@ -446,23 +471,70 @@ func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []string, providerUrls []stri
 
 	var permissionPolicyEntries []string
 	for _, providerUrl := range providerUrls {
-		if providerUrl == "" {
+		if providerUrl == nil {
 			continue
 		}
 
 		permissionPolicyEntries = append(
 			permissionPolicyEntries,
-			fmt.Sprintf("identity-credentials-get=(self \"%s\")", providerUrl),
+			fmt.Sprintf("identity-credentials-get=(self \"%s\")", providerUrl.String()),
 		)
 	}
 
-	// TODO: In future, do this properly; serialize a CSP object.
-	contentSecurityPolicy := defaultDocumentHeaders[ContentSecurityPolicyHeader]
-	if contentSecurityPolicy != "" {
-		contentSecurityPolicy += "; "
+	var hostSources []content_security_policy.SourceI
+	for _, manifestUrl := range manifestUrls {
+		if hostSource := content_security_policy.HostSourceFromUrl(manifestUrl); hostSource != nil {
+			hostSources = append(hostSources, hostSource)
+		}
 	}
-	contentSecurityPolicy += fmt.Sprintf("connect-src 'self' %s", strings.Join(manifestUrls, " "))
-	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy
+
+	connectionSrcDirective := &content_security_policy.ConnectSrcDirective{
+		SourceDirective: content_security_policy.SourceDirective{
+			Sources: slices.Concat(
+				[]content_security_policy.SourceI{
+					&content_security_policy.KeywordSource{Keyword: "self"},
+				},
+				hostSources,
+			),
+		},
+	}
+
+	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
+	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
+		var err error
+		contentSecurityPolicy, err = contentSecurityPolicyParsing.ParseContentSecurityPolicy(
+			[]byte(contentSecurityPolicyString),
+		)
+		if err != nil {
+			return motmedelErrors.New(
+				fmt.Errorf("parse content security policy: %w", err),
+				contentSecurityPolicyString,
+			)
+		}
+
+		if existingConnectSrcDirective := contentSecurityPolicy.GetConnectSrc(); existingConnectSrcDirective != nil {
+			sourceMap := make(map[string]struct{})
+			for _, source := range existingConnectSrcDirective.Sources {
+				sourceMap[source.String()] = struct{}{}
+			}
+
+			for _, hostSource := range hostSources {
+				if _, found := sourceMap[hostSource.String()]; !found {
+
+					existingConnectSrcDirective.Sources = append(existingConnectSrcDirective.Sources, hostSource)
+				}
+			}
+		} else {
+			contentSecurityPolicy.Directives = append(contentSecurityPolicy.Directives, connectionSrcDirective)
+		}
+	} else {
+		contentSecurityPolicy = &content_security_policy.ContentSecurityPolicy{
+			Directives: []content_security_policy.DirectiveI{
+				connectionSrcDirective,
+			},
+		}
+	}
+	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy.String()
 
 	permissionsPolicy := defaultDocumentHeaders[PermissionsPolicyHeader]
 	if permissionsPolicy != "" {
@@ -526,6 +598,99 @@ func MakeMux(
 	return mux
 }
 
+func PatchTrustedTypes(mux *motmedelMux.Mux, policies... string) error {
+	if mux == nil {
+		return motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+	}
+
+	if len(policies) == 0 {
+		return nil
+	}
+
+	defaultDocumentHeaders := mux.DefaultDocumentHeaders
+	if defaultDocumentHeaders == nil {
+		// TODO: Create error in mux errors
+		return motmedelErrors.NewWithTrace(errors.New("nil default document headers"))
+	}
+
+	requireTrustedTypesForDirective := &content_security_policy.RequireTrustedTypesForDirective{
+		SinkGroups: []string{"script"},
+	}
+
+
+	var expressions []content_security_policy.TrustedTypeExpression
+	for _, policy := range policies {
+		if policy == "" {
+			continue
+		}
+
+		expressions = append(
+			expressions,
+			content_security_policy.TrustedTypeExpression{
+				Kind:  "policy-name",
+				Value: policy,
+			},
+		)
+	}
+	if len(expressions) == 0 {
+		return nil
+	}
+
+	trustedTypesDirective := &content_security_policy.TrustedTypesDirective{Expressions: expressions}
+
+	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
+	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
+		var err error
+		contentSecurityPolicy, err = contentSecurityPolicyParsing.ParseContentSecurityPolicy(
+			[]byte(contentSecurityPolicyString),
+		)
+		if err != nil {
+			return motmedelErrors.New(
+				fmt.Errorf("parse content security policy: %w", err),
+				contentSecurityPolicyString,
+			)
+		}
+
+		if _, found := contentSecurityPolicy.GetDirective("require-trusted-types-for"); !found {
+			contentSecurityPolicy.Directives = append(contentSecurityPolicy.Directives, requireTrustedTypesForDirective)
+		}
+
+		if existingTrustedTypesDirective := contentSecurityPolicy.GetTrustedTypes(); existingTrustedTypesDirective != nil {
+			expressionsMap := make(map[string]struct{})
+			for _, expression := range existingTrustedTypesDirective.Expressions {
+				if expression.Kind == "policy-name" {
+					expressionsMap[expression.Value] = struct{}{}
+				}
+			}
+
+			for _, expression := range trustedTypesDirective.Expressions {
+				if _, found := expressionsMap[expression.Value]; !found {
+					existingTrustedTypesDirective.Expressions = append(
+						existingTrustedTypesDirective.Expressions,
+						content_security_policy.TrustedTypeExpression{
+							Kind:  expression.Kind,
+							Value: expression.Value,
+						},
+					)
+				}
+			}
+		} else {
+			contentSecurityPolicy.Directives = append(contentSecurityPolicy.Directives, trustedTypesDirective)
+		}
+	} else {
+		contentSecurityPolicy = &content_security_policy.ContentSecurityPolicy{
+			Directives: []content_security_policy.DirectiveI{
+				requireTrustedTypesForDirective,
+				trustedTypesDirective,
+			},
+		}
+	}
+
+	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy.String()
+
+	return nil
+}
+
 func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	if mux == nil {
 		return motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
@@ -536,25 +701,12 @@ func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
 	}
 
-	defaultDocumentHeaders := mux.DefaultDocumentHeaders
-	if defaultDocumentHeaders == nil {
-		// TODO: Create error in mux errors
-		return motmedelErrors.NewWithTrace(errors.New("nil default document headers"))
-	}
-
-	contentSecurityPolicy := defaultDocumentHeaders["Content-Security-Policy"]
-	if contentSecurityPolicy != "" {
-		contentSecurityPolicy += "; "
-	}
-	contentSecurityPolicy += "require-trusted-types-for 'script'; trusted-types lit-html"
-	defaultDocumentHeaders["Content-Security-Policy"] = contentSecurityPolicy
-
 	if err := PatchErrorReporting(mux, baseUrl); err != nil {
-		return motmedelErrors.New(fmt.Errorf("patch error reporting: %w", err), mux, baseUrl)
+		return fmt.Errorf("patch error reporting: %w", err)
 	}
 
 	if err := PatchStrictTransportSecurity(mux); err != nil {
-		return motmedelErrors.New(fmt.Errorf("patch strict transport security: %w", err), mux)
+		return fmt.Errorf("patch strict transport security: %w", err)
 	}
 
 	return nil
@@ -573,9 +725,7 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return fmt.Errorf("patch http service mux: %w", err)
 	}
 
-	documentEndpointSpecifications := mux.GetDocumentEndpointSpecifications()
-
-	if err := PatchCrawlable(mux, baseUrl, documentEndpointSpecifications); err != nil {
+	if err := PatchCrawlable(mux, baseUrl, mux.GetDocumentEndpointSpecifications()); err != nil {
 		return fmt.Errorf("patch crawlable: %w", err)
 	}
 
@@ -593,12 +743,7 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		registeredDomain = domainBreakdown.RegisteredDomain
 	}
 
-	registeredDomainUrlString := fmt.Sprintf("https://www.%s", registeredDomain)
-	registeredDomainUrl, err := url.Parse(registeredDomainUrlString)
-	if err != nil {
-		return motmedelErrors.NewWithTrace(fmt.Errorf("url parse: %w", err), registeredDomainUrlString)
-	}
-	securityTxtUrl := registeredDomainUrl.JoinPath("/.well-known/security.txt")
+	securityTxtUrl := baseUrl.JoinPath("/.well-known/security.txt")
 
 	PatchSecurityTxt(
 		mux,
@@ -648,9 +793,10 @@ func makeHttpService(
 		return nil, nil, motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
 	}
 
-	baseUrl, err := url.Parse(fmt.Sprintf("https://%s", domain))
+	baseUrlString := fmt.Sprintf("https://%s", domain)
+	baseUrl, err := url.Parse(baseUrlString)
 	if err != nil {
-		return nil, nil, motmedelErrors.New(fmt.Errorf("url parse: %w", err), domain)
+		return nil, nil, motmedelErrors.NewWithTrace(fmt.Errorf("url parse (domain): %w", err), baseUrlString)
 	}
 	if baseUrl == nil {
 		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
@@ -658,11 +804,11 @@ func makeHttpService(
 
 	if public {
 		if err := PatchPublicHttpServiceMux(mux, baseUrl); err != nil {
-			return nil, nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), mux, baseUrl)
+			return nil, nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), baseUrl)
 		}
 	} else {
 		if err := PatchHttpServiceMux(mux, baseUrl); err != nil {
-			return nil, nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), mux, baseUrl)
+			return nil, nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), baseUrl)
 		}
 	}
 

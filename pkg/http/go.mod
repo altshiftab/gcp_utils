@@ -5,9 +5,9 @@ go 1.24.4
 toolchain go1.24.5
 
 require (
-	github.com/Motmedel/utils_go v0.0.272
+	github.com/Motmedel/utils_go v0.0.276
 	github.com/Motmedel/utils_go/pkg/http/mux v0.0.98
-	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.27
+	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.29
 	github.com/Motmedel/utils_go/pkg/http/problem_detail v1.0.5
 	github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5
 	github.com/altshiftab/gcp_utils v0.0.7
