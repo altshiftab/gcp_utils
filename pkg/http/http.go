@@ -23,8 +23,10 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_writer"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/static_content"
 	"github.com/Motmedel/utils_go/pkg/http/mux/utils/generate"
+	contentSecurityPolicyParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_security_policy"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
+	"github.com/Motmedel/utils_go/pkg/http/types/content_security_policy"
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
 	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
@@ -41,10 +43,10 @@ const (
 	PermissionsPolicyHeader     = "Permissions-Policy"
 	ContentSecurityPolicyHeader = "Content-Security-Policy"
 	IntegrityPolicyHeader       = "Integrity-Policy"
-	CspReportToEndpoint = "/api/report/csp-report-to"
-	CspReportUriEndpoint = "/api/report/csp-report-uri"
+	CspReportToEndpoint         = "/api/report/csp-report-to"
+	CspReportUriEndpoint        = "/api/report/csp-report-uri"
 	NetworkErrorLoggingEndpoint = "/api/report/network-error-logging"
-	IntegrityEndpoint = "/api/report/integrity-endpoint"
+	IntegrityEndpoint           = "/api/report/integrity-endpoint"
 )
 
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
@@ -271,9 +273,29 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		IntegrityEndpoint,
 	)
 
-	contentSecurityPolicy := defaultDocumentHeaders[ContentSecurityPolicyHeader]
-	if contentSecurityPolicy != "" {
-		contentSecurityPolicy += "; "
+	contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]
+
+	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
+	if contentSecurityPolicyString != "" {
+		var err error
+		contentSecurityPolicy, err = contentSecurityPolicyParsing.ParseContentSecurityPolicy(
+			[]byte(contentSecurityPolicyString),
+		)
+		if err != nil {
+			return motmedelErrors.New(
+				fmt.Errorf("parse content security policy: %w", err),
+				contentSecurityPolicyString,
+			)
+		}
+	} else {
+		contentSecurityPolicy = &content_security_policy.ContentSecurityPolicy{
+			Directives: []content_security_policy.DirectiveI{
+				&content_security_policy.ReportToDirective{
+					Directive: content_security_policy.Directive{},
+					Token:     "",
+				},
+			},
+		}
 	}
 	contentSecurityPolicy += fmt.Sprintf(
 		"report-to csp-report-to; report-uri %s",
@@ -351,7 +373,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 		},
 		&endpoint_specification.EndpointSpecification{
-			Path: IntegrityEndpoint,
+			Path:   IntegrityEndpoint,
 			Method: http.MethodPost,
 			BodyParserConfiguration: &parsing.BodyParserConfiguration{
 				ContentType: "application/reports+json",
