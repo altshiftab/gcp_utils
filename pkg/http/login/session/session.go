@@ -22,7 +22,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	loginServiceErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
+	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 )
 
 const (
@@ -32,7 +32,7 @@ const (
 func checkOrigin(origin string, registeredDomain string) *muxResponseError.ResponseError {
 	if registeredDomain == "" {
 		return &muxResponseError.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyRegisteredDomain),
+			ServerError: motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain),
 		}
 	}
 
@@ -93,7 +93,7 @@ func PatchMux(
 	registeredDomain string,
 ) error {
 	if utils.IsNil(sessionHandler) {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrNilSessionHandler)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
 
 	if mux == nil {
@@ -101,7 +101,7 @@ func PatchMux(
 	}
 
 	if registeredDomain == "" {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyRegisteredDomain)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain)
 	}
 
 	sessionRequestParser := sessionHandler.GetSessionRequestParser()
@@ -168,7 +168,7 @@ func PatchMux(
 							fmt.Errorf("session handler get authentication public key: %w", err),
 							authenticationId,
 						)
-						if errors.Is(err, loginServiceErrors.ErrNoAuthenticationPublicKey) {
+						if errors.Is(err, altshiftGcpUtilsHttpLoginErrors.ErrNoAuthenticationPublicKey) {
 							return nil, &muxResponseError.ResponseError{
 								ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
 									http.StatusUnauthorized,
@@ -200,7 +200,7 @@ func PatchMux(
 							"",
 							nil,
 						),
-						ClientError: motmedelErrors.NewWithTrace(loginServiceErrors.ErrNegativeDuration),
+						ClientError: motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNegativeDuration),
 					}
 				}
 
@@ -223,7 +223,7 @@ func PatchMux(
 				}
 				if headerEntry == nil {
 					return nil, &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(loginServiceErrors.ErrNilSessionCookieHeaderEntry),
+						ServerError: motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionCookieHeaderEntry),
 						Headers:     headerEntries,
 					}
 				}

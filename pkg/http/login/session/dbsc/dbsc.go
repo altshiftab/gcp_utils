@@ -29,7 +29,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/setting"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	loginServiceErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
+	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	dbscErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/errors"
 	dbscHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/helpers"
 	dbscTypes "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types"
@@ -76,7 +76,7 @@ func PatchMux(
 	dbscConfiguration *dbscTypes.Configuration,
 ) error {
 	if sessionHandler == nil {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrNilSessionHandler)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
 
 	sessionRequestParser := sessionHandler.GetSessionRequestParser()
@@ -85,36 +85,36 @@ func PatchMux(
 	}
 
 	if cookieName == "" {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptySessionCookieName)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieName)
 	}
 
 	if registeredDomain == "" {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyRegisteredDomain)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain)
 	}
 
 	if dbscConfiguration == nil {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrNilDbscConfiguration)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilDbscConfiguration)
 	}
 
 	originUrl := dbscConfiguration.OriginUrl
 	if originUrl == nil {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrNilOriginUrl)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilOriginUrl)
 	}
 
 	allowedAlgs := dbscConfiguration.AllowedAlgs
 	if len(allowedAlgs) == 0 {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyAllowedAlgs)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyAllowedAlgs)
 	}
 
 	registerPath := dbscConfiguration.RegisterPath
 	if registerPath == "" {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyRegisterPath)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisterPath)
 	}
 	registerAudience := makeAudienceValue(*originUrl, registerPath)
 
 	refreshPath := dbscConfiguration.RefreshPath
 	if refreshPath == "" {
-		return motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyRefreshPath)
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRefreshPath)
 	}
 	refreshAudience := makeAudienceValue(*originUrl, refreshPath)
 
@@ -159,7 +159,7 @@ func PatchMux(
 									var err error
 									userId, err = sessionHandler.DeleteDbscChallenge(ctx, jtiChallenge, authenticationId)
 									if err != nil {
-										if motmedelErrors.IsAny(err, loginServiceErrors.ErrNoChallenge, loginServiceErrors.ErrExpiredChallenge) {
+										if motmedelErrors.IsAny(err, altshiftGcpUtilsHttpLoginErrors.ErrNoChallenge, altshiftGcpUtilsHttpLoginErrors.ErrExpiredChallenge) {
 											return false, nil
 										}
 
@@ -468,7 +468,7 @@ func PatchMux(
 				}
 				if headerEntry == nil {
 					return nil, &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(loginServiceErrors.ErrNilSessionCookieHeaderEntry),
+						ServerError: motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionCookieHeaderEntry),
 					}
 				}
 
