@@ -14,7 +14,7 @@ import (
 	motmedelJwtErrors "github.com/Motmedel/utils_go/pkg/jwt/errors"
 	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/jwt/types/token"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	loginServiceErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
+	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	"github.com/google/uuid"
 )
 
@@ -30,11 +30,11 @@ func MakeSessionToken(
 	issuer string,
 ) (string, error) {
 	if authenticationId == "" {
-		return "", motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyAuthenticationId)
+		return "", motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyAuthenticationId)
 	}
 
 	if userId == "" {
-		return "", motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyUserId)
+		return "", motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyUserId)
 	}
 
 	if utils.IsNil(signer) {
@@ -42,7 +42,7 @@ func MakeSessionToken(
 	}
 
 	if issuer == "" {
-		return "", motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptyIssuer)
+		return "", motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyIssuer)
 	}
 
 	token := motmedelJwtToken.Token{
@@ -127,11 +127,11 @@ func MakeSessionCookie(
 	}
 
 	if name == "" {
-		return nil, motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptySessionCookieName)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieName)
 	}
 
 	if domain == "" {
-		return nil, motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptySessionCookieDomain)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieDomain)
 	}
 
 	return makeSessionCookie(tokenString, expiresAt, name, domain), nil
@@ -147,7 +147,7 @@ func MakeSessionCookieHeader(
 	domain string,
 ) (*muxResponse.HeaderEntry, error) {
 	if domain == "" {
-		return nil, motmedelErrors.NewWithTrace(loginServiceErrors.ErrEmptySessionCookieDomain)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieDomain)
 	}
 
 	sessionToken, err := MakeSessionToken(authenticationId, userId, signer, expiresAt, issuer)
