@@ -1,0 +1,14 @@
+github.com/Motmedel/utils_go v0.0.284 h1:nKw/+9akgHw9FUJDGAK+w2RFQwcsRXz2LZDAR3toIZk=
+github.com/Motmedel/utils_go v0.0.284/go.mod h1:kKm8jM7GA8M7ICIImi5etOMixRgQfnStBPjEoCMTgbg=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.111 h1:ZEt31paUKHXnni1PSIGQoyKVXPyk6GaLMrGmQE2z5+A=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.111/go.mod h1:foIST1dTpM19b04fQQzDgA0nDN9EXDhbInOn2YupXRg=
+github.com/Motmedel/utils_go/pkg/http/problem_detail v1.0.5 h1:W10vCKqxk8wwxvlXDD7+PA57RKZx/oOXp7fvQ/a09ag=
+github.com/Motmedel/utils_go/pkg/http/problem_detail v1.0.5/go.mod h1:NVtWalWHHrewsfTkYjUQCaR4LqKeylOX6QOFoEadAx8=
+github.com/altshiftab/gcp_utils/pkg/http v0.0.30 h1:UtBtQCQh5idFiivTV25b5uw3UvsH0neF6rNi2dY5W30=
+github.com/altshiftab/gcp_utils/pkg/http v0.0.30/go.mod h1:RMpYWRNFZLXJVe+KRbf4UjJASjz6dXjgDt67sJXAcSs=
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/vphpersson/type_generation v0.0.5 h1:sGB+TnbQtJi9Sj2xynBSdIPmh6t26Xjo+zoUrx5tUtU=
+github.com/vphpersson/type_generation v0.0.5/go.mod h1:9aqkYhohjbI3Azj4BaYaEKujktJAkRGoCe0jzZtes/w=
+golang.org/x/text v0.30.0 h1:yznKA/E9zq54KzlzBEAWn1NXSQ8DIp/NYMy88xJjl4k=
+golang.org/x/text v0.30.0/go.mod h1:yDdHFIX9t+tORqspjENWgzaCVXgk0yYnYuSZ8UzzBVM=
