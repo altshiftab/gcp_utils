@@ -1,0 +1,115 @@
+{{- $useEncryption := .Globals.UseEncryption -}}
+{{- if $useEncryption }}
+import type {JWK} from "jose";
+import {compactDecrypt, CompactEncrypt, exportJWK, generateKeyPair, importJWK} from "jose";
+{{- end }}
+import {fetchEx} from "@altshiftab/utils/http/utils";
+{{ define "function" -}}
+{{- $noRequestBody := or (or (eq .Endpoint.Method "GET") (eq .Endpoint.Method "HEAD")) (eq .Endpoint.InputType "void") -}}
+{{- $encryptedInput := eq .Endpoint.ContentType "application/jose" -}}
+{{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
+{{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
+async function {{ .Endpoint.Name }}(
+    {{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if $authBearer }}, {{ end }}{{- end -}}
+    {{- if $authBearer -}}token: string{{- end -}}
+): Promise<{{ .Endpoint.ReturnType }}> {
+    {{- if $authBearer }}
+    if (!token)
+        throw new Error("Empty token");
+    {{ end }}
+    {{- if $encryptedOutput }}
+    const {publicKey: clientPublicKey, privateKey: clientPrivateKey} = await generateKeyPair(
+        "{{ .Globals.CseKeyAlgorithm }}",
+        {crv: "{{ .Globals.CseKeyAlgorithmCurve }}"}
+    );
+    const clientJwk = await exportJWK(clientPublicKey);
+    clientJwk.alg = "{{ .Globals.CseKeyAlgorithm }}";
+    clientJwk.use = "enc";
+    {{- end }}
+    {{- if not $noRequestBody }}
+        {{- if $encryptedInput }}
+    const serverJwk: JWK = {{ .Globals.CseServerPublicJwk }};
+    const serverPublicKey = await importJWK(serverJwk, "{{ .Globals.CseKeyAlgorithm }}");
+    const data = await new CompactEncrypt(new TextEncoder().encode(JSON.stringify(input)))
+        .setProtectedHeader({
+            alg: "{{ .Globals.CseKeyAlgorithm }}",
+            enc: "{{ .Globals.CseContentEncryption }}",
+            kid: serverJwk.kid,
+            cty: "application/json",
+        })
+        .encrypt(serverPublicKey)
+    ;
+        {{- else }}
+    const data = {{ if eq .Endpoint.ContentType "application/json" }}JSON.stringify(input){{ else }}(input as any){{ end }};
+        {{- end }}
+    {{- end }}
+    const {response, responseText} = await fetchEx(
+        "{{ .Endpoint.URL }}",
+        {
+            method: "{{ .Endpoint.Method }}",
+            {{- if .Endpoint.UseAuthentication }}
+            credentials: "include",
+            {{- end }}
+            {{- $hasContentType := and (not $noRequestBody) (ne .Endpoint.ContentType "") -}}
+            {{- $hasAuth := $authBearer -}}
+            {{- $hasCse := $encryptedOutput -}}
+            {{- $hasHeaders := or $hasContentType (or $hasAuth $hasCse) -}}
+            {{- if $hasHeaders }}
+            headers: {
+                {{- if $hasContentType }}
+                "Content-Type": "{{ .Endpoint.ContentType }}",
+                {{- end }}
+                {{- if $hasCse }}
+                "{{ .Globals.CseClientPublicJwkHeader }}": JSON.stringify(clientJwk),
+                {{- end }}
+                {{- if $hasAuth }}
+                "Authorization": `Bearer ${token}`,
+                {{- end }}
+            },
+            {{- end }}
+            {{- if not $noRequestBody }}
+            body: data,
+            {{- end }}
+        }
+    );
+
+    {{- if eq .Endpoint.ReturnType "void" }}
+    return;
+    {{- else }}
+        {{- if $encryptedOutput }}
+    const {plaintext, protectedHeader} = await compactDecrypt(responseText, clientPrivateKey);
+    const decryptedText = new TextDecoder().decode(plaintext);
+    let output: unknown = decryptedText;
+
+    const protectedHeaderCty = protectedHeader?.cty ?? "";
+    if (protectedHeaderCty === "application/json" || protectedHeaderCty.endsWith("+json")) {
+        output = JSON.parse(decryptedText);
+    }
+
+    return output as {{ .Endpoint.ReturnType }};
+        {{- else }}
+
+    const contentType = response.headers.get("Content-Type") || "";
+    if (contentType == "{{ .Endpoint.ExpectedOutputContentType }}") {
+            {{- if eq .Endpoint.ExpectedOutputContentType "application/json" }}
+        return JSON.parse(responseText) as {{ .Endpoint.ReturnType }};
+            {{- else }}
+        return responseText as unknown as {{ .Endpoint.ReturnType }};
+            {{- end }}
+    } else {
+        throw new Error(`Unexpected content type: ${contentType}`);
+    }
+        {{- end }}
+    {{- end }}
+}
+{{ end }}
+
+{{- /* Generate for a slice of endpoints if provided */ -}}
+{{- if .Endpoints }}
+    {{- range .Endpoints }}
+{{ template "function" (dict "Endpoint" . "Globals" $.Globals) }}
+    {{- end }}
+{{- else }}
+    {{/* Otherwise treat the root as a single FunctionSpec */}}
+{{ template "function" (dict "Endpoint" . "Globals" $.Globals) }}
+{{- end }}
