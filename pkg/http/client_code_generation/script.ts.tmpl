@@ -9,7 +9,7 @@ import {fetchEx} from "@altshiftab/utils/http/utils";
 {{- $encryptedInput := eq .Endpoint.ContentType "application/jose" -}}
 {{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
 {{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
-async function {{ .Endpoint.Name }}(
+export async function {{ .Endpoint.Name }}(
     {{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if $authBearer }}, {{ end }}{{- end -}}
     {{- if $authBearer -}}token: string{{- end -}}
 ): Promise<{{ .Endpoint.ReturnType }}> {

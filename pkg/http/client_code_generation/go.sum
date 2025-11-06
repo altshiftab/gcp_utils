@@ -8,7 +8,7 @@ github.com/altshiftab/gcp_utils/pkg/http v0.0.30 h1:UtBtQCQh5idFiivTV25b5uw3UvsH
 github.com/altshiftab/gcp_utils/pkg/http v0.0.30/go.mod h1:RMpYWRNFZLXJVe+KRbf4UjJASjz6dXjgDt67sJXAcSs=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/vphpersson/type_generation v0.0.5 h1:sGB+TnbQtJi9Sj2xynBSdIPmh6t26Xjo+zoUrx5tUtU=
-github.com/vphpersson/type_generation v0.0.5/go.mod h1:9aqkYhohjbI3Azj4BaYaEKujktJAkRGoCe0jzZtes/w=
+github.com/vphpersson/type_generation v0.0.6 h1:SJ/sjNEC4LGhm3N/x4KCeXYJDm2WL9O6Vzpb3kVPZgs=
+github.com/vphpersson/type_generation v0.0.6/go.mod h1:9aqkYhohjbI3Azj4BaYaEKujktJAkRGoCe0jzZtes/w=
 golang.org/x/text v0.30.0 h1:yznKA/E9zq54KzlzBEAWn1NXSQ8DIp/NYMy88xJjl4k=
 golang.org/x/text v0.30.0/go.mod h1:yDdHFIX9t+tORqspjENWgzaCVXgk0yYnYuSZ8UzzBVM=
