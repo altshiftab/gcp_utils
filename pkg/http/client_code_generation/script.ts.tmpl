@@ -90,6 +90,12 @@ export async function {{ .Endpoint.Name }}(
         {{- else }}
 
     const contentType = response.headers.get("Content-Type") || "";
+
+    {{- if eq .Endpoint.OptionalOutput }}
+    if (responseText === "" && contentType === "")
+        return undefined;
+    {{- end }}
+
     if (contentType == "{{ .Endpoint.ExpectedOutputContentType }}") {
             {{- if eq .Endpoint.ExpectedOutputContentType "application/json" }}
         return JSON.parse(responseText) as {{ .Endpoint.ReturnType }};
