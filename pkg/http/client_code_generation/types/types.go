@@ -10,6 +10,7 @@ import (
 type EndpointSpecificationGetter interface {
 	GetEndpointSpecification() *endpoint_specification.EndpointSpecification
 	GetExpectedOutputContentType() string
+	GetOptionalOutput() bool
 }
 
 type TypedEndpointSpecification[T any, U any] struct {
@@ -28,11 +29,16 @@ func (t TypedEndpointSpecification[T, U]) GetExpectedOutputContentType() string 
 	return t.ExpectedOutputContentType
 }
 
+func (t TypedEndpointSpecification[T, U]) GetOptionalOutput() bool {
+	return t.OptionalOutput
+}
+
 type EndpointData struct {
 	EndpointSpecification *endpoint_specification.EndpointSpecification
 	Input                 reflect.Type
 	Output                reflect.Type
 	OutputContentType     string
+	OptionalOutput        bool
 }
 
 type TemplateInput struct {
@@ -43,6 +49,7 @@ type TemplateInput struct {
 	Method                    string
 	ContentType               string
 	ExpectedOutputContentType string
+	OptionalOutput            bool
 	UseAuthentication         bool
 }
 

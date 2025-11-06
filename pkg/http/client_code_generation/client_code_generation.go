@@ -231,6 +231,7 @@ func makeTemplateInput(
 				ContentType:               contentType,
 				ExpectedOutputContentType: endpointData.OutputContentType,
 				UseAuthentication:         useAuthentication,
+				OptionalOutput:            endpointData.OptionalOutput,
 			},
 		)
 	}
@@ -265,6 +266,7 @@ func Render(
 				Input:                 inputType,
 				Output:                outputType,
 				OutputContentType:     endpointSpecificationGetter.GetExpectedOutputContentType(),
+				OptionalOutput:        endpointSpecificationGetter.GetOptionalOutput(),
 			},
 		)
 	}
