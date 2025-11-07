@@ -5,7 +5,8 @@ import {compactDecrypt, CompactEncrypt, exportJWK, generateKeyPair, importJWK} f
 {{- end }}
 import {fetchEx} from "@altshiftab/utils/http/utils";
 {{ define "function" -}}
-{{- $noRequestBody := or (or (eq .Endpoint.Method "GET") (eq .Endpoint.Method "HEAD")) (eq .Endpoint.InputType "void") -}}
+{{- $noRequestBody := eq .Endpoint.InputType "void" -}}
+{{- $isGetOrHead := or (eq .Endpoint.Method "GET") (eq .Endpoint.Method "HEAD") -}}
 {{- $encryptedInput := eq .Endpoint.ContentType "application/jose" -}}
 {{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
 {{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
@@ -26,7 +27,24 @@ export async function {{ .Endpoint.Name }}(
     clientJwk.alg = "{{ .Globals.CseKeyAlgorithm }}";
     clientJwk.use = "enc";
     {{- end }}
-    {{- if not $noRequestBody }}
+
+    const url = new URL("{{ .Endpoint.URL }}");
+    {{- if and (not $noRequestBody) $isGetOrHead }}
+    for (const [__k, __v] of Object.entries(input as any)) {
+        if (__v === undefined || __v === null)
+            continue;
+        if (Array.isArray(__v)) {
+            for (const __item of __v) {
+                url.searchParams.append(__k, String(__item));
+            }
+        } else if (typeof __v === "object") {
+            url.searchParams.append(__k, JSON.stringify(__v));
+        } else {
+            url.searchParams.append(__k, String(__v));
+        }
+    }
+
+    {{- if and (not $noRequestBody) (not $isGetOrHead) }}
         {{- if $encryptedInput }}
     const serverJwk: JWK = {{ .Globals.CseServerPublicJwk }};
     const serverPublicKey = await importJWK(serverJwk, "{{ .Globals.CseKeyAlgorithm }}");
@@ -44,13 +62,13 @@ export async function {{ .Endpoint.Name }}(
         {{- end }}
     {{- end }}
     const {response, responseText} = await fetchEx(
-        "{{ .Endpoint.URL }}",
+        url.toString(),
         {
             method: "{{ .Endpoint.Method }}",
             {{- if .Endpoint.UseAuthentication }}
             credentials: "include",
             {{- end }}
-            {{- $hasContentType := and (not $noRequestBody) (ne .Endpoint.ContentType "") -}}
+            {{- $hasContentType := and (and (not $noRequestBody) (not $isGetOrHead)) (ne .Endpoint.ContentType "") -}}
             {{- $hasAuth := $authBearer -}}
             {{- $hasCse := $encryptedOutput -}}
             {{- $hasHeaders := or $hasContentType (or $hasAuth $hasCse) -}}
@@ -67,7 +85,7 @@ export async function {{ .Endpoint.Name }}(
                 {{- end }}
             },
             {{- end }}
-            {{- if not $noRequestBody }}
+            {{- if and (not $noRequestBody) (not $isGetOrHead) }}
             body: data,
             {{- end }}
         }
