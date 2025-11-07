@@ -43,6 +43,7 @@ export async function {{ .Endpoint.Name }}(
             url.searchParams.append(__k, String(__v));
         }
     }
+    {{- end }}
 
     {{- if and (not $noRequestBody) (not $isGetOrHead) }}
         {{- if $encryptedInput }}
