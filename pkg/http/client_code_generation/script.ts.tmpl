@@ -13,7 +13,7 @@ import {fetchEx} from "@altshiftab/utils/http/utils";
 export async function {{ .Endpoint.Name }}(
     {{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if $authBearer }}, {{ end }}{{- end -}}
     {{- if $authBearer -}}token: string{{- end -}}
-): Promise<{{ .Endpoint.ReturnType }}{{ if .Endpoint.OptionalOutput }} | undefined{{ end }}> {
+): Promise<{{ .Endpoint.ReturnType }}{{ if .Endpoint.OptionalOutput }} | null{{ end }}> {
     {{- if $authBearer }}
     if (!token)
         throw new Error("Empty token");
@@ -112,7 +112,7 @@ export async function {{ .Endpoint.Name }}(
 
     {{- if .Endpoint.OptionalOutput }}
     if (responseText === "" && contentType === "")
-        return undefined;
+        return null;
     {{- end }}
 
     if (contentType == "{{ .Endpoint.ExpectedOutputContentType }}") {
