@@ -6,7 +6,7 @@ import {compactDecrypt, CompactEncrypt, exportJWK, generateKeyPair, importJWK} f
 import {fetchEx} from "@altshiftab/utils/http/utils";
 {{ define "function" -}}
 {{- $noRequestBody := eq .Endpoint.InputType "void" -}}
-{{- $isGetOrHead := or (eq .Endpoint.Method "GET") (eq .Endpoint.Method "HEAD") -}}
+{{- $isNoBodyMethod := or (eq .Endpoint.Method "GET") (or (eq .Endpoint.Method "HEAD") (eq .Endpoint.Method "DELETE")) -}}
 {{- $encryptedInput := eq .Endpoint.ContentType "application/jose" -}}
 {{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
 {{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
@@ -29,7 +29,7 @@ export async function {{ .Endpoint.Name }}(
     {{- end }}
 
     const url = new URL("{{ .Endpoint.URL }}");
-    {{- if and (not $noRequestBody) $isGetOrHead }}
+    {{- if and (not $noRequestBody) $isNoBodyMethod }}
     for (const [__k, __v] of Object.entries(input as any)) {
         if (__v === undefined || __v === null)
             continue;
@@ -45,7 +45,7 @@ export async function {{ .Endpoint.Name }}(
     }
     {{- end }}
 
-    {{- if and (not $noRequestBody) (not $isGetOrHead) }}
+    {{- if and (not $noRequestBody) (not $isNoBodyMethod) }}
         {{- if $encryptedInput }}
     const serverJwk: JWK = {{ .Globals.CseServerPublicJwk }};
     const serverPublicKey = await importJWK(serverJwk, "{{ .Globals.CseKeyAlgorithm }}");
@@ -69,7 +69,7 @@ export async function {{ .Endpoint.Name }}(
             {{- if .Endpoint.UseAuthentication }}
             credentials: "include",
             {{- end }}
-            {{- $hasContentType := and (and (not $noRequestBody) (not $isGetOrHead)) (ne .Endpoint.ContentType "") -}}
+            {{- $hasContentType := and (and (not $noRequestBody) (not $isNoBodyMethod)) (ne .Endpoint.ContentType "") -}}
             {{- $hasAuth := $authBearer -}}
             {{- $hasCse := $encryptedOutput -}}
             {{- $hasHeaders := or $hasContentType (or $hasAuth $hasCse) -}}
@@ -86,7 +86,7 @@ export async function {{ .Endpoint.Name }}(
                 {{- end }}
             },
             {{- end }}
-            {{- if and (not $noRequestBody) (not $isGetOrHead) }}
+            {{- if and (not $noRequestBody) (not $isNoBodyMethod) }}
             body: data,
             {{- end }}
         }
