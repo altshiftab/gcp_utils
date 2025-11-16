@@ -24,6 +24,7 @@ import (
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
 	googleHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/helpers"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types/path_config"
 	"github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
 )
@@ -38,42 +39,40 @@ type SessionHandler interface {
 	HandleSuccessfulAuthentication(ctx context.Context, userId string) ([]*muxResponse.HeaderEntry, error)
 }
 
-func PatchMux(
-	mux *mux.Mux,
+func MakeEndpoints(
 	sessionHandler SessionHandler,
 	userHandler UserHandler,
 	redirectUrlRequestParser request_parser.RequestParser[any],
 	oauthConfig *oauth2.Config,
 	oidcVerifier *oidc.IDTokenVerifier,
-) error {
+	options ...path_config.Option,
+) ([]*endpoint_specification.EndpointSpecification, error) {
 	if utils.IsNil(sessionHandler) {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
 
 	if utils.IsNil(userHandler) {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilUserHandler)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilUserHandler)
 	}
 
 	if oauthConfig == nil {
-		return motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauth2Configuration)
+		return nil, motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauth2Configuration)
 	}
 
 	if oidcVerifier == nil {
-		return motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
-	}
-
-	if mux == nil {
-		return nil
+		return nil, motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
 	}
 
 	fedCmInputBodyParser, err := jsonSchemaBodyParser.New[*types.FedCmInput]()
 	if err != nil {
-		return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (fed cm input): %w", err))
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (fed cm input): %w", err))
 	}
 
-	mux.Add(
-		&endpoint_specification.EndpointSpecification{
-			Path:                   "/api/login/google",
+	pathConfig := path_config.New(options...)
+
+	return []*endpoint_specification.EndpointSpecification{
+		{
+			Path:                   pathConfig.LoginPath,
 			Method:                 http.MethodGet,
 			UrlParserConfiguration: &parsing.UrlParserConfiguration{Parser: redirectUrlRequestParser},
 			Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
@@ -113,8 +112,8 @@ func PatchMux(
 				}, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
-			Path:   "/api/callback/google",
+		{
+			Path:   pathConfig.CallbackPath,
 			Method: http.MethodGet,
 			UrlParserConfiguration: &parsing.UrlParserConfiguration{
 				Parser: request_parser.RequestParserFunction[any](sso.CallbackUrlParser),
@@ -214,8 +213,8 @@ func PatchMux(
 				return &muxResponse.Response{StatusCode: http.StatusSeeOther, Headers: headerEntries}, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
-			Path:   "/api/login/fedcm/google",
+		{
+			Path:   pathConfig.FedcmLoginPath,
 			Method: http.MethodPost,
 			BodyParserConfiguration: &parsing.BodyParserConfiguration{
 				ContentType: "application/json",
@@ -271,7 +270,43 @@ func PatchMux(
 				return &muxResponse.Response{Headers: headerEntries}, nil
 			},
 		},
-	)
+	}, nil
+}
+
+func PatchMux(
+	mux *mux.Mux,
+	sessionHandler SessionHandler,
+	userHandler UserHandler,
+	redirectUrlRequestParser request_parser.RequestParser[any],
+	oauthConfig *oauth2.Config,
+	oidcVerifier *oidc.IDTokenVerifier,
+) error {
+	if utils.IsNil(sessionHandler) {
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
+	}
+
+	if utils.IsNil(userHandler) {
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilUserHandler)
+	}
+
+	if oauthConfig == nil {
+		return motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauth2Configuration)
+	}
+
+	if oidcVerifier == nil {
+		return motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
+	}
+
+	if mux == nil {
+		return nil
+	}
+
+	endpoints, err := MakeEndpoints(sessionHandler, userHandler, redirectUrlRequestParser, oauthConfig, oidcVerifier)
+	if err != nil {
+		return fmt.Errorf("make endpoints: %w", err)
+	}
+
+	mux.Add(endpoints...)
 
 	return nil
 }
