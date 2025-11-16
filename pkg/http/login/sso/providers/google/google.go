@@ -11,6 +11,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux"
 	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser"
+	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
@@ -42,7 +43,7 @@ type SessionHandler interface {
 func MakeEndpoints(
 	sessionHandler SessionHandler,
 	userHandler UserHandler,
-	redirectUrlRequestParser request_parser.RequestParser[any],
+	redirectUrlRequestParser request_parser.RequestParser[*url.URL],
 	oauthConfig *oauth2.Config,
 	oidcVerifier *oidc.IDTokenVerifier,
 	options ...path_config.Option,
@@ -74,7 +75,7 @@ func MakeEndpoints(
 		{
 			Path:                   pathConfig.LoginPath,
 			Method:                 http.MethodGet,
-			UrlParserConfiguration: &parsing.UrlParserConfiguration{Parser: redirectUrlRequestParser},
+			UrlParserConfiguration: &parsing.UrlParserConfiguration{Parser: adapter.New(redirectUrlRequestParser)},
 			Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 				ctx := request.Context()
 
@@ -277,7 +278,7 @@ func PatchMux(
 	mux *mux.Mux,
 	sessionHandler SessionHandler,
 	userHandler UserHandler,
-	redirectUrlRequestParser request_parser.RequestParser[any],
+	redirectUrlRequestParser request_parser.RequestParser[*url.URL],
 	oauthConfig *oauth2.Config,
 	oidcVerifier *oidc.IDTokenVerifier,
 ) error {
