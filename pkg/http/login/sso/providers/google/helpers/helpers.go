@@ -16,12 +16,12 @@ func HandleGoogleToken(ctx context.Context, accessToken string, verifier *oidc.I
 		return "", fmt.Errorf("context error: %w", err)
 	}
 
-	if accessToken == "" {
-		return "", nil
-	}
-
 	if verifier == nil {
 		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
+	}
+
+	if accessToken == "" {
+		return "", nil
 	}
 
 	idToken, err := verifier.Verify(ctx, accessToken)

@@ -325,10 +325,7 @@ func PatchMux(
 			Path:                      registerPath,
 			Method:                    http.MethodPost,
 			HeaderParserConfiguration: &parsing.HeaderParserConfiguration{Parser: registerRequestParser},
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
-				AllowEmpty: true,
-				// TODO: Require the body to be empty?
-			},
+			BodyParserConfiguration:   &parsing.BodyParserConfiguration{EmptyOption: parsing.BodyForbidden},
 			Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 				ctx := request.Context()
 
