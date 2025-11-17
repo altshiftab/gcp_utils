@@ -10,13 +10,15 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux"
 	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/processor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser"
-	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser/adapter"
+	requestParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	"github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption"
 	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/utils/json/schema"
 	"github.com/Motmedel/utils_go/pkg/http/mux/utils/query"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
@@ -28,7 +30,9 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types/path_config"
 	types2 "github.com/altshiftab/gcp_utils/pkg/http/login/sso/types"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/cse_config"
 	"github.com/coreos/go-oidc"
+	"github.com/go-jose/go-jose/v4"
 	"golang.org/x/oauth2"
 )
 
@@ -43,7 +47,57 @@ type UserHandler interface {
 type SessionHandler interface {
 	AddCodeVerifier(ctx context.Context, codeVerifier string, redirectUrl string) (codeVerifierId string, err error)
 	DeleteCodeVerifier(ctx context.Context, codeVerifierId string) (codeVerifier string, redirectUrl string, err error)
-	HandleSuccessfulAuthentication(ctx context.Context, userId string) ([]*muxResponse.HeaderEntry, error)
+	HandleSuccessfulWebAuthentication(ctx context.Context, userId string) ([]*muxResponse.HeaderEntry, error)
+	MakeSessionToken(ctx context.Context, userId string) (string, error)
+}
+
+func handleExchange(
+	ctx context.Context,
+	code string,
+	verifier string,
+	oauthConfig *oauth2.Config,
+	oidcVerifier *oidc.IDTokenVerifier,
+) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("context err: %w", err)
+	}
+
+	if code == "" {
+		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrEmptyCode)
+	}
+
+	if verifier == "" {
+		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrEmptyCodeVerifier)
+	}
+
+	if oauthConfig == nil {
+		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauth2Configuration)
+	}
+
+	if oidcVerifier == nil {
+		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
+	}
+
+	token, err := oauthConfig.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+	if err != nil {
+		return "", fmt.Errorf("oauth2 config exchange: %w", err)
+	}
+	if token == nil {
+		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauth2Token)
+	}
+
+	idToken := token.Extra("id_token")
+	accessToken, err := utils.ConvertToNonZero[string](idToken)
+	if err != nil {
+		return "", motmedelErrors.New(fmt.Errorf("convert to non zero (id token): %w", err), idToken)
+	}
+
+	userEmailAddress, err := googleHelpers.HandleGoogleToken(ctx, accessToken, oidcVerifier)
+	if err != nil {
+		return "", motmedelErrors.New(fmt.Errorf("handle google token: %w", err), accessToken)
+	}
+
+	return userEmailAddress, nil
 }
 
 func MakeEndpoints(
@@ -52,6 +106,7 @@ func MakeEndpoints(
 	redirectUrlRequestParser request_parser.RequestParser[*url.URL],
 	oauthConfig *oauth2.Config,
 	oidcVerifier *oidc.IDTokenVerifier,
+	cseConfig *cse_config.Config,
 	options ...path_config.Option,
 ) (*types.EndpointSpecificationOverview, error) {
 	if utils.IsNil(sessionHandler) {
@@ -70,9 +125,18 @@ func MakeEndpoints(
 		return nil, motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
 	}
 
+	if cseConfig == nil {
+		return nil, motmedelErrors.NewWithTrace(ssoErrors.ErrNilCseConfig)
+	}
+
 	fedCmInputBodyParser, err := jsonSchemaBodyParser.New[*types.FedCmInput]()
 	if err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (fed cm input): %w", err))
+	}
+
+	tokenInputBodyParser, err := jsonSchemaBodyParser.New[*types.TokenInput]()
+	if err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (token input): %w", err))
 	}
 
 	pathConfig := path_config.New(options...)
@@ -80,7 +144,7 @@ func MakeEndpoints(
 	loginEndpointSpecification := &endpoint_specification.EndpointSpecification{
 		Path:                   pathConfig.LoginPath,
 		Method:                 http.MethodGet,
-		UrlParserConfiguration: &parsing.UrlParserConfiguration{Parser: adapter.New(redirectUrlRequestParser)},
+		UrlParserConfiguration: &parsing.UrlParserConfiguration{Parser: requestParserAdapter.New(redirectUrlRequestParser)},
 		Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 			ctx := request.Context()
 
@@ -123,7 +187,7 @@ func MakeEndpoints(
 		Path:   pathConfig.CallbackPath,
 		Method: http.MethodGet,
 		UrlParserConfiguration: &parsing.UrlParserConfiguration{
-			Parser: adapter.New(&query.Parser[*types2.CallbackUrlInput]{}),
+			Parser: requestParserAdapter.New(&query.Parser[*types2.CallbackUrlInput]{}),
 		},
 		Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 			ctx := request.Context()
@@ -147,35 +211,9 @@ func MakeEndpoints(
 			}
 
 			code := urlInput.Code
-			token, err := oauthConfig.Exchange(ctx, code, oauth2.VerifierOption(codeVerifier))
+			userEmailAddress, err := handleExchange(ctx, code, codeVerifier, oauthConfig, oidcVerifier)
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(
-						fmt.Errorf("oauth2 config exchange: %w", err),
-						oauthConfig, code, codeVerifier,
-					),
-				}
-			}
-			if token == nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauth2Token),
-				}
-			}
-
-			idToken := token.Extra("id_token")
-			accessToken, err := utils.ConvertToNonZero[string](idToken)
-			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.New(
-						fmt.Errorf("convert to non zero (id token): %w", err),
-						idToken,
-					),
-				}
-			}
-
-			userEmailAddress, err := googleHelpers.HandleGoogleToken(ctx, accessToken, oidcVerifier)
-			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("handle google token: %w", err), accessToken)
+				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
 				if errors.Is(err, motmedelErrors.ErrValidationError) {
 					return nil, &muxResponseError.ResponseError{
 						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
@@ -186,6 +224,11 @@ func MakeEndpoints(
 					}
 				} else {
 					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
+				}
+			}
+			if userEmailAddress == "" {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptyUserEmailAddress),
 				}
 			}
 
@@ -199,7 +242,7 @@ func MakeEndpoints(
 				}
 			}
 
-			headerEntries, err := sessionHandler.HandleSuccessfulAuthentication(ctx, userId)
+			headerEntries, err := sessionHandler.HandleSuccessfulWebAuthentication(ctx, userId)
 			if err != nil {
 				return nil, &muxResponseError.ResponseError{
 					ServerError: motmedelErrors.New(
@@ -262,7 +305,7 @@ func MakeEndpoints(
 				}
 			}
 
-			headerEntries, err := sessionHandler.HandleSuccessfulAuthentication(ctx, userId)
+			headerEntries, err := sessionHandler.HandleSuccessfulWebAuthentication(ctx, userId)
 			if err != nil {
 				return nil, &muxResponseError.ResponseError{
 					ServerError: motmedelErrors.New(
@@ -276,10 +319,130 @@ func MakeEndpoints(
 		},
 	}
 
+	tokenEndpointSpecification := &endpoint_specification.EndpointSpecification{
+		Path:   pathConfig.TokenPath,
+		Method: http.MethodPost,
+		HeaderParserConfiguration: &parsing.HeaderParserConfiguration{
+			Parser: requestParserAdapter.New(
+				&client_side_encryption.HeaderRequestParser{
+					Header:            cseConfig.ClientPublicJwkHeader,
+					KeyAlgorithm:      cseConfig.KeyAlgorithm,
+					ContentEncryption: cseConfig.ContentEncryption,
+					EncrypterOptions:  cseConfig.EncrypterOptions.WithContentType("text/plain"),
+				},
+			),
+		},
+		BodyParserConfiguration: &parsing.BodyParserConfiguration{
+			ContentType: "application/jose",
+			MaxBytes:    4096,
+			Parser: bodyParserAdapter.New(
+				&muxUtils.BodyParserWithProcessor[[]byte, *types.TokenInput]{
+					BodyParser: &client_side_encryption.BodyParser{
+						PrivateKey:        cseConfig.PrivateKey,
+						KeyAlgorithm:      cseConfig.KeyAlgorithm,
+						ContentEncryption: cseConfig.ContentEncryption,
+					},
+					Processor: processor.ProcessorFunction[*types.TokenInput, []byte](
+						func(decryptedPayload []byte) (*types.TokenInput, *muxResponseError.ResponseError) {
+							tokenInput, responseError := tokenInputBodyParser.Parse(nil, decryptedPayload)
+							if responseError != nil {
+								return nil, responseError
+							}
+							return tokenInput, nil
+						},
+					),
+				},
+			),
+		},
+		Handler: func(request *http.Request, body []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
+			ctx := request.Context()
+
+			responseEncrypter, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[jose.Encrypter](ctx)
+			if responseError != nil {
+				return nil, responseError
+			}
+
+			tokenInput, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*types.TokenInput](ctx)
+			if responseError != nil {
+				return nil, responseError
+			}
+
+			code := tokenInput.Code
+			codeVerifier := tokenInput.Verifier
+			userEmailAddress, err := handleExchange(ctx, code, codeVerifier, oauthConfig, oidcVerifier)
+			if err != nil {
+				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
+				if errors.Is(err, motmedelErrors.ErrValidationError) {
+					return nil, &muxResponseError.ResponseError{
+						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
+							fmt.Sprintf("The access token could not be verified: %v", err),
+							nil,
+						),
+						ClientError: wrappedErr,
+					}
+				} else {
+					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
+				}
+			}
+			if userEmailAddress == "" {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptyUserEmailAddress),
+				}
+			}
+
+			userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.New(
+						fmt.Errorf("user handler insert email address user: %w", err),
+						userHandler, userEmailAddress,
+					),
+				}
+			}
+
+			sessionToken, err := sessionHandler.MakeSessionToken(ctx, userId)
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.New(
+						fmt.Errorf("session handler make session token: %w", err),
+						sessionHandler, userId,
+					),
+				}
+			}
+			if sessionToken == "" {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptySessionToken),
+				}
+			}
+
+			jwe, err := responseEncrypter.Encrypt([]byte(sessionToken))
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jose encrypt: %w", err)),
+				}
+			}
+
+			compact, err := jwe.CompactSerialize()
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("json web encryption compact serialize: %w", err)),
+				}
+			}
+
+			return &muxResponse.Response{
+				StatusCode:    http.StatusOK,
+				Headers:       []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/jose"}},
+				Body:          []byte(compact),
+				SensitiveBody: true,
+			}, nil
+		},
+	}
+
 	return &types.EndpointSpecificationOverview{
 		LoginEndpoint:    loginEndpointSpecification,
 		CallbackEndpoint: callbackEndpointSpecification,
 		FedCmEndpoint:    fedCmEndpointSpecification,
+		TokenEndpoint:    tokenEndpointSpecification,
 	}, nil
 }
 
@@ -290,6 +453,8 @@ func PatchMux(
 	redirectUrlRequestParser request_parser.RequestParser[*url.URL],
 	oauthConfig *oauth2.Config,
 	oidcVerifier *oidc.IDTokenVerifier,
+	cseConfig *cse_config.Config,
+	options ...path_config.Option,
 ) error {
 	if utils.IsNil(sessionHandler) {
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
@@ -311,7 +476,15 @@ func PatchMux(
 		return nil
 	}
 
-	overview, err := MakeEndpoints(sessionHandler, userHandler, redirectUrlRequestParser, oauthConfig, oidcVerifier)
+	overview, err := MakeEndpoints(
+		sessionHandler,
+		userHandler,
+		redirectUrlRequestParser,
+		oauthConfig,
+		oidcVerifier,
+		cseConfig,
+		options...,
+	)
 	if err != nil {
 		return fmt.Errorf("make endpoints: %w", err)
 	}
@@ -319,7 +492,7 @@ func PatchMux(
 		return motmedelErrors.NewWithTrace(ErrNilEndpointSpecificationOverview)
 	}
 
-	mux.Add(overview.LoginEndpoint, overview.CallbackEndpoint, overview.FedCmEndpoint)
+	mux.Add(overview.LoginEndpoint, overview.CallbackEndpoint, overview.FedCmEndpoint, overview.TokenEndpoint)
 
 	return nil
 }

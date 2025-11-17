@@ -7,6 +7,12 @@ type FedCmInput struct {
 	_     struct{} `additionalProperties:"false"`
 }
 
+type TokenInput struct {
+	Code     string   `json:"code" required:"true" minLength:"1"`
+	Verifier string   `json:"verifier" required:"true" minLength:"1"`
+	_        struct{} `additionalProperties:"false"`
+}
+
 type GoogleClaims struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
@@ -15,7 +21,8 @@ type GoogleClaims struct {
 }
 
 type EndpointSpecificationOverview struct {
-	LoginEndpoint *endpoint_specification.EndpointSpecification
+	LoginEndpoint    *endpoint_specification.EndpointSpecification
 	CallbackEndpoint *endpoint_specification.EndpointSpecification
-	FedCmEndpoint *endpoint_specification.EndpointSpecification
+	FedCmEndpoint    *endpoint_specification.EndpointSpecification
+	TokenEndpoint    *endpoint_specification.EndpointSpecification
 }
