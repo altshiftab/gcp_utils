@@ -6,12 +6,14 @@ const (
 	DefaultLoginPath = "/api/login/google"
 	DefaultCallbackPath = "/api/callback/google"
 	DefaultFedcmLoginPath = "/api/login/fedcm/google"
+	DefaultTokenPath = "/api/token/google"
 )
 
 type Config struct {
 	LoginPath string
 	CallbackPath string
 	FedcmLoginPath string
+	TokenPath string
 }
 
 func New(options ...Option) *Config {
@@ -19,6 +21,7 @@ func New(options ...Option) *Config {
 		LoginPath: DefaultLoginPath,
 		CallbackPath: DefaultCallbackPath,
 		FedcmLoginPath: DefaultFedcmLoginPath,
+		TokenPath: DefaultTokenPath,
 	}
 
 	for _, option := range options {
@@ -45,5 +48,11 @@ func WithCallbackPath(callbackPath string) Option {
 func WithFedcmLoginPath(fedcmLoginPath string) Option {
 	return func(config *Config) {
 		config.FedcmLoginPath = fedcmLoginPath
+	}
+}
+
+func WithTokenPath(tokenPath string) Option {
+	return func(config *Config) {
+		config.TokenPath = tokenPath
 	}
 }
