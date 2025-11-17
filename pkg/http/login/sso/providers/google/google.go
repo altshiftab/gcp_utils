@@ -22,6 +22,7 @@ import (
 	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/utils/json/schema"
 	"github.com/Motmedel/utils_go/pkg/http/mux/utils/query"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
+	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso"
@@ -201,7 +202,7 @@ func MakeEndpoints(
 			codeVerifier, redirectUrlString, err := sessionHandler.DeleteCodeVerifier(ctx, state)
 			if err != nil {
 				wrappedErr := motmedelErrors.New(fmt.Errorf("session handler delete code verifier: %w", err), state)
-				if motmedelErrors.IsAny(err, altshiftGcpUtilsHttpLoginErrors.ErrNoChallenge, altshiftGcpUtilsHttpLoginErrors.ErrExpiredChallenge) {
+				if motmedelErrors.IsAny(err, altshiftGcpUtilsHttpLoginErrors.ErrEmptyChallenge, motmedelTimeErrors.ErrExpired) {
 					return nil, &muxResponseError.ResponseError{
 						ProblemDetail: problem_detail.MakeBadRequestProblemDetail("Invalid state.", nil),
 						ClientError:   wrappedErr,
