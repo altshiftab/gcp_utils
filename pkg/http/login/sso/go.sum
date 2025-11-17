@@ -2,10 +2,10 @@ github.com/Motmedel/jsonschema v0.0.1 h1:3x+ZtY9JMTNwAQP6aisfDdI3hGniCgOlFPREnR+
 github.com/Motmedel/jsonschema v0.0.1/go.mod h1:Q9Sd9xgmMGWvxumCGhc/OioTzUfOMTEK249O/Zfrkpw=
 github.com/Motmedel/parsing_utils v0.0.5 h1:yBz2mEW6M0K7cD1mdpaXRm1EBT/LRNmzcb9mbHfYpBQ=
 github.com/Motmedel/parsing_utils v0.0.5/go.mod h1:H7i7482IUbHd3duFgTUEG0FtcgsSXCSw11yXnetGUvk=
-github.com/Motmedel/utils_go v0.0.292 h1:w5tS6BdIEV2wpwq9Ew1fbYXBEBLHINAFNtrkYeR4HUQ=
-github.com/Motmedel/utils_go v0.0.292/go.mod h1:kKm8jM7GA8M7ICIImi5etOMixRgQfnStBPjEoCMTgbg=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.119 h1:LwBRSO9UKJXyiJBW7J/DaZoTELmMyJ8+/6r0xbPvO4Y=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.119/go.mod h1:720ycaP/aYQLLSwAW1e9P6ZoYgKwbHCwmraP9MiwJm0=
+github.com/Motmedel/utils_go v0.0.293 h1:CVXzi0hV+G5/zJd4wBOd6OACPZDl5XSCk1dUkGiIl1c=
+github.com/Motmedel/utils_go v0.0.293/go.mod h1:kKm8jM7GA8M7ICIImi5etOMixRgQfnStBPjEoCMTgbg=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.120 h1:c0d2QbefKi1M51ACAUXNGOnnEK08L2m8jaNUGnP9lbE=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.120/go.mod h1:720ycaP/aYQLLSwAW1e9P6ZoYgKwbHCwmraP9MiwJm0=
 github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.4 h1:eqtrfdCAbk2L+LeXW3I6nCqOwe731zdAofhtkfr3vUc=
 github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.4/go.mod h1:FkSTWkwV/8UwNEaVWmptGfQCUi8aIJh1f+31zVb124o=
 github.com/Motmedel/utils_go/pkg/http/mux/utils/json/schema v0.0.15 h1:fxPhAPUZmVasdfq7kEhWBOIUBdbAZphy9Hlw/7xaqCA=
@@ -18,8 +18,8 @@ github.com/Motmedel/utils_go/pkg/json/schema v0.0.5 h1:LKQBrM6I9ytBeQ8jKe7nYEos1
 github.com/Motmedel/utils_go/pkg/json/schema v0.0.5/go.mod h1:x3CdrGeftIXIGjGGOMz9GTGBLXSvDVp5r5ySnwk4TtY=
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5 h1:57lx54tX6LbHjMNv0qGnwQB/eo7axhbDnd6rVWyWjxc=
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5/go.mod h1:sRPKDiIl1+iQ0eT9amSQKzBdFWDFXtxi32mEvBPm4BU=
-github.com/altshiftab/gcp_utils/pkg/http/login v0.0.1 h1:HwU5GwZS0ZI26/aJHz4GOXWpq/DeE5aPYwxTNB0CUvc=
-github.com/altshiftab/gcp_utils/pkg/http/login v0.0.1/go.mod h1:+Pe+o/YjT9a0xYdu7OzyDIWU35f3KWzYrhk1F+zk6/o=
+github.com/altshiftab/gcp_utils/pkg/http/login v0.0.3 h1:6KgIug2ZeQ46cZpeU24vC2vxpqxd43pTFC+3T35ojPg=
+github.com/altshiftab/gcp_utils/pkg/http/login v0.0.3/go.mod h1:DhEA0F4lRYhTBuwvv1GF5PprtUPh6PS2zEY9zBerfK8=
 github.com/bool64/dev v0.2.43 h1:yQ7qiZVef6WtCl2vDYU0Y+qSq+0aBrQzY8KXkklk9cQ=
 github.com/bool64/dev v0.2.43/go.mod h1:iJbh1y/HkunEPhgebWRNcs8wfGq7sjvJ6W5iabL8ACg=
 github.com/bool64/shared v0.1.5 h1:fp3eUhBsrSjNCQPcSdQqZxxh9bBwrYiZ+zOKFkM0/2E=
