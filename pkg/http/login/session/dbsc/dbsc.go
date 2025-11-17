@@ -28,6 +28,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/jwk_validator"
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/setting"
+	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	dbscErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/errors"
@@ -159,7 +160,7 @@ func PatchMux(
 									var err error
 									userId, err = sessionHandler.DeleteDbscChallenge(ctx, jtiChallenge, authenticationId)
 									if err != nil {
-										if motmedelErrors.IsAny(err, altshiftGcpUtilsHttpLoginErrors.ErrNoChallenge, altshiftGcpUtilsHttpLoginErrors.ErrExpiredChallenge) {
+										if motmedelErrors.IsAny(err, altshiftGcpUtilsHttpLoginErrors.ErrEmptyChallenge, motmedelTimeErrors.ErrExpired) {
 											return false, nil
 										}
 
