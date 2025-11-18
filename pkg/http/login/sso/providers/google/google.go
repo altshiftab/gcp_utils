@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux"
 	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/processor"
@@ -30,7 +32,7 @@ import (
 	googleHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/helpers"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types/path_config"
-	types2 "github.com/altshiftab/gcp_utils/pkg/http/login/sso/types"
+	ssoTypes "github.com/altshiftab/gcp_utils/pkg/http/login/sso/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/cse_config"
 	"github.com/coreos/go-oidc"
 	"github.com/go-jose/go-jose/v4"
@@ -46,8 +48,8 @@ type UserHandler interface {
 }
 
 type SessionHandler interface {
-	AddCodeVerifier(ctx context.Context, codeVerifier string, redirectUrl string) (codeVerifierId string, err error)
-	DeleteCodeVerifier(ctx context.Context, codeVerifierId string) (codeVerifier string, redirectUrl string, err error)
+	AddOauthFlow(ctx context.Context, oauthFlow *ssoTypes.OauthFlow) (oauthFlowId string, err error)
+	DeleteOauthFlow(ctx context.Context, oauthFlowId string) (*ssoTypes.OauthFlow, error)
 	HandleSuccessfulWebAuthentication(ctx context.Context, userId string) ([]*muxResponse.HeaderEntry, error)
 	MakeSessionToken(ctx context.Context, userId string) (string, error)
 }
@@ -104,6 +106,7 @@ func handleExchange(
 func MakeEndpoints(
 	sessionHandler SessionHandler,
 	userHandler UserHandler,
+	callbackCookieName string,
 	redirectUrlRequestParser request_parser.RequestParser[*url.URL],
 	oauthConfig *oauth2.Config,
 	oidcVerifier *oidc.IDTokenVerifier,
@@ -116,6 +119,10 @@ func MakeEndpoints(
 
 	if utils.IsNil(userHandler) {
 		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilUserHandler)
+	}
+
+	if callbackCookieName == "" {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("%w (callback)", motmedelHttpErrors.ErrEmptyCookieName))
 	}
 
 	if oauthConfig == nil {
@@ -161,23 +168,45 @@ func MakeEndpoints(
 				}
 			}
 
-			redirectUrlString := redirectUrl.String()
-			codeVerifierId, err := sessionHandler.AddCodeVerifier(ctx, codeVerifier, redirectUrlString)
+			state, err := sso.MakeState()
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("make state: %w", err)),
+				}
+			}
+
+			oauthFlow := &ssoTypes.OauthFlow{State: state, CodeVerifier: codeVerifier, RedirectUrl: redirectUrl.String()}
+
+			oauthFlowId, err := sessionHandler.AddOauthFlow(ctx, oauthFlow)
 			if err != nil {
 				return nil, &muxResponseError.ResponseError{
 					ServerError: motmedelErrors.New(
 						fmt.Errorf("session handler add code verifier: %w", err),
-						sessionHandler, codeVerifier, redirectUrlString,
+						sessionHandler, oauthFlow,
 					),
 				}
+			}
+
+			callbackCookie := http.Cookie{
+				Name:     callbackCookieName,
+				Value:    oauthFlowId,
+				Path:     pathConfig.CallbackPath,
+				Expires:  time.Now().Add(3 * time.Minute),
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
 			}
 
 			return &muxResponse.Response{
 				StatusCode: http.StatusFound,
 				Headers: []*muxResponse.HeaderEntry{
 					{
+						Name:  "Set-Cookie",
+						Value: callbackCookie.String(),
+					},
+					{
 						Name:  "Location",
-						Value: oauthConfig.AuthCodeURL(codeVerifierId, oauth2.S256ChallengeOption(codeVerifier)),
+						Value: oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(codeVerifier)),
 					},
 				},
 			}, nil
@@ -188,20 +217,37 @@ func MakeEndpoints(
 		Path:   pathConfig.CallbackPath,
 		Method: http.MethodGet,
 		UrlParserConfiguration: &parsing.UrlParserConfiguration{
-			Parser: requestParserAdapter.New(&query.Parser[*types2.CallbackUrlInput]{}),
+			Parser: requestParserAdapter.New(&query.Parser[*ssoTypes.CallbackUrlInput]{}),
 		},
 		Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 			ctx := request.Context()
 
-			urlInput, responseError := muxUtils.GetServerNonZeroParsedRequestUrl[*types2.CallbackUrlInput](ctx)
+			urlInput, responseError := muxUtils.GetServerNonZeroParsedRequestUrl[*ssoTypes.CallbackUrlInput](ctx)
 			if responseError != nil {
 				return nil, responseError
 			}
 
-			state := urlInput.State
-			codeVerifier, redirectUrlString, err := sessionHandler.DeleteCodeVerifier(ctx, state)
+			callbackCookie, err := request.Cookie(callbackCookieName)
 			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("session handler delete code verifier: %w", err), state)
+				if errors.Is(err, http.ErrNoCookie) {
+					return nil, &muxResponseError.ResponseError{
+						ProblemDetail: problem_detail.MakeBadRequestProblemDetail("No callback cookie.", nil),
+					}
+				}
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("request cookie: %w", err), callbackCookieName),
+				}
+			}
+			if callbackCookie == nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("%w (callback)", motmedelHttpErrors.ErrNilCookie)),
+				}
+			}
+
+			callbackCookieValue := callbackCookie.Value
+			oauthFlow, err := sessionHandler.DeleteOauthFlow(ctx, callbackCookieValue)
+			if err != nil {
+				wrappedErr := motmedelErrors.New(fmt.Errorf("session handler delete code verifier: %w", err), callbackCookieValue)
 				if motmedelErrors.IsAny(err, altshiftGcpUtilsHttpLoginErrors.ErrEmptyChallenge, motmedelTimeErrors.ErrExpired) {
 					return nil, &muxResponseError.ResponseError{
 						ProblemDetail: problem_detail.MakeBadRequestProblemDetail("Invalid state.", nil),
@@ -210,8 +256,20 @@ func MakeEndpoints(
 				}
 				return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
 			}
+			if oauthFlow == nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauthFlow),
+				}
+			}
+
+			if oauthFlow.State != urlInput.State {
+				return nil, &muxResponseError.ResponseError{
+					ProblemDetail: problem_detail.MakeBadRequestProblemDetail("Invalid state.", nil),
+				}
+			}
 
 			code := urlInput.Code
+			codeVerifier := oauthFlow.CodeVerifier
 			userEmailAddress, err := handleExchange(ctx, code, codeVerifier, oauthConfig, oidcVerifier)
 			if err != nil {
 				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
@@ -253,9 +311,20 @@ func MakeEndpoints(
 				}
 			}
 
+			clearedCallbackCookie := http.Cookie{
+				Name:     callbackCookieName,
+				Path:     pathConfig.CallbackPath,
+				Expires:  time.Unix(0, 0),
+				MaxAge:   -1,
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			}
+
 			headerEntries = append(
 				headerEntries,
-				&muxResponse.HeaderEntry{Name: "Location", Value: redirectUrlString},
+				&muxResponse.HeaderEntry{Name: "Location", Value: oauthFlow.RedirectUrl},
+				&muxResponse.HeaderEntry{Name: "Set-Cookie", Value: clearedCallbackCookie.String()},
 			)
 
 			return &muxResponse.Response{StatusCode: http.StatusSeeOther, Headers: headerEntries}, nil
@@ -266,9 +335,26 @@ func MakeEndpoints(
 		Path:   pathConfig.FedcmLoginPath,
 		Method: http.MethodPost,
 		BodyParserConfiguration: &parsing.BodyParserConfiguration{
-			ContentType: "application/json",
-			MaxBytes:    8192,
-			Parser:      bodyParserAdapter.New(fedCmInputBodyParser),
+			ContentType: "application/jose",
+			MaxBytes:    4096,
+			Parser: bodyParserAdapter.New(
+				&muxUtils.BodyParserWithProcessor[[]byte, *types.FedCmInput]{
+					BodyParser: &client_side_encryption.BodyParser{
+						PrivateKey:        cseConfig.PrivateKey,
+						KeyAlgorithm:      cseConfig.KeyAlgorithm,
+						ContentEncryption: cseConfig.ContentEncryption,
+					},
+					Processor: processor.ProcessorFunction[*types.FedCmInput, []byte](
+						func(decryptedPayload []byte) (*types.FedCmInput, *muxResponseError.ResponseError) {
+							tokenInput, responseError := fedCmInputBodyParser.Parse(nil, decryptedPayload)
+							if responseError != nil {
+								return nil, responseError
+							}
+							return tokenInput, nil
+						},
+					),
+				},
+			),
 		},
 		Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 			ctx := request.Context()
@@ -451,6 +537,7 @@ func PatchMux(
 	mux *mux.Mux,
 	sessionHandler SessionHandler,
 	userHandler UserHandler,
+	callbackCookieName string,
 	redirectUrlRequestParser request_parser.RequestParser[*url.URL],
 	oauthConfig *oauth2.Config,
 	oidcVerifier *oidc.IDTokenVerifier,
@@ -463,6 +550,10 @@ func PatchMux(
 
 	if utils.IsNil(userHandler) {
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilUserHandler)
+	}
+
+	if callbackCookieName == "" {
+		return motmedelErrors.NewWithTrace(fmt.Errorf("%w (callback)", motmedelHttpErrors.ErrEmptyCookieName))
 	}
 
 	if oauthConfig == nil {
@@ -480,6 +571,7 @@ func PatchMux(
 	overview, err := MakeEndpoints(
 		sessionHandler,
 		userHandler,
+		callbackCookieName,
 		redirectUrlRequestParser,
 		oauthConfig,
 		oidcVerifier,

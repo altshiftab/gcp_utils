@@ -21,3 +21,11 @@ func MakeCodeVerifier() (string, error) {
 
 	return base64.RawURLEncoding.EncodeToString(challenge), nil
 }
+
+func MakeState() (string, error) {
+	state := make([]byte, 32)
+	if _, err := rand.Read(state); err != nil {
+		return "", motmedelErrors.NewWithTrace(fmt.Errorf("rand read: %w", err))
+	}
+	return base64.RawURLEncoding.EncodeToString(state), nil
+}

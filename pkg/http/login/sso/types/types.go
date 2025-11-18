@@ -8,3 +8,9 @@ type CallbackUrlInput struct {
 	HostedDomain string `json:"hd"`
 	Prompt       string `json:"prompt"`
 }
+
+type OauthFlow struct {
+	State        string
+	CodeVerifier string
+	RedirectUrl  string
+}

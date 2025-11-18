@@ -12,5 +12,6 @@ var (
 	ErrEmptyCode = errors.New("empty code")
 	ErrEmptyUserEmailAddress = errors.New("empty user email address")
 	ErrEmptySessionToken = errors.New("empty session token")
+	ErrNilOauthFlow = errors.New("nil oauth flow")
 )
 
