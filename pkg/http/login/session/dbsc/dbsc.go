@@ -472,7 +472,6 @@ func PatchMux(
 
 				return &muxResponse.Response{Headers: []*muxResponse.HeaderEntry{headerEntry}}, nil
 			},
-			StaticContent: nil,
 		},
 	)
 
