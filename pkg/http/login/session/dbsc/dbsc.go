@@ -69,59 +69,54 @@ type SessionHandler interface {
 	GetSessionRequestParser() request_parser.RequestParser[SessionInput]
 }
 
-func PatchMux(
-	mux *mux.Mux,
+func MakeEndpoints(
 	sessionHandler SessionHandler,
 	cookieName string,
 	registeredDomain string,
 	dbscConfiguration *dbscTypes.Configuration,
-) error {
-	if sessionHandler == nil {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
+) (*dbscTypes.EndpointSpecificationOverview, error) {
+	if utils.IsNil(sessionHandler) {
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
 
 	sessionRequestParser := sessionHandler.GetSessionRequestParser()
 	if utils.IsNil(sessionRequestParser) {
-		return motmedelErrors.NewWithTrace(muxErrors.ErrNilRequestParser)
+		return nil, motmedelErrors.NewWithTrace(muxErrors.ErrNilRequestParser)
 	}
 
 	if cookieName == "" {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieName)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieName)
 	}
 
 	if registeredDomain == "" {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain)
 	}
 
 	if dbscConfiguration == nil {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilDbscConfiguration)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilDbscConfiguration)
 	}
 
 	originUrl := dbscConfiguration.OriginUrl
 	if originUrl == nil {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilOriginUrl)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilOriginUrl)
 	}
 
 	allowedAlgs := dbscConfiguration.AllowedAlgs
 	if len(allowedAlgs) == 0 {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyAllowedAlgs)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyAllowedAlgs)
 	}
 
 	registerPath := dbscConfiguration.RegisterPath
 	if registerPath == "" {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisterPath)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisterPath)
 	}
 	registerAudience := makeAudienceValue(*originUrl, registerPath)
 
 	refreshPath := dbscConfiguration.RefreshPath
 	if refreshPath == "" {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRefreshPath)
+		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRefreshPath)
 	}
 	refreshAudience := makeAudienceValue(*originUrl, refreshPath)
-
-	if mux == nil {
-		return nil
-	}
 
 	handleSessionResponse := func(
 		ctx context.Context,
@@ -321,159 +316,203 @@ func PatchMux(
 		},
 	)
 
-	mux.Add(
-		&endpoint_specification.EndpointSpecification{
-			Path:                      registerPath,
-			Method:                    http.MethodPost,
-			HeaderParserConfiguration: &parsing.HeaderParserConfiguration{Parser: registerRequestParser},
-			BodyParserConfiguration:   &parsing.BodyParserConfiguration{EmptyOption: parsing.BodyForbidden},
-			Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
-				ctx := request.Context()
+	registerEndpoint := &endpoint_specification.EndpointSpecification{
+		Path:                      registerPath,
+		Method:                    http.MethodPost,
+		HeaderParserConfiguration: &parsing.HeaderParserConfiguration{Parser: registerRequestParser},
+		BodyParserConfiguration:   &parsing.BodyParserConfiguration{EmptyOption: parsing.BodyForbidden},
+		Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
+			ctx := request.Context()
 
-				parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*ParsedInput](ctx)
-				if responseError != nil {
-					return nil, responseError
+			parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*ParsedInput](ctx)
+			if responseError != nil {
+				return nil, responseError
+			}
+
+			authenticationId := parsedInput.AuthenticationId
+			publicKey := parsedInput.PublicKey
+			if err := sessionHandler.SetAuthenticationPublicKey(ctx, authenticationId, publicKey); err != nil {
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.New(
+					fmt.Errorf("session handler set authentication public key: %w", err),
+					sessionHandler, authenticationId, publicKey,
+				)}
+			}
+
+			response := session_registration_response.SessionRegistrationResponse{
+				SessionIdentifier: parsedInput.DbscSessionId,
+				RefreshURL:        refreshPath,
+				Scope: session_registration_response.Scope{
+					Origin:      fmt.Sprintf("https://%s", registeredDomain),
+					IncludeSite: true,
+				},
+				Credentials: []session_registration_response.Credential{
+					{
+						Type:       "cookie",
+						Name:       cookieName,
+						Attributes: helpers.GetSessionCookieAttributes(registeredDomain),
+					},
+				},
+			}
+
+			responseData, err := json.Marshal(response)
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.New(
+						fmt.Errorf("json marshal (response data): %w", err),
+						response,
+					),
+				}
+			}
+
+			return &muxResponse.Response{
+				Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
+				Body:    responseData,
+			}, nil
+		},
+	}
+
+	refreshEndpoint := &endpoint_specification.EndpointSpecification{
+		Path:                      refreshPath,
+		Method:                    http.MethodPost,
+		HeaderParserConfiguration: &parsing.HeaderParserConfiguration{Parser: refreshRequestParser},
+		Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
+			ctx := request.Context()
+
+			parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*ParsedInput](ctx)
+			if responseError != nil {
+				return nil, responseError
+			}
+
+			publicKey := parsedInput.PublicKey
+			if publicKey == nil {
+				challenge, err := dbscHelpers.GenerateChallenge()
+				if err != nil {
+					return nil, &muxResponseError.ResponseError{
+						ServerError: fmt.Errorf("generate challenge: %w", err),
+					}
 				}
 
 				authenticationId := parsedInput.AuthenticationId
-				publicKey := parsedInput.PublicKey
-				if err := sessionHandler.SetAuthenticationPublicKey(ctx, authenticationId, publicKey); err != nil {
-					return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.New(
-						fmt.Errorf("session handler set authentication public key: %w", err),
-						sessionHandler, authenticationId, publicKey,
-					)}
-				}
-
-				response := session_registration_response.SessionRegistrationResponse{
-					SessionIdentifier: parsedInput.DbscSessionId,
-					RefreshURL:        refreshPath,
-					Scope: session_registration_response.Scope{
-						Origin:      fmt.Sprintf("https://%s", registeredDomain),
-						IncludeSite: true,
-					},
-					Credentials: []session_registration_response.Credential{
-						{
-							Type:       "cookie",
-							Name:       cookieName,
-							Attributes: helpers.GetSessionCookieAttributes(registeredDomain),
-						},
-					},
-				}
-
-				responseData, err := json.Marshal(response)
-				if err != nil {
+				if err := sessionHandler.InsertDbscChallenge(ctx, challenge, authenticationId); err != nil {
 					return nil, &muxResponseError.ResponseError{
 						ServerError: motmedelErrors.New(
-							fmt.Errorf("json marshal (response data): %w", err),
-							response,
+							fmt.Errorf("session handler insert dbsc challenge: %w", err),
+							sessionHandler, challenge, authenticationId,
 						),
 					}
 				}
 
 				return &muxResponse.Response{
-					Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
-					Body:    responseData,
-				}, nil
-			},
-		},
-		&endpoint_specification.EndpointSpecification{
-			Path:                      refreshPath,
-			Method:                    http.MethodPost,
-			HeaderParserConfiguration: &parsing.HeaderParserConfiguration{Parser: refreshRequestParser},
-			Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
-				ctx := request.Context()
-
-				parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*ParsedInput](ctx)
-				if responseError != nil {
-					return nil, responseError
-				}
-
-				publicKey := parsedInput.PublicKey
-				if publicKey == nil {
-					challenge, err := dbscHelpers.GenerateChallenge()
-					if err != nil {
-						return nil, &muxResponseError.ResponseError{
-							ServerError: fmt.Errorf("generate challenge: %w", err),
-						}
-					}
-
-					authenticationId := parsedInput.AuthenticationId
-					if err := sessionHandler.InsertDbscChallenge(ctx, challenge, authenticationId); err != nil {
-						return nil, &muxResponseError.ResponseError{
-							ServerError: motmedelErrors.New(
-								fmt.Errorf("session handler insert dbsc challenge: %w", err),
-								sessionHandler, challenge, authenticationId,
+					StatusCode: http.StatusUnauthorized,
+					Headers: []*muxResponse.HeaderEntry{
+						{
+							Name: "Sec-Session-Challenge",
+							Value: fmt.Sprintf(
+								"\"%s\";id=\"%s\"",
+								challenge,
+								parsedInput.DbscSessionId,
 							),
-						}
-					}
-
-					return &muxResponse.Response{
-						StatusCode: http.StatusUnauthorized,
-						Headers: []*muxResponse.HeaderEntry{
-							{
-								Name: "Sec-Session-Challenge",
-								Value: fmt.Sprintf(
-									"\"%s\";id=\"%s\"",
-									challenge,
-									parsedInput.DbscSessionId,
-								),
-							},
 						},
-					}, nil
-				}
+					},
+				}, nil
+			}
 
-				authenticationId := parsedInput.AuthenticationId
-				authenticationPublicKey, err := sessionHandler.GetAuthenticationPublicKey(ctx, authenticationId)
-				if err != nil {
-					return nil, &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.New(
-							fmt.Errorf("session handler get authentication public key: %w", err),
-							sessionHandler, authenticationId,
-						),
-					}
+			authenticationId := parsedInput.AuthenticationId
+			authenticationPublicKey, err := sessionHandler.GetAuthenticationPublicKey(ctx, authenticationId)
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.New(
+						fmt.Errorf("session handler get authentication public key: %w", err),
+						sessionHandler, authenticationId,
+					),
 				}
-				if len(authenticationPublicKey) == 0 {
-					return nil, &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-							"No public key for authentication.",
-							nil,
-						),
-					}
+			}
+			if len(authenticationPublicKey) == 0 {
+				return nil, &muxResponseError.ResponseError{
+					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
+						"No public key for authentication.",
+						nil,
+					),
 				}
+			}
 
-				if !bytes.Equal(authenticationPublicKey, publicKey) {
-					return nil, &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-							"Public key mismatch.",
-							nil,
-						),
-						ClientError: motmedelErrors.New(
-							dbscErrors.ErrPublicKeyMismatch,
-							authenticationPublicKey, publicKey,
-						),
-					}
+			if !bytes.Equal(authenticationPublicKey, publicKey) {
+				return nil, &muxResponseError.ResponseError{
+					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
+						"Public key mismatch.",
+						nil,
+					),
+					ClientError: motmedelErrors.New(
+						dbscErrors.ErrPublicKeyMismatch,
+						authenticationPublicKey, publicKey,
+					),
 				}
+			}
 
-				userId := parsedInput.UserId
-				headerEntry, err := sessionHandler.MakeSessionSetCookie(ctx, authenticationId, userId, "dbsc")
-				if err != nil {
-					return nil, &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(
-							fmt.Errorf("session handler make session header: %w", err),
-							sessionHandler, authenticationId, userId,
-						),
-					}
+			userId := parsedInput.UserId
+			headerEntry, err := sessionHandler.MakeSessionSetCookie(ctx, authenticationId, userId, "dbsc")
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(
+						fmt.Errorf("session handler make session header: %w", err),
+						sessionHandler, authenticationId, userId,
+					),
 				}
-				if headerEntry == nil {
-					return nil, &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionCookieHeaderEntry),
-					}
+			}
+			if headerEntry == nil {
+				return nil, &muxResponseError.ResponseError{
+					ServerError: motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionCookieHeaderEntry),
 				}
+			}
 
-				return &muxResponse.Response{Headers: []*muxResponse.HeaderEntry{headerEntry}}, nil
-			},
+			return &muxResponse.Response{Headers: []*muxResponse.HeaderEntry{headerEntry}}, nil
 		},
-	)
+	}
+
+	return &dbscTypes.EndpointSpecificationOverview{
+		RefreshEndpoint:  refreshEndpoint,
+		RegisterEndpoint: registerEndpoint,
+	}, nil
+}
+
+func PatchMux(
+	mux *mux.Mux,
+	sessionHandler SessionHandler,
+	cookieName string,
+	registeredDomain string,
+	dbscConfiguration *dbscTypes.Configuration,
+) error {
+	if utils.IsNil(sessionHandler) {
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
+	}
+
+	sessionRequestParser := sessionHandler.GetSessionRequestParser()
+	if utils.IsNil(sessionRequestParser) {
+		return motmedelErrors.NewWithTrace(muxErrors.ErrNilRequestParser)
+	}
+
+	if cookieName == "" {
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieName)
+	}
+
+	if registeredDomain == "" {
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain)
+	}
+
+	if dbscConfiguration == nil {
+		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilDbscConfiguration)
+	}
+
+	if mux == nil {
+		return nil
+	}
+
+	overview, err := MakeEndpoints(sessionHandler, cookieName, registeredDomain, dbscConfiguration)
+	if err != nil {
+		return fmt.Errorf("make endpoints: %w", err)
+	}
+
+	mux.Add( overview.RefreshEndpoint, overview.RegisterEndpoint)
 
 	return nil
 }
