@@ -26,6 +26,7 @@ import (
 
 type SessionInput interface {
 	GetAuthenticationId() string
+	GetId() string
 	GetUsesDbsc() bool
 	GetIsFirstSession() bool
 	GetExpiresAt() time.Time
@@ -40,7 +41,7 @@ type SessionHandler interface {
 	GetSessionRequestParser() request_parser.RequestParser[SessionInput]
 }
 
-func MakeEndpoints(sessionHandler SessionHandler, options... path_config.Option) (*types.EndpointSpecificationOverview, error) {
+func MakeEndpoints(sessionHandler SessionHandler, options ...path_config.Option) (*types.EndpointSpecificationOverview, error) {
 	if utils.IsNil(sessionHandler) {
 		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
@@ -176,7 +177,7 @@ func MakeEndpoints(sessionHandler SessionHandler, options... path_config.Option)
 func PatchMux(
 	mux *mux.Mux,
 	sessionHandler SessionHandler,
-	options... path_config.Option,
+	options ...path_config.Option,
 ) error {
 	if utils.IsNil(sessionHandler) {
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)

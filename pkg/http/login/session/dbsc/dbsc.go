@@ -32,6 +32,7 @@ import (
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	dbscErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/errors"
 	dbscHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/helpers"
 	dbscTypes "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types"
@@ -57,11 +58,6 @@ func makeAudienceValue(origin url.URL, endpoint string) string {
 	return origin.String()
 }
 
-type SessionInput interface {
-	GetAuthenticationId() string
-	GetId() string
-}
-
 type SessionHandler interface {
 	GetAuthenticationPublicKey(ctx context.Context, authenticationId string) ([]byte, error)
 	SetAuthenticationPublicKey(ctx context.Context, authenticationId string, publicKey []byte) error
@@ -71,7 +67,7 @@ type SessionHandler interface {
 	GetCookieName() string
 	GetDbscConfig() *dbsc_config.Config
 	GetRegisteredDomain() string
-	GetSessionRequestParser() request_parser.RequestParser[SessionInput]
+	GetSessionRequestParser() request_parser.RequestParser[session.SessionInput]
 }
 
 func MakeEndpoints(sessionHandler SessionHandler) (*dbscTypes.EndpointSpecificationOverview, error) {
