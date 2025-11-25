@@ -28,12 +28,14 @@ import (
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/jwk_validator"
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/setting"
+	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	dbscErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/errors"
 	dbscHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/helpers"
 	dbscTypes "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/dbsc_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/session_registration_response"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/helpers"
 )
@@ -66,15 +68,13 @@ type SessionHandler interface {
 	InsertDbscChallenge(ctx context.Context, challenge string, authenticationId string) error
 	DeleteDbscChallenge(ctx context.Context, challenge string, authenticationId string) (userId string, err error)
 	MakeSessionSetCookie(ctx context.Context, authenticationId string, userId string, issuer string) (*muxResponse.HeaderEntry, error)
+	GetCookieName() string
+	GetDbscConfig() *dbsc_config.Config
+	GetRegisteredDomain() string
 	GetSessionRequestParser() request_parser.RequestParser[SessionInput]
 }
 
-func MakeEndpoints(
-	sessionHandler SessionHandler,
-	cookieName string,
-	registeredDomain string,
-	dbscConfiguration *dbscTypes.Configuration,
-) (*dbscTypes.EndpointSpecificationOverview, error) {
+func MakeEndpoints(sessionHandler SessionHandler) (*dbscTypes.EndpointSpecificationOverview, error) {
 	if utils.IsNil(sessionHandler) {
 		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
@@ -84,38 +84,30 @@ func MakeEndpoints(
 		return nil, motmedelErrors.NewWithTrace(muxErrors.ErrNilRequestParser)
 	}
 
+	cookieName := sessionHandler.GetCookieName()
 	if cookieName == "" {
 		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieName)
 	}
 
+	registeredDomain := sessionHandler.GetRegisteredDomain()
 	if registeredDomain == "" {
 		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain)
 	}
 
-	if dbscConfiguration == nil {
-		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilDbscConfiguration)
+	config := sessionHandler.GetDbscConfig()
+	if config == nil {
+		return nil, motmedelErrors.NewWithTrace(dbsc_config.ErrNilConfig)
 	}
 
-	originUrl := dbscConfiguration.OriginUrl
+	originUrl := config.OriginUrl
 	if originUrl == nil {
-		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilOriginUrl)
+		return nil, motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilUrl)
 	}
 
-	allowedAlgs := dbscConfiguration.AllowedAlgs
-	if len(allowedAlgs) == 0 {
-		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyAllowedAlgs)
-	}
+	registerPath := config.RegisterPath
+	refreshPath := config.RefreshPath
 
-	registerPath := dbscConfiguration.RegisterPath
-	if registerPath == "" {
-		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisterPath)
-	}
 	registerAudience := makeAudienceValue(*originUrl, registerPath)
-
-	refreshPath := dbscConfiguration.RefreshPath
-	if refreshPath == "" {
-		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRefreshPath)
-	}
 	refreshAudience := makeAudienceValue(*originUrl, refreshPath)
 
 	handleSessionResponse := func(
@@ -137,7 +129,7 @@ func MakeEndpoints(
 							"typ": setting.SettingRequired,
 						},
 						Expected: &header_validator.ExpectedFields{
-							Alg: comparer.NewEqualComparer(allowedAlgs...),
+							Alg: comparer.NewEqualComparer(config.AllowedAlgs...),
 							Typ: comparer.NewEqualComparer("dbsc+jwt"),
 						},
 					},
@@ -480,7 +472,6 @@ func PatchMux(
 	sessionHandler SessionHandler,
 	cookieName string,
 	registeredDomain string,
-	dbscConfiguration *dbscTypes.Configuration,
 ) error {
 	if utils.IsNil(sessionHandler) {
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
@@ -499,20 +490,16 @@ func PatchMux(
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyRegisteredDomain)
 	}
 
-	if dbscConfiguration == nil {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilDbscConfiguration)
-	}
-
 	if mux == nil {
 		return nil
 	}
 
-	overview, err := MakeEndpoints(sessionHandler, cookieName, registeredDomain, dbscConfiguration)
+	overview, err := MakeEndpoints(sessionHandler)
 	if err != nil {
 		return fmt.Errorf("make endpoints: %w", err)
 	}
 
-	mux.Add( overview.RefreshEndpoint, overview.RegisterEndpoint)
+	mux.Add(overview.RefreshEndpoint, overview.RegisterEndpoint)
 
 	return nil
 }
