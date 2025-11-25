@@ -26,8 +26,8 @@ import (
 
 type SessionInput interface {
 	GetAuthenticationId() string
-	UsesDbsc() bool
-	IsFirstSession() bool
+	GetUsesDbsc() bool
+	GetIsFirstSession() bool
 	GetExpiresAt() time.Time
 	GetNotBefore() time.Time
 	GetUserId() string
@@ -66,14 +66,14 @@ func MakeEndpoints(sessionHandler SessionHandler, options... path_config.Option)
 				return nil, responseError
 			}
 
-			if sessionInput.UsesDbsc() {
+			if sessionInput.GetUsesDbsc() {
 				// Session refresh is handled by the DBSC mechanism. Done here.
 				return nil, nil
 			}
 
 			// Don't refresh if this is the first session and DBSC has been added.
 			authenticationId := sessionInput.GetAuthenticationId()
-			if sessionInput.IsFirstSession() {
+			if sessionInput.GetIsFirstSession() {
 				publicKey, err := sessionHandler.GetAuthenticationPublicKey(ctx, authenticationId)
 				if err != nil {
 					wrappedErr := motmedelErrors.New(
