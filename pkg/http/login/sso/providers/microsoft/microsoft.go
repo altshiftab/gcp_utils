@@ -264,18 +264,27 @@ func MakeEndpoints(
 
 			userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
 			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
-				if errors.Is(err, motmedelErrors.ErrValidationError) {
-					return nil, &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-							fmt.Sprintf("The access token could not be verified: %v", err),
+				wrappedErr := motmedelErrors.New(fmt.Errorf("user handler insert email address user: %w", err), userEmailAddress)
+				var responseError *muxResponseError.ResponseError
+				if errors.Is(err, ssoErrors.ErrForbiddenUser) {
+					responseError = &muxResponseError.ResponseError{
+						ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+							http.StatusForbidden,
+							"",
 							nil,
 						),
 						ClientError: wrappedErr,
 					}
 				} else {
-					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
+					responseError = &muxResponseError.ResponseError{
+						ServerError: motmedelErrors.New(
+							fmt.Errorf("user handler insert email address user: %w", err),
+							userHandler, userEmailAddress,
+						),
+					}
 				}
+
+				return nil, responseError
 			}
 
 			headerEntries, err := sessionHandler.HandleSuccessfulWebAuthentication(ctx, userId)
@@ -373,18 +382,27 @@ func MakeEndpoints(
 
 			userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
 			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
-				if errors.Is(err, motmedelErrors.ErrValidationError) {
-					return nil, &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-							fmt.Sprintf("The access token could not be verified: %v", err),
+				wrappedErr := motmedelErrors.New(fmt.Errorf("user handler insert email address user: %w", err), userEmailAddress)
+				var responseError *muxResponseError.ResponseError
+				if errors.Is(err, ssoErrors.ErrForbiddenUser) {
+					responseError = &muxResponseError.ResponseError{
+						ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+							http.StatusForbidden,
+							"",
 							nil,
 						),
 						ClientError: wrappedErr,
 					}
 				} else {
-					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
+					responseError = &muxResponseError.ResponseError{
+						ServerError: motmedelErrors.New(
+							fmt.Errorf("user handler insert email address user: %w", err),
+							userHandler, userEmailAddress,
+						),
+					}
 				}
+
+				return nil, responseError
 			}
 
 			sessionToken, err := sessionHandler.MakeSessionToken(ctx, userId)
