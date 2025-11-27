@@ -1,4 +1,4 @@
-package google
+package microsoft
 
 import (
 	"context"
@@ -29,9 +29,9 @@ import (
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso"
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
-	googleHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/helpers"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/google/types/path_config"
+	microsoftHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/microsoft/helpers"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/microsoft/types"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/providers/microsoft/types/path_config"
 	ssoTypes "github.com/altshiftab/gcp_utils/pkg/http/login/sso/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/cse_config"
 	"github.com/coreos/go-oidc"
@@ -95,9 +95,9 @@ func handleExchange(
 		return "", motmedelErrors.New(fmt.Errorf("convert to non zero (id token): %w", err), idToken)
 	}
 
-	userEmailAddress, err := googleHelpers.HandleGoogleToken(ctx, accessToken, oidcVerifier)
+	userEmailAddress, err := microsoftHelpers.HandleMicrosoftToken(ctx, accessToken, oidcVerifier)
 	if err != nil {
-		return "", motmedelErrors.New(fmt.Errorf("handle google token: %w", err), accessToken)
+		return "", motmedelErrors.New(fmt.Errorf("handle microsoft token: %w", err), accessToken)
 	}
 
 	return userEmailAddress, nil
@@ -137,11 +137,6 @@ func MakeEndpoints(
 		return nil, motmedelErrors.NewWithTrace(ssoErrors.ErrNilCseConfig)
 	}
 
-	fedCmInputBodyParser, err := jsonSchemaBodyParser.New[*ssoTypes.FedCmInput]()
-	if err != nil {
-		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (fed cm input): %w", err))
-	}
-
 	tokenInputBodyParser, err := jsonSchemaBodyParser.New[*ssoTypes.TokenInput]()
 	if err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (token input): %w", err))
@@ -163,28 +158,22 @@ func MakeEndpoints(
 
 			codeVerifier, err := sso.MakeCodeVerifier()
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("make code verifier: %w", err)),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("make code verifier: %w", err))}
 			}
 
 			state, err := sso.MakeState()
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("make state: %w", err)),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("make state: %w", err))}
 			}
 
 			oauthFlow := &ssoTypes.OauthFlow{State: state, CodeVerifier: codeVerifier, RedirectUrl: redirectUrl.String()}
 
 			oauthFlowId, err := sessionHandler.AddOauthFlow(ctx, oauthFlow)
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.New(
-						fmt.Errorf("session handler add code verifier: %w", err),
-						sessionHandler, oauthFlow,
-					),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.New(
+					fmt.Errorf("session handler add code verifier: %w", err),
+					sessionHandler, oauthFlow,
+				)}
 			}
 
 			callbackCookie := http.Cookie{
@@ -200,14 +189,8 @@ func MakeEndpoints(
 			return &muxResponse.Response{
 				StatusCode: http.StatusFound,
 				Headers: []*muxResponse.HeaderEntry{
-					{
-						Name:  "Set-Cookie",
-						Value: callbackCookie.String(),
-					},
-					{
-						Name:  "Location",
-						Value: oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(codeVerifier)),
-					},
+					{Name: "Set-Cookie", Value: callbackCookie.String()},
+					{Name: "Location", Value: oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(codeVerifier))},
 				},
 			}, nil
 		},
@@ -230,18 +213,12 @@ func MakeEndpoints(
 			callbackCookie, err := request.Cookie(callbackCookieName)
 			if err != nil {
 				if errors.Is(err, http.ErrNoCookie) {
-					return nil, &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeBadRequestProblemDetail("No callback cookie.", nil),
-					}
+					return nil, &muxResponseError.ResponseError{ProblemDetail: problem_detail.MakeBadRequestProblemDetail("No callback cookie.", nil)}
 				}
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("request cookie: %w", err), callbackCookieName),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("request cookie: %w", err), callbackCookieName)}
 			}
 			if callbackCookie == nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("%w (callback)", motmedelHttpErrors.ErrNilCookie)),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("%w (callback)", motmedelHttpErrors.ErrNilCookie))}
 			}
 
 			callbackCookieValue := callbackCookie.Value
@@ -257,15 +234,11 @@ func MakeEndpoints(
 				return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
 			}
 			if oauthFlow == nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauthFlow),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauthFlow)}
 			}
 
 			if oauthFlow.State != urlInput.State {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail("Invalid state.", nil),
-				}
+				return nil, &muxResponseError.ResponseError{ProblemDetail: problem_detail.MakeBadRequestProblemDetail("Invalid state.", nil)}
 			}
 
 			code := urlInput.Code
@@ -286,104 +259,12 @@ func MakeEndpoints(
 				}
 			}
 			if userEmailAddress == "" {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptyEmailAddress),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptyEmailAddress)}
 			}
 
 			userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
 			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("user handler insert email address user: %w", err), userEmailAddress)
-				var responseError *muxResponseError.ResponseError
-				if errors.Is(err, ssoErrors.ErrForbiddenUser) {
-					responseError = &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
-							http.StatusForbidden,
-							"",
-							nil,
-						),
-						ClientError: wrappedErr,
-					}
-				} else {
-					responseError = &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.New(
-							fmt.Errorf("user handler insert email address user: %w", err),
-							userHandler, userEmailAddress,
-						),
-					}
-				}
-
-				return nil, responseError
-			}
-
-			headerEntries, err := sessionHandler.HandleSuccessfulWebAuthentication(ctx, userId)
-			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.New(
-						fmt.Errorf("session handler handle successful authentication: %w", err),
-						sessionHandler, userId,
-					),
-				}
-			}
-
-			clearedCallbackCookie := http.Cookie{
-				Name:     callbackCookieName,
-				Path:     pathConfig.CallbackPath,
-				Expires:  time.Unix(0, 0),
-				MaxAge:   -1,
-				Secure:   true,
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-			}
-
-			headerEntries = append(
-				headerEntries,
-				&muxResponse.HeaderEntry{Name: "Location", Value: oauthFlow.RedirectUrl},
-				&muxResponse.HeaderEntry{Name: "Set-Cookie", Value: clearedCallbackCookie.String()},
-			)
-
-			return &muxResponse.Response{StatusCode: http.StatusSeeOther, Headers: headerEntries}, nil
-		},
-	}
-
-	fedCmEndpointSpecification := &endpoint_specification.EndpointSpecification{
-		Path:   pathConfig.FedcmLoginPath,
-		Method: http.MethodPost,
-		BodyParserConfiguration: &parsing.BodyParserConfiguration{
-			ContentType: "application/jose",
-			MaxBytes:    4096,
-			Parser: bodyParserAdapter.New(
-				&muxUtils.BodyParserWithProcessor[[]byte, *ssoTypes.FedCmInput]{
-					BodyParser: &client_side_encryption.BodyParser{
-						PrivateKey:        cseConfig.PrivateKey,
-						KeyAlgorithm:      cseConfig.KeyAlgorithm,
-						ContentEncryption: cseConfig.ContentEncryption,
-					},
-					Processor: processor.ProcessorFunction[*ssoTypes.FedCmInput, []byte](
-						func(decryptedPayload []byte) (*ssoTypes.FedCmInput, *muxResponseError.ResponseError) {
-							tokenInput, responseError := fedCmInputBodyParser.Parse(nil, decryptedPayload)
-							if responseError != nil {
-								return nil, responseError
-							}
-							return tokenInput, nil
-						},
-					),
-				},
-			),
-		},
-		Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
-			ctx := request.Context()
-
-			fedCmInput, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*ssoTypes.FedCmInput](ctx)
-			if responseError != nil {
-				return nil, responseError
-			}
-
-			accessToken := fedCmInput.Token
-
-			userEmailAddress, err := googleHelpers.HandleGoogleToken(ctx, accessToken, oidcVerifier)
-			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("handle google token: %w", err), accessToken)
+				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
 				if errors.Is(err, motmedelErrors.ErrValidationError) {
 					return nil, &muxResponseError.ResponseError{
 						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
@@ -397,35 +278,30 @@ func MakeEndpoints(
 				}
 			}
 
-			userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
-			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("user handler insert email address user: %w", err), userEmailAddress)
-				var responseError *muxResponseError.ResponseError
-				if errors.Is(err, ssoErrors.ErrForbiddenUser) {
-					responseError = &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(http.StatusForbidden, "", nil),
-						ClientError:   wrappedErr,
-					}
-				} else {
-					responseError = &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.New(wrappedErr, userHandler, userEmailAddress),
-					}
-				}
-
-				return nil, responseError
-			}
-
 			headerEntries, err := sessionHandler.HandleSuccessfulWebAuthentication(ctx, userId)
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.New(
-						fmt.Errorf("session handler handle successful authentication: %w", err),
-						sessionHandler, userId,
-					),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.New(
+					fmt.Errorf("session handler handle successful authentication: %w", err),
+					sessionHandler, userId,
+				)}
 			}
 
-			return &muxResponse.Response{Headers: headerEntries}, nil
+			clearedCallbackCookie := http.Cookie{
+				Name:     callbackCookieName,
+				Path:     pathConfig.CallbackPath,
+				Expires:  time.Unix(0, 0),
+				MaxAge:   -1,
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			}
+
+			headerEntries = append(headerEntries,
+				&muxResponse.HeaderEntry{Name: "Location", Value: oauthFlow.RedirectUrl},
+				&muxResponse.HeaderEntry{Name: "Set-Cookie", Value: clearedCallbackCookie.String()},
+			)
+
+			return &muxResponse.Response{StatusCode: http.StatusSeeOther, Headers: headerEntries}, nil
 		},
 	}
 
@@ -494,50 +370,37 @@ func MakeEndpoints(
 					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
 				}
 			}
-			if userEmailAddress == "" {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptyEmailAddress),
-				}
-			}
 
 			userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
 			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("user handler insert email address user: %w", err), userEmailAddress)
-				var responseError *muxResponseError.ResponseError
-				if errors.Is(err, ssoErrors.ErrForbiddenUser) {
-					responseError = &muxResponseError.ResponseError{
-						ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(http.StatusForbidden, "", nil),
-						ClientError:   wrappedErr,
+				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
+				if errors.Is(err, motmedelErrors.ErrValidationError) {
+					return nil, &muxResponseError.ResponseError{
+						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
+							fmt.Sprintf("The access token could not be verified: %v", err),
+							nil,
+						),
+						ClientError: wrappedErr,
 					}
 				} else {
-					responseError = &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.New(wrappedErr, userHandler, userEmailAddress),
-					}
+					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
 				}
-
-				return nil, responseError
 			}
 
 			sessionToken, err := sessionHandler.MakeSessionToken(ctx, userId)
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.New(
-						fmt.Errorf("session handler make session token: %w", err),
-						sessionHandler, userId,
-					),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.New(
+					fmt.Errorf("session handler make session token: %w", err),
+					sessionHandler, userId,
+				)}
 			}
 			if sessionToken == "" {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptySessionToken),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptySessionToken)}
 			}
 
 			jwe, err := responseEncrypter.Encrypt([]byte(sessionToken))
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jose encrypt: %w", err)),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jose encrypt: %w", err))}
 			}
 			if jwe == nil {
 				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrNilJwe)}
@@ -545,26 +408,20 @@ func MakeEndpoints(
 
 			compact, err := jwe.CompactSerialize()
 			if err != nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("json web encryption compact serialize: %w", err)),
-				}
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("json web encryption compact serialize: %w", err))}
 			}
 
-			return &muxResponse.Response{
-				StatusCode:    http.StatusOK,
-				Headers:       []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/jose"}},
-				Body:          []byte(compact),
-				SensitiveBody: true,
-			}, nil
+			return &muxResponse.Response{Body: []byte(compact), Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/jose"}}}, nil
 		},
 	}
 
-	return &types.EndpointSpecificationOverview{
+	overview := &types.EndpointSpecificationOverview{
 		LoginEndpoint:    loginEndpointSpecification,
 		CallbackEndpoint: callbackEndpointSpecification,
-		FedCmEndpoint:    fedCmEndpointSpecification,
 		TokenEndpoint:    tokenEndpointSpecification,
-	}, nil
+	}
+
+	return overview, nil
 }
 
 func PatchMux(
@@ -598,28 +455,23 @@ func PatchMux(
 		return motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
 	}
 
+	if cseConfig == nil {
+		return motmedelErrors.NewWithTrace(ssoErrors.ErrNilCseConfig)
+	}
+
 	if mux == nil {
 		return nil
 	}
 
-	overview, err := MakeEndpoints(
-		sessionHandler,
-		userHandler,
-		callbackCookieName,
-		redirectUrlRequestParser,
-		oauthConfig,
-		oidcVerifier,
-		cseConfig,
-		options...,
-	)
+	overview, err := MakeEndpoints(sessionHandler, userHandler, callbackCookieName, redirectUrlRequestParser, oauthConfig, oidcVerifier, cseConfig, options...)
 	if err != nil {
-		return fmt.Errorf("make endpoints: %w", err)
+		return err
 	}
 	if overview == nil {
 		return motmedelErrors.NewWithTrace(ErrNilEndpointSpecificationOverview)
 	}
 
-	mux.Add(overview.LoginEndpoint, overview.CallbackEndpoint, overview.FedCmEndpoint, overview.TokenEndpoint)
+	mux.Add(overview.LoginEndpoint, overview.CallbackEndpoint, overview.TokenEndpoint)
 
 	return nil
 }

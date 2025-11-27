@@ -2,17 +2,6 @@ package types
 
 import "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 
-type FedCmInput struct {
-	Token string   `json:"token,omitempty" required:"true" minLength:"1"`
-	_     struct{} `additionalProperties:"false"`
-}
-
-type TokenInput struct {
-	Code     string   `json:"code" required:"true" minLength:"1"`
-	Verifier string   `json:"verifier" required:"true" minLength:"1"`
-	_        struct{} `additionalProperties:"false"`
-}
-
 type GoogleClaims struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
