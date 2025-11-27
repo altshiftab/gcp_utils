@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ func MakeSessionToken(
 	signer motmedelCryptoInterfaces.NamedSigner,
 	expiresAt time.Time,
 	issuer string,
+	customClaims map[string]any,
 ) (string, error) {
 	if authenticationId == "" {
 		return "", motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyAuthenticationId)
@@ -45,15 +47,16 @@ func MakeSessionToken(
 		return "", motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyIssuer)
 	}
 
-	token := motmedelJwtToken.Token{
-		Payload: map[string]any{
-			"jti": strings.Join([]string{authenticationId, GenerateSessionId()}, ":"),
-			"sub": userId,
-			"exp": expiresAt.Unix(),
-			"nbf": time.Now().Unix(),
-			"iss": issuer,
-		},
+	payload := map[string]any{
+		"jti": strings.Join([]string{authenticationId, GenerateSessionId()}, ":"),
+		"sub": userId,
+		"exp": expiresAt.Unix(),
+		"nbf": time.Now().Unix(),
+		"iss": issuer,
 	}
+	maps.Copy(payload, customClaims)
+
+	token := motmedelJwtToken.Token{Payload: payload}
 
 	tokenString, err := token.Encode(signer)
 	if err != nil {
@@ -145,12 +148,13 @@ func MakeSessionCookieHeader(
 	expiresAt time.Time,
 	issuer string,
 	domain string,
+	customClaims map[string]any,
 ) (*muxResponse.HeaderEntry, error) {
 	if domain == "" {
 		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieDomain)
 	}
 
-	sessionToken, err := MakeSessionToken(authenticationId, userId, signer, expiresAt, issuer)
+	sessionToken, err := MakeSessionToken(authenticationId, userId, signer, expiresAt, issuer, customClaims)
 	if err != nil {
 		return nil, fmt.Errorf("make session token: %w", err)
 	}
