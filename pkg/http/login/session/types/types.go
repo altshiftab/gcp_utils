@@ -107,21 +107,23 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 		}
 	}
 
-	var allowed bool
-	for _, role := range jwtToken.Roles {
-		if slices.Contains(parser.AllowedRoles, role) {
-			allowed = true
-			break
+	if allowedRoles := parser.AllowedRoles; len(allowedRoles) != 0 {
+		var allowed bool
+		for _, role := range jwtToken.Roles {
+			if slices.Contains(parser.AllowedRoles, role) {
+				allowed = true
+				break
+			}
 		}
-	}
 
-	if !allowed {
-		return nil, &response_error.ResponseError{
-			ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
-				http.StatusForbidden,
-				"Invalid role.",
-				nil,
-			),
+		if !allowed {
+			return nil, &response_error.ResponseError{
+				ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+					http.StatusForbidden,
+					"Invalid role.",
+					nil,
+				),
+			}
 		}
 	}
 
