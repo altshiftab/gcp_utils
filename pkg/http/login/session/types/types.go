@@ -17,6 +17,10 @@ import (
 	motmedelUtils "github.com/Motmedel/utils_go/pkg/utils"
 )
 
+var (
+	ErrNilEndpointSpecificationOverview = errors.New("nil endpoint specification overview")
+)
+
 type EndpointSpecificationOverview struct {
 	RefreshEndpoint *endpoint_specification.EndpointSpecification
 	EndEndpoint     *endpoint_specification.EndpointSpecification
