@@ -1,6 +1,9 @@
 package types
 
-import "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
+import (
+    "errors"
+    "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
+)
 
 type MicrosoftClaims struct {
     Email             string `json:"email"`
@@ -9,6 +12,10 @@ type MicrosoftClaims struct {
     Sub               string `json:"sub"`
     Tid               string `json:"tid"`
 }
+
+var (
+    ErrNilEndpointSpecificationOverview = errors.New("nil endpoint specification overview")
+)
 
 type EndpointSpecificationOverview struct {
     LoginEndpoint    *endpoint_specification.EndpointSpecification
