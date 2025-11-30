@@ -13,7 +13,6 @@ import (
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
-	"github.com/Motmedel/utils_go/pkg/utils"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
 	gcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
@@ -70,12 +69,7 @@ func makeTypescriptContext(endpointSpecifications []*endpoint_specification.Endp
 		if t == nil {
 			continue
 		}
-		element := reflect.New(t).Elem().Interface()
-		if utils.IsNil(element) {
-			continue
-		}
-
-		typeElements = append(typeElements, element)
+		typeElements = append(typeElements, t)
 	}
 
 	tsContext := typeGenerationTypescriptTypes.Context{Context: typeGenerationTypesContext.New()}
