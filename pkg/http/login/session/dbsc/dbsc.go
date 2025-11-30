@@ -70,7 +70,7 @@ type SessionHandler interface {
 	GetSessionRequestParser() request_parser.RequestParser[session.SessionInput]
 }
 
-func MakeBareEndpoints() (*dbscTypes.EndpointSpecificationOverview, error) {
+func MakeBareEndpoints() *dbscTypes.EndpointSpecificationOverview {
 	registerEndpoint := &endpoint_specification.EndpointSpecification{
 		Path:                      dbsc_config.DefaultRegisterPath,
 		Method:                    http.MethodPost,
@@ -89,8 +89,7 @@ func MakeBareEndpoints() (*dbscTypes.EndpointSpecificationOverview, error) {
 	return &dbscTypes.EndpointSpecificationOverview{
 		RefreshEndpoint:  refreshEndpoint,
 		RegisterEndpoint: registerEndpoint,
-	}, nil
-
+	}
 }
 
 func PopulateBareEndpoints(bareEndpointsOverview *dbscTypes.EndpointSpecificationOverview, sessionHandler SessionHandler) error {
@@ -483,15 +482,12 @@ func PopulateBareEndpoints(bareEndpointsOverview *dbscTypes.EndpointSpecificatio
 }
 
 func MakeEndpoints(sessionHandler SessionHandler) (*dbscTypes.EndpointSpecificationOverview, error) {
-	bareEndpointsOverview, err := MakeBareEndpoints()
-	if err != nil {
-		return nil, fmt.Errorf("make bare endpoints: %w", err)
-	}
+	bareEndpointsOverview := MakeBareEndpoints()
 	if bareEndpointsOverview == nil {
 		return nil, motmedelErrors.NewWithTrace(dbscTypes.ErrNilEndpointSpecificationOverview)
 	}
 
-	err = PopulateBareEndpoints(bareEndpointsOverview, sessionHandler)
+	err := PopulateBareEndpoints(bareEndpointsOverview, sessionHandler)
 	if err != nil {
 		return nil, fmt.Errorf("populate bare endpoints: %w", err)
 	}
