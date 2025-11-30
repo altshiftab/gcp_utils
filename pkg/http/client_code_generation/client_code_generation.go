@@ -67,6 +67,9 @@ func makeTypescriptContext(endpointSpecifications []*endpoint_specification.Endp
 
 	var typeElements []any
 	for t := range typesSet {
+		if t == nil {
+			continue
+		}
 		element := reflect.New(t).Elem().Interface()
 		if utils.IsNil(element) {
 			continue
