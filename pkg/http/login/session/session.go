@@ -41,7 +41,7 @@ type SessionHandler interface {
 	GetSessionRequestParser() request_parser.RequestParser[SessionInput]
 }
 
-func MakeBareEndpoints(options ...path_config.Option) (*types.EndpointSpecificationOverview, error) {
+func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificationOverview {
 	pathConfig := path_config.New(options...)
 
 	refreshEndpointSpecification := &endpoint_specification.EndpointSpecification{
@@ -61,7 +61,7 @@ func MakeBareEndpoints(options ...path_config.Option) (*types.EndpointSpecificat
 	return &types.EndpointSpecificationOverview{
 		RefreshEndpoint: refreshEndpointSpecification,
 		EndEndpoint:     endEndpointSpecification,
-	}, nil
+	}
 }
 
 func PopulateBareEndpoints(bareEndpointsOverview *types.EndpointSpecificationOverview, sessionHandler SessionHandler) error {
@@ -198,15 +198,12 @@ func PopulateBareEndpoints(bareEndpointsOverview *types.EndpointSpecificationOve
 }
 
 func MakeEndpoints(sessionHandler SessionHandler, options ...path_config.Option) (*types.EndpointSpecificationOverview, error) {
-	bareEndpointsOverview, err := MakeBareEndpoints(options...)
-	if err != nil {
-		return nil, fmt.Errorf("make bare endpoints: %w", err)
-	}
+	bareEndpointsOverview := MakeBareEndpoints(options...)
 	if bareEndpointsOverview == nil {
 		return nil, motmedelErrors.NewWithTrace(types.ErrNilEndpointSpecificationOverview)
 	}
 
-	err = PopulateBareEndpoints(bareEndpointsOverview, sessionHandler)
+	err := PopulateBareEndpoints(bareEndpointsOverview, sessionHandler)
 	if err != nil {
 		return nil, fmt.Errorf("populate bare endpoints: %w", err)
 	}

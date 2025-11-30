@@ -104,7 +104,7 @@ func handleExchange(
 	return userEmailAddress, nil
 }
 
-func MakeBareEndpoints(options ...path_config.Option) (*types.EndpointSpecificationOverview, error) {
+func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificationOverview {
 	pathConfig := path_config.New(options...)
 
 	loginEndpointSpecification := &endpoint_specification.EndpointSpecification{
@@ -164,7 +164,7 @@ func MakeBareEndpoints(options ...path_config.Option) (*types.EndpointSpecificat
 		CallbackEndpoint: callbackEndpointSpecification,
 		FedCmEndpoint:    fedCmEndpointSpecification,
 		TokenEndpoint:    tokenEndpointSpecification,
-	}, nil
+	}
 }
 
 func PopulateBareEndpoints(
@@ -633,15 +633,12 @@ func MakeEndpoints(
 	options ...path_config.Option,
 ) (*types.EndpointSpecificationOverview, error) {
 
-	bareEndpointsOverview, err := MakeBareEndpoints(options...)
-	if err != nil {
-		return nil, fmt.Errorf("make bare endpoints: %w", err)
-	}
+	bareEndpointsOverview := MakeBareEndpoints(options...)
 	if bareEndpointsOverview == nil {
 		return nil, motmedelErrors.NewWithTrace(ErrNilEndpointSpecificationOverview)
 	}
 
-	err = PopulateBareEndpoints(
+	err := PopulateBareEndpoints(
 		bareEndpointsOverview,
 		sessionHandler,
 		userHandler,
