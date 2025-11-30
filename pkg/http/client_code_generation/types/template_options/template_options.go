@@ -21,7 +21,6 @@ type Options struct {
 	CseContentEncryption     string
 	CseKeyAlgorithm          string
 	CseKeyAlgorithmCurve     string
-	CseServerPublicJwk       string
 }
 
 func New(options ...Option) *Options {
@@ -67,11 +66,5 @@ func WithCseKeyAlgorithm(keyAlgorithm string) Option {
 func WithCseKeyAlgorithmCurve(keyAlgorithmCurve string) Option {
 	return func(opts *Options) {
 		opts.CseKeyAlgorithmCurve = keyAlgorithmCurve
-	}
-}
-
-func WithCseServerPublicJwk(jwk string) Option {
-	return func(opts *Options) {
-		opts.CseServerPublicJwk = jwk
 	}
 }

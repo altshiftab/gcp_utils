@@ -11,11 +11,10 @@ import (
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
-	muxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	clientCodeGenerationErrors "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/errors"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
 	gcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
@@ -50,33 +49,35 @@ var scriptTemplate = template.Must(
 
 var caser = cases.Title(language.English, cases.NoLower)
 
-func extractInputOutput(getter clientCodeGenerationTypes.EndpointSpecificationGetter) (reflect.Type, reflect.Type, error) {
-	reflectType := motmedelReflect.RemoveIndirection(reflect.ValueOf(getter).Type())
+// TODO: Move
+var ErrNilHint = motmedelErrors.NewWithTrace(fmt.Errorf("nil hint"))
 
-	reflectTypeKind := reflectType.Kind()
-	if reflectTypeKind != reflect.Struct {
-		return nil, nil, motmedelErrors.NewWithTrace(clientCodeGenerationErrors.ErrNotStruct, reflectTypeKind)
+func extractInputOutput(hint *endpoint_specification.Hint) (reflect.Type, reflect.Type, error) {
+	if hint == nil {
+		return nil, nil, motmedelErrors.NewWithTrace(ErrNilHint)
 	}
 
-	inputField, ok1 := reflectType.FieldByName("Input")
-	outputField, ok2 := reflectType.FieldByName("Output")
-	if !ok1 || !ok2 {
-		return nil, nil, motmedelErrors.NewWithTrace(clientCodeGenerationErrors.ErrInputOutputNotFound, reflectType)
-	}
+	inputType := motmedelReflect.RemoveIndirection(reflect.TypeOf(hint.InputType))
+	outputType := motmedelReflect.RemoveIndirection(reflect.TypeOf(hint.OutputType))
 
-	return inputField.Type, outputField.Type, nil
+	return inputType, outputType, nil
 }
 
-func makeTypescriptContext(endpointDataSlice []*clientCodeGenerationTypes.EndpointData) (*typeGenerationTypescriptTypes.Context, error) {
+func makeTypescriptContext(endpointSpecifications []*endpoint_specification.EndpointSpecification) (*typeGenerationTypescriptTypes.Context, error) {
 	typesSet := make(map[reflect.Type]struct{})
 
-	for _, endpointData := range endpointDataSlice {
-		if endpointData == nil {
+	for _, endpointSpecification := range endpointSpecifications {
+		if endpointSpecification == nil {
 			continue
 		}
 
-		typesSet[endpointData.Input] = struct{}{}
-		typesSet[endpointData.Output] = struct{}{}
+		hint := endpointSpecification.Hint
+		if hint == nil {
+			continue
+		}
+
+		typesSet[hint.InputType] = struct{}{}
+		typesSet[hint.InputType] = struct{}{}
 	}
 
 	var typeElements []any
@@ -85,6 +86,7 @@ func makeTypescriptContext(endpointDataSlice []*clientCodeGenerationTypes.Endpoi
 		if utils.IsNil(element) {
 			continue
 		}
+
 		typeElements = append(typeElements, element)
 	}
 
@@ -127,7 +129,7 @@ func isEmptyInterfaceType(t reflect.Type) bool {
 }
 
 func makeTemplateInput(
-	endpointDataSlice []*clientCodeGenerationTypes.EndpointData,
+	endpointSpecifications []*endpoint_specification.EndpointSpecification,
 	tsContext *typeGenerationTypescriptTypes.Context,
 	baseUrl *url.URL,
 ) ([]*clientCodeGenerationTypes.TemplateInput, error) {
@@ -140,20 +142,15 @@ func makeTemplateInput(
 		return nil, motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilUrl)
 	}
 
-	if len(endpointDataSlice) == 0 {
+	if len(endpointSpecifications) == 0 {
 		return nil, nil
 	}
 
 	var templateInputs []*clientCodeGenerationTypes.TemplateInput
 
-	for _, endpointData := range endpointDataSlice {
-		if endpointData == nil {
-			continue
-		}
-
-		endpointSpecification := endpointData.EndpointSpecification
+	for _, endpointSpecification := range endpointSpecifications {
 		if endpointSpecification == nil {
-			return nil, motmedelErrors.NewWithTrace(muxErrors.ErrNilEndpointSpecification)
+			continue
 		}
 
 		method := endpointSpecification.Method
@@ -166,42 +163,50 @@ func makeTemplateInput(
 			return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrEmptyUrl, endpointSpecification)
 		}
 
-		var inputType string
-		endpointDataInput := endpointData.Input
-		if isEmptyInterfaceType(endpointDataInput) {
-			inputType = "void"
-		} else {
-			typeScriptType, err := tsContext.GetTypeScriptType(endpointDataInput)
-			if err != nil {
-				return nil, motmedelErrors.New(
-					fmt.Errorf("typescript context get typescript type (input): %w", err),
-					endpointDataInput,
-				)
-			}
-			inputType, err = typeScriptType.String()
-			if err != nil {
-				return nil, motmedelErrors.New(fmt.Errorf("typescript type string (output): %w", err), typeScriptType)
-			}
-		}
+		var outputContentType string
+		var optionalOutput bool
+		var typescriptInputType string
+		var typescriptOutputType string
 
-		var outputType string
-		endpointDataOutput := endpointData.Output
-		if isEmptyInterfaceType(endpointDataOutput) {
-			outputType = "void"
-		} else {
-			typeScriptType, err := tsContext.GetTypeScriptType(endpointDataOutput)
-			if err != nil {
-				return nil, motmedelErrors.New(
-					fmt.Errorf("typescript context get typescript type (output): %w", err),
-					endpointDataOutput,
-				)
+		if hint := endpointSpecification.Hint; hint != nil {
+			outputContentType = hint.ExpectedOutputContentType
+			optionalOutput = hint.OutputOptional
+
+			inputType := hint.InputType
+			if isEmptyInterfaceType(inputType) {
+				typescriptInputType = "void"
+			} else {
+				typeScriptType, err := tsContext.GetTypeScriptType(inputType)
+				if err != nil {
+					return nil, motmedelErrors.New(
+						fmt.Errorf("typescript context get typescript type (input): %w", err),
+						inputType,
+					)
+				}
+				typescriptInputType, err = typeScriptType.String()
+				if err != nil {
+					return nil, motmedelErrors.New(fmt.Errorf("typescript type string (output): %w", err), typeScriptType)
+				}
 			}
-			outputType, err = typeScriptType.String()
-			if err != nil {
-				return nil, motmedelErrors.New(
-					fmt.Errorf("typescript type string (output): %w", err),
-					endpointDataOutput,
-				)
+
+			outputTpe := hint.OutputType
+			if isEmptyInterfaceType(outputTpe) {
+				typescriptOutputType = "void"
+			} else {
+				typeScriptType, err := tsContext.GetTypeScriptType(outputTpe)
+				if err != nil {
+					return nil, motmedelErrors.New(
+						fmt.Errorf("typescript context get typescript type (output): %w", err),
+						outputTpe,
+					)
+				}
+				typescriptOutputType, err = typeScriptType.String()
+				if err != nil {
+					return nil, motmedelErrors.New(
+						fmt.Errorf("typescript type string (output): %w", err),
+						outputTpe,
+					)
+				}
 			}
 		}
 
@@ -224,14 +229,14 @@ func makeTemplateInput(
 					strings.ToLower(method),
 					makePathPart(path),
 				),
-				InputType:                 inputType,
-				ReturnType:                outputType,
+				InputType:                 typescriptInputType,
+				ReturnType:                typescriptOutputType,
 				URL:                       baseUrl.String() + path,
 				Method:                    endpointSpecification.Method,
 				ContentType:               contentType,
-				ExpectedOutputContentType: endpointData.OutputContentType,
+				ExpectedOutputContentType: outputContentType,
 				UseAuthentication:         useAuthentication,
-				OptionalOutput:            endpointData.OptionalOutput,
+				OptionalOutput:            optionalOutput,
 			},
 		)
 	}
@@ -240,7 +245,7 @@ func makeTemplateInput(
 }
 
 func Render(
-	endpointSpecificationGetters []clientCodeGenerationTypes.EndpointSpecificationGetter,
+	endpointSpecifications []*endpoint_specification.EndpointSpecification,
 	baseUrl *url.URL,
 	options ...template_options.Option,
 ) (string, error) {
@@ -248,40 +253,18 @@ func Render(
 		return "", motmedelErrors.NewWithTrace(gcpUtilsHttpErrors.ErrNilBaseUrl)
 	}
 
-	if len(endpointSpecificationGetters) == 0 {
+	if len(endpointSpecifications) == 0 {
 		return "", nil
 	}
 
-	var endpointDataSlice []*clientCodeGenerationTypes.EndpointData
-	for _, endpointSpecificationGetter := range endpointSpecificationGetters {
-		inputType, outputType, err := extractInputOutput(endpointSpecificationGetter)
-		if err != nil {
-			return "", motmedelErrors.New(fmt.Errorf("extract input output: %w", err), endpointSpecificationGetter)
-		}
-
-		endpointDataSlice = append(
-			endpointDataSlice,
-			&clientCodeGenerationTypes.EndpointData{
-				EndpointSpecification: endpointSpecificationGetter.GetEndpointSpecification(),
-				Input:                 inputType,
-				Output:                outputType,
-				OutputContentType:     endpointSpecificationGetter.GetExpectedOutputContentType(),
-				OptionalOutput:        endpointSpecificationGetter.GetOptionalOutput(),
-			},
-		)
+	tsContext, err := makeTypescriptContext(endpointSpecifications)
+	if err != nil {
+		return "", fmt.Errorf("make typescript context: %w", err)
 	}
 
-	tsContext, err := makeTypescriptContext(endpointDataSlice)
+	templateInputs, err := makeTemplateInput(endpointSpecifications, tsContext, baseUrl)
 	if err != nil {
-		return "", motmedelErrors.New(fmt.Errorf("make typescript context: %w", err), endpointDataSlice)
-	}
-
-	templateInputs, err := makeTemplateInput(endpointDataSlice, tsContext, baseUrl)
-	if err != nil {
-		return "", motmedelErrors.New(
-			fmt.Errorf("make template input: %w", err),
-			endpointDataSlice, tsContext, baseUrl,
-		)
+		return "", motmedelErrors.New(fmt.Errorf("make template input: %w", err), tsContext)
 	}
 
 	var useEncryption bool
@@ -293,10 +276,6 @@ func Render(
 	}
 
 	templateOptions := template_options.New(options...)
-
-	if useEncryption && templateOptions.CseServerPublicJwk == "" {
-		return "", motmedelErrors.NewWithTrace(clientCodeGenerationErrors.ErrUseEncryptionWithEmptyServerJwk)
-	}
 
 	tsContextOutput, err := tsContext.Render()
 	if err != nil {
@@ -311,7 +290,6 @@ func Render(
 			CseContentEncryption:     templateOptions.CseContentEncryption,
 			CseKeyAlgorithm:          templateOptions.CseKeyAlgorithm,
 			CseKeyAlgorithmCurve:     templateOptions.CseKeyAlgorithmCurve,
-			CseServerPublicJwk:       templateOptions.CseServerPublicJwk,
 			UseEncryption:            useEncryption,
 			AuthenticationMode:       templateOptions.AuthenticationMode,
 		},

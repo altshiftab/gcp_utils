@@ -11,8 +11,9 @@ import {fetchEx} from "@altshiftab/utils/http/utils";
 {{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
 {{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
 export async function {{ .Endpoint.Name }}(
-    {{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if $authBearer }}, {{ end }}{{- end -}}
-    {{- if $authBearer -}}token: string{{- end -}}
+{{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if or $authBearer $encryptedInput }}, {{ end }}{{- end -}}
+{{- if $encryptedInput -}}serverJwk: JWK{{- if $authBearer }}, {{ end }}{{- end -}}
+{{- if $authBearer -}}token: string{{- end -}}
 ): Promise<{{ .Endpoint.ReturnType }}{{ if .Endpoint.OptionalOutput }} | null{{ end }}> {
     {{- if $authBearer }}
     if (!token)
@@ -47,8 +48,7 @@ export async function {{ .Endpoint.Name }}(
 
     {{- if and (not $noRequestBody) (not $isNoBodyMethod) }}
         {{- if $encryptedInput }}
-    const serverJwk: JWK = {{ .Globals.CseServerPublicJwk }};
-    const serverPublicKey = await importJWK(serverJwk, "{{ .Globals.CseKeyAlgorithm }}");
+    const serverPublicKey = await importJWK(serverJwk);
     const data = await new CompactEncrypt(new TextEncoder().encode(JSON.stringify(input)))
         .setProtectedHeader({
             alg: "{{ .Globals.CseKeyAlgorithm }}",
