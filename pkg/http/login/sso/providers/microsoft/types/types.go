@@ -22,3 +22,11 @@ type EndpointSpecificationOverview struct {
     CallbackEndpoint *endpoint_specification.EndpointSpecification
     TokenEndpoint    *endpoint_specification.EndpointSpecification
 }
+
+func (overview *EndpointSpecificationOverview) Endpoints() []*endpoint_specification.EndpointSpecification {
+    return []*endpoint_specification.EndpointSpecification{
+        overview.LoginEndpoint,
+        overview.CallbackEndpoint,
+        overview.TokenEndpoint,
+    }
+}
