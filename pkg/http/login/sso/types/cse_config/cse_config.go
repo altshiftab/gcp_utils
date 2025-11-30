@@ -17,15 +17,17 @@ type Option func(configuration *Config)
 
 type Config struct {
 	PrivateKey            any
+	KeyIdentifier         string
 	ClientPublicJwkHeader string
 	KeyAlgorithm          jose.KeyAlgorithm
 	ContentEncryption     jose.ContentEncryption
 	EncrypterOptions      *jose.EncrypterOptions
 }
 
-func New(privateKey any, options ...Option) *Config {
+func New(privateKey any, keyIdentifier string, options ...Option) *Config {
 	config := &Config{
 		PrivateKey:            privateKey,
+		KeyIdentifier:         keyIdentifier,
 		ClientPublicJwkHeader: DefaultClientPublicJwkHeader,
 		KeyAlgorithm:          DefaultKeyAlgorithm,
 		ContentEncryption:     DefaultContentEncryption,
