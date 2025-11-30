@@ -22,8 +22,15 @@ var (
 )
 
 type EndpointSpecificationOverview struct {
-	RefreshEndpoint *endpoint_specification.EndpointSpecification
-	EndEndpoint     *endpoint_specification.EndpointSpecification
+    RefreshEndpoint *endpoint_specification.EndpointSpecification
+    EndEndpoint     *endpoint_specification.EndpointSpecification
+}
+
+func (overview *EndpointSpecificationOverview) Endpoints() []*endpoint_specification.EndpointSpecification {
+    return []*endpoint_specification.EndpointSpecification{
+        overview.RefreshEndpoint,
+        overview.EndEndpoint,
+    }
 }
 
 type JwtToken struct {
