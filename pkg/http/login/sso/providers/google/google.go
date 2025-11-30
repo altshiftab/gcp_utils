@@ -25,6 +25,7 @@ import (
 	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/utils/json/schema"
 	"github.com/Motmedel/utils_go/pkg/http/mux/utils/query"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
+	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
@@ -122,7 +123,7 @@ func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificati
 		},
 		Handler: nil,
 		Hint: &endpoint_specification.Hint{
-			InputType: *new(ssoTypes.CallbackUrlInput),
+			InputType: motmedelReflect.TypeOf[ssoTypes.CallbackUrlInput](),
 		},
 	}
 
@@ -136,7 +137,7 @@ func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificati
 		},
 		Handler: nil,
 		Hint: &endpoint_specification.Hint{
-			InputType: *new(ssoTypes.FedCmInput),
+			InputType: motmedelReflect.TypeOf[*ssoTypes.FedCmInput](),
 		},
 	}
 
@@ -153,9 +154,9 @@ func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificati
 		},
 		Handler: nil,
 		Hint: &endpoint_specification.Hint{
-			InputType:                 *new(ssoTypes.TokenInput),
-			OutputType:                *new(string),
-			ExpectedOutputContentType: "application/jose",
+			InputType:                 motmedelReflect.TypeOf[*ssoTypes.TokenInput](),
+			OutputType:                motmedelReflect.TypeOf[string](),
+			OutputContentType: "application/jose",
 		},
 	}
 
