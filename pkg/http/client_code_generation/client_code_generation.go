@@ -13,7 +13,6 @@ import (
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
-	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
@@ -48,20 +47,6 @@ var scriptTemplate = template.Must(
 )
 
 var caser = cases.Title(language.English, cases.NoLower)
-
-// TODO: Move
-var ErrNilHint = motmedelErrors.NewWithTrace(fmt.Errorf("nil hint"))
-
-func extractInputOutput(hint *endpoint_specification.Hint) (reflect.Type, reflect.Type, error) {
-	if hint == nil {
-		return nil, nil, motmedelErrors.NewWithTrace(ErrNilHint)
-	}
-
-	inputType := motmedelReflect.RemoveIndirection(reflect.TypeOf(hint.InputType))
-	outputType := motmedelReflect.RemoveIndirection(reflect.TypeOf(hint.OutputType))
-
-	return inputType, outputType, nil
-}
 
 func makeTypescriptContext(endpointSpecifications []*endpoint_specification.EndpointSpecification) (*typeGenerationTypescriptTypes.Context, error) {
 	typesSet := make(map[reflect.Type]struct{})
