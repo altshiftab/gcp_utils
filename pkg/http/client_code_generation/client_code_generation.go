@@ -62,7 +62,7 @@ func makeTypescriptContext(endpointSpecifications []*endpoint_specification.Endp
 		}
 
 		typesSet[hint.InputType] = struct{}{}
-		typesSet[hint.InputType] = struct{}{}
+		typesSet[hint.OutputType] = struct{}{}
 	}
 
 	var typeElements []any
