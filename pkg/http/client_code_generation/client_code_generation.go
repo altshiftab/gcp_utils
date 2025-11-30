@@ -154,7 +154,7 @@ func makeTemplateInput(
 		var typescriptOutputType string
 
 		if hint := endpointSpecification.Hint; hint != nil {
-			outputContentType = hint.ExpectedOutputContentType
+			outputContentType = hint.OutputContentType
 			optionalOutput = hint.OutputOptional
 
 			inputType := hint.InputType
