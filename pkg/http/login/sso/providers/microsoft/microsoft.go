@@ -363,128 +363,126 @@ func PopulateBareEndpoints(
 
 	// Token endpoint
 	tokenEndpointSpecification := bareEndpointsOverview.TokenEndpoint
-	if tokenEndpointSpecification == nil {
-		return motmedelErrors.NewWithTrace(fmt.Errorf("%w (token)", motmedelMuxErrors.ErrNilEndpointSpecification))
-	}
+	if tokenEndpointSpecification != nil {
+		tokenInputBodyParser, err := jsonSchemaBodyParser.New[*ssoTypes.TokenInput]()
+		if err != nil {
+			return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (token input): %w", err))
+		}
 
-	tokenInputBodyParser, err := jsonSchemaBodyParser.New[*ssoTypes.TokenInput]()
-	if err != nil {
-		return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (token input): %w", err))
-	}
-
-	tokenEndpointSpecification.HeaderParserConfiguration = &parsing.HeaderParserConfiguration{
-		Parser: requestParserAdapter.New(
-			&client_side_encryption.HeaderRequestParser{
-				Header:            cseConfig.ClientPublicJwkHeader,
-				KeyAlgorithm:      cseConfig.KeyAlgorithm,
-				ContentEncryption: cseConfig.ContentEncryption,
-				EncrypterOptions:  cseConfig.EncrypterOptions.WithContentType("text/plain"),
-			},
-		),
-	}
-	tokenEndpointSpecification.BodyParserConfiguration = &parsing.BodyParserConfiguration{
-		ContentType: "application/jose",
-		MaxBytes:    4096,
-		Parser: bodyParserAdapter.New(
-			&muxUtils.BodyParserWithProcessor[[]byte, *ssoTypes.TokenInput]{
-				BodyParser: &client_side_encryption.BodyParser{
-					PrivateKey:        cseConfig.PrivateKey,
+		tokenEndpointSpecification.HeaderParserConfiguration = &parsing.HeaderParserConfiguration{
+			Parser: requestParserAdapter.New(
+				&client_side_encryption.HeaderRequestParser{
+					Header:            cseConfig.ClientPublicJwkHeader,
 					KeyAlgorithm:      cseConfig.KeyAlgorithm,
 					ContentEncryption: cseConfig.ContentEncryption,
+					EncrypterOptions:  cseConfig.EncrypterOptions.WithContentType("text/plain"),
 				},
-				Processor: processor.ProcessorFunction[*ssoTypes.TokenInput, []byte](
-					func(decryptedPayload []byte) (*ssoTypes.TokenInput, *muxResponseError.ResponseError) {
-						tokenInput, responseError := tokenInputBodyParser.Parse(nil, decryptedPayload)
-						if responseError != nil {
-							return nil, responseError
-						}
-						return tokenInput, nil
+			),
+		}
+		tokenEndpointSpecification.BodyParserConfiguration = &parsing.BodyParserConfiguration{
+			ContentType: "application/jose",
+			MaxBytes:    4096,
+			Parser: bodyParserAdapter.New(
+				&muxUtils.BodyParserWithProcessor[[]byte, *ssoTypes.TokenInput]{
+					BodyParser: &client_side_encryption.BodyParser{
+						PrivateKey:        cseConfig.PrivateKey,
+						KeyAlgorithm:      cseConfig.KeyAlgorithm,
+						ContentEncryption: cseConfig.ContentEncryption,
 					},
-				),
-			},
-		),
-	}
-	tokenEndpointSpecification.Handler = func(request *http.Request, body []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
-		ctx := request.Context()
-
-		responseEncrypter, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[jose.Encrypter](ctx)
-		if responseError != nil {
-			return nil, responseError
-		}
-
-		tokenInput, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*ssoTypes.TokenInput](ctx)
-		if responseError != nil {
-			return nil, responseError
-		}
-
-		code := tokenInput.Code
-		codeVerifier := tokenInput.Verifier
-		userEmailAddress, err := handleExchange(ctx, code, codeVerifier, oauthConfig, oidcVerifier)
-		if err != nil {
-			wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
-			if errors.Is(err, motmedelErrors.ErrValidationError) {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-						fmt.Sprintf("The access token could not be verified: %v", err),
-						nil,
+					Processor: processor.ProcessorFunction[*ssoTypes.TokenInput, []byte](
+						func(decryptedPayload []byte) (*ssoTypes.TokenInput, *muxResponseError.ResponseError) {
+							tokenInput, responseError := tokenInputBodyParser.Parse(nil, decryptedPayload)
+							if responseError != nil {
+								return nil, responseError
+							}
+							return tokenInput, nil
+						},
 					),
-					ClientError: wrappedErr,
-				}
-			} else {
-				return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
+				},
+			),
+		}
+		tokenEndpointSpecification.Handler = func(request *http.Request, body []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
+			ctx := request.Context()
+
+			responseEncrypter, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[jose.Encrypter](ctx)
+			if responseError != nil {
+				return nil, responseError
 			}
-		}
 
-		userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
-		if err != nil {
-			wrappedErr := motmedelErrors.New(fmt.Errorf("user handler insert email address user: %w", err), userEmailAddress)
-			var responseError *muxResponseError.ResponseError
-			if errors.Is(err, ssoErrors.ErrForbiddenUser) {
-				responseError = &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
-						http.StatusForbidden,
-						"",
-						nil,
-					),
-					ClientError: wrappedErr,
-				}
-			} else {
-				responseError = &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.New(
-						fmt.Errorf("user handler insert email address user: %w", err),
-						userHandler, userEmailAddress,
-					),
+			tokenInput, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*ssoTypes.TokenInput](ctx)
+			if responseError != nil {
+				return nil, responseError
+			}
+
+			code := tokenInput.Code
+			codeVerifier := tokenInput.Verifier
+			userEmailAddress, err := handleExchange(ctx, code, codeVerifier, oauthConfig, oidcVerifier)
+			if err != nil {
+				wrappedErr := motmedelErrors.New(fmt.Errorf("handle exchange: %w", err), code, codeVerifier, oauthConfig, oidcVerifier)
+				if errors.Is(err, motmedelErrors.ErrValidationError) {
+					return nil, &muxResponseError.ResponseError{
+						ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
+							fmt.Sprintf("The access token could not be verified: %v", err),
+							nil,
+						),
+						ClientError: wrappedErr,
+					}
+				} else {
+					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
 				}
 			}
 
-			return nil, responseError
-		}
+			userId, err := userHandler.AddEmailAddressUser(ctx, userEmailAddress)
+			if err != nil {
+				wrappedErr := motmedelErrors.New(fmt.Errorf("user handler insert email address user: %w", err), userEmailAddress)
+				var responseError *muxResponseError.ResponseError
+				if errors.Is(err, ssoErrors.ErrForbiddenUser) {
+					responseError = &muxResponseError.ResponseError{
+						ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+							http.StatusForbidden,
+							"",
+							nil,
+						),
+						ClientError: wrappedErr,
+					}
+				} else {
+					responseError = &muxResponseError.ResponseError{
+						ServerError: motmedelErrors.New(
+							fmt.Errorf("user handler insert email address user: %w", err),
+							userHandler, userEmailAddress,
+						),
+					}
+				}
 
-		sessionToken, err := sessionHandler.MakeSessionToken(ctx, userId)
-		if err != nil {
-			return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.New(
-				fmt.Errorf("session handler make session token: %w", err),
-				sessionHandler, userId,
-			)}
-		}
-		if sessionToken == "" {
-			return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptySessionToken)}
-		}
+				return nil, responseError
+			}
 
-		jwe, err := responseEncrypter.Encrypt([]byte(sessionToken))
-		if err != nil {
-			return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jose encrypt: %w", err))}
-		}
-		if jwe == nil {
-			return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrNilJwe)}
-		}
+			sessionToken, err := sessionHandler.MakeSessionToken(ctx, userId)
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.New(
+					fmt.Errorf("session handler make session token: %w", err),
+					sessionHandler, userId,
+				)}
+			}
+			if sessionToken == "" {
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrEmptySessionToken)}
+			}
 
-		compact, err := jwe.CompactSerialize()
-		if err != nil {
-			return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("json web encryption compact serialize: %w", err))}
-		}
+			jwe, err := responseEncrypter.Encrypt([]byte(sessionToken))
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jose encrypt: %w", err))}
+			}
+			if jwe == nil {
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(ssoErrors.ErrNilJwe)}
+			}
 
-		return &muxResponse.Response{Body: []byte(compact), Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/jose"}}}, nil
+			compact, err := jwe.CompactSerialize()
+			if err != nil {
+				return nil, &muxResponseError.ResponseError{ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("json web encryption compact serialize: %w", err))}
+			}
+
+			return &muxResponse.Response{Body: []byte(compact), Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/jose"}}}, nil
+		}
 	}
 
 	return nil
