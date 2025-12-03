@@ -26,6 +26,7 @@ func GenerateSessionId() string {
 func MakeSessionToken(
 	authenticationId string,
 	userId string,
+	userEmail string,
 	signer motmedelCryptoInterfaces.NamedSigner,
 	expiresAt time.Time,
 	issuer string,
@@ -49,7 +50,7 @@ func MakeSessionToken(
 
 	payload := map[string]any{
 		"jti": strings.Join([]string{authenticationId, GenerateSessionId()}, ":"),
-		"sub": userId,
+		"sub": strings.Join([]string{userId, userEmail}, ":"),
 		"exp": expiresAt.Unix(),
 		"nbf": time.Now().Unix(),
 		"iss": issuer,
@@ -143,6 +144,7 @@ func MakeSessionCookie(
 func MakeSessionCookieHeader(
 	authenticationId string,
 	userId string,
+	userEmail string,
 	signer motmedelCryptoInterfaces.NamedSigner,
 	cookieName string,
 	expiresAt time.Time,
@@ -154,7 +156,7 @@ func MakeSessionCookieHeader(
 		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptySessionCookieDomain)
 	}
 
-	sessionToken, err := MakeSessionToken(authenticationId, userId, signer, expiresAt, issuer, customClaims)
+	sessionToken, err := MakeSessionToken(authenticationId, userId, userEmail, signer, expiresAt, issuer, customClaims)
 	if err != nil {
 		return nil, fmt.Errorf("make session token: %w", err)
 	}

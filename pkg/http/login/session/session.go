@@ -194,7 +194,6 @@ func PopulateBareEndpoints(bareEndpointsOverview *types.EndpointSpecificationOve
 	}
 
 	return nil
-
 }
 
 func MakeEndpoints(sessionHandler SessionHandler, options ...path_config.Option) (*types.EndpointSpecificationOverview, error) {

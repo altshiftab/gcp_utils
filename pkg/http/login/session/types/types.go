@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser"
@@ -22,21 +23,24 @@ var (
 )
 
 type EndpointSpecificationOverview struct {
-    RefreshEndpoint *endpoint_specification.EndpointSpecification
-    EndEndpoint     *endpoint_specification.EndpointSpecification
+	RefreshEndpoint *endpoint_specification.EndpointSpecification
+	EndEndpoint     *endpoint_specification.EndpointSpecification
 }
 
 func (overview *EndpointSpecificationOverview) Endpoints() []*endpoint_specification.EndpointSpecification {
-    return []*endpoint_specification.EndpointSpecification{
-        overview.RefreshEndpoint,
-        overview.EndEndpoint,
-    }
+	return []*endpoint_specification.EndpointSpecification{
+		overview.RefreshEndpoint,
+		overview.EndEndpoint,
+	}
 }
 
 type JwtToken struct {
 	*registered_claims.RegisteredClaims
-	TenantId string
-	Roles    []string
+	SubjectId           string
+	SubjectEmailAddress string
+	TenantId            string
+	TenantName          string
+	Roles               []string
 }
 
 type JwtTokenRequestParser struct {
@@ -93,6 +97,22 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 		} else {
 			errs = append(errs, fmt.Errorf("convert (tenant id): %w", err))
 		}
+	}
+
+	tenantNameAny, tenantNameOk := payload["tenant_name"]
+	if tenantNameOk {
+		tenantName, err := motmedelUtils.Convert[string](tenantNameAny)
+		if err == nil {
+			jwtToken.TenantName = tenantName
+		} else {
+			errs = append(errs, fmt.Errorf("convert (tenant name): %w", err))
+		}
+	}
+
+	subjectId, subjectEmail, found := strings.Cut(jwtToken.Subject, ":")
+	if found {
+		jwtToken.SubjectId = subjectId
+		jwtToken.SubjectEmailAddress = subjectEmail
 	}
 
 	if len(errs) > 0 {
