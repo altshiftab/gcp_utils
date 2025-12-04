@@ -13,6 +13,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtilsJwt "github.com/Motmedel/utils_go/pkg/http/mux/utils/jwt"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
+	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	motmedelJwtErrors "github.com/Motmedel/utils_go/pkg/jwt/errors"
 	"github.com/Motmedel/utils_go/pkg/jwt/types/registered_claims"
 	motmedelUtils "github.com/Motmedel/utils_go/pkg/utils"
@@ -41,6 +42,22 @@ type JwtToken struct {
 	TenantId            string
 	TenantName          string
 	Roles               []string
+}
+
+func (token *JwtToken) GetUser() *motmedelHttpTypes.HttpContextUser {
+	user := &motmedelHttpTypes.HttpContextUser{
+		Id:    token.SubjectId,
+		Email: token.SubjectEmailAddress,
+	}
+
+	if token.TenantId != "" || token.TenantName != "" {
+		user.Group = &motmedelHttpTypes.HttpContextGroup{
+			Id:     token.TenantId,
+			Name:   token.TenantName,
+		}
+	}
+
+	return user
 }
 
 type JwtTokenRequestParser struct {
