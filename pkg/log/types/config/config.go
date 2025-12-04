@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	DefaultHttpContextExtractor = &motmedelHttpLog.HttpContextExtractor{}
+	DefaultHttpContextExtractor = motmedelHttpLog.New()
 	DefaultGcpLoggingExtractor  = &gcpLogging.HttpContextExtractor{}
 )
 
