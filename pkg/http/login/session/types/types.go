@@ -52,10 +52,12 @@ func (token *JwtToken) GetUser() *motmedelHttpTypes.HttpContextUser {
 
 	if token.TenantId != "" || token.TenantName != "" {
 		user.Group = &motmedelHttpTypes.HttpContextGroup{
-			Id:     token.TenantId,
-			Name:   token.TenantName,
+			Id:   token.TenantId,
+			Name: token.TenantName,
 		}
 	}
+
+	user.Roles = token.Roles
 
 	return user
 }
