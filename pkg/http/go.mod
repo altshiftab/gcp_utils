@@ -1,14 +1,14 @@
 module github.com/altshiftab/gcp_utils/pkg/http
 
-go 1.25
+go 1.25.0
 
 require (
-	github.com/Motmedel/utils_go v0.0.297
-	github.com/Motmedel/utils_go/pkg/http/mux v0.0.120
-	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.31
+	github.com/Motmedel/utils_go v0.0.305
+	github.com/Motmedel/utils_go/pkg/http/mux v0.0.134
+	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.32
 	github.com/Motmedel/utils_go/pkg/http/problem_detail v1.0.5
 	github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5
-	github.com/altshiftab/gcp_utils v0.0.7
+	github.com/altshiftab/gcp_utils v0.0.8
 	golang.org/x/net v0.46.0
 )
 
