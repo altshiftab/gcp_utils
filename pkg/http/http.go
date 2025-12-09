@@ -31,6 +31,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/content_security_policy"
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
+	cspUtils "github.com/Motmedel/utils_go/pkg/http/utils/content_security_policy"
 	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
 	motmedelGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
@@ -282,7 +283,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
 	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
 		var err error
-		contentSecurityPolicy, err = contentSecurityPolicyParsing.ParseContentSecurityPolicy(
+		contentSecurityPolicy, err = contentSecurityPolicyParsing.Parse(
 			[]byte(contentSecurityPolicyString),
 		)
 		if err != nil {
@@ -470,6 +471,16 @@ func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*u
 		return motmedelErrors.NewWithTrace(errors.New("nil default document headers"))
 	}
 
+	csp, err := mux.GetContentSecurityPolicy()
+	if err != nil {
+		return fmt.Errorf("mux get content security policy: %w", err)
+	}
+
+	cspUtils.PatchCspConnectSrcWithHostSrc(csp, providerUrls...)
+	if err := mux.SetContentSecurityPolicy(csp); err != nil {
+		return fmt.Errorf("mux set content security policy: %w", err)
+	}
+
 	var permissionPolicyEntries []string
 	for _, providerUrl := range providerUrls {
 		if providerUrl == nil {
@@ -481,61 +492,6 @@ func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*u
 			fmt.Sprintf("identity-credentials-get=(self \"%s\")", providerUrl.String()),
 		)
 	}
-
-	var hostSources []content_security_policy.SourceI
-	for _, manifestUrl := range manifestUrls {
-		if hostSource := content_security_policy.HostSourceFromUrl(manifestUrl); hostSource != nil {
-			hostSources = append(hostSources, hostSource)
-		}
-	}
-
-	connectionSrcDirective := &content_security_policy.ConnectSrcDirective{
-		SourceDirective: content_security_policy.SourceDirective{
-			Sources: slices.Concat(
-				[]content_security_policy.SourceI{
-					&content_security_policy.KeywordSource{Keyword: "self"},
-				},
-				hostSources,
-			),
-		},
-	}
-
-	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
-	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
-		var err error
-		contentSecurityPolicy, err = contentSecurityPolicyParsing.ParseContentSecurityPolicy(
-			[]byte(contentSecurityPolicyString),
-		)
-		if err != nil {
-			return motmedelErrors.New(
-				fmt.Errorf("parse content security policy: %w", err),
-				contentSecurityPolicyString,
-			)
-		}
-
-		if existingConnectSrcDirective := contentSecurityPolicy.GetConnectSrc(); existingConnectSrcDirective != nil {
-			sourceMap := make(map[string]struct{})
-			for _, source := range existingConnectSrcDirective.Sources {
-				sourceMap[source.String()] = struct{}{}
-			}
-
-			for _, hostSource := range hostSources {
-				if _, found := sourceMap[hostSource.String()]; !found {
-
-					existingConnectSrcDirective.Sources = append(existingConnectSrcDirective.Sources, hostSource)
-				}
-			}
-		} else {
-			contentSecurityPolicy.Directives = append(contentSecurityPolicy.Directives, connectionSrcDirective)
-		}
-	} else {
-		contentSecurityPolicy = &content_security_policy.ContentSecurityPolicy{
-			Directives: []content_security_policy.DirectiveI{
-				connectionSrcDirective,
-			},
-		}
-	}
-	defaultDocumentHeaders[ContentSecurityPolicyHeader] = contentSecurityPolicy.String()
 
 	permissionsPolicy := defaultDocumentHeaders[PermissionsPolicyHeader]
 	if permissionsPolicy != "" {
@@ -641,7 +597,7 @@ func PatchTrustedTypes(mux *motmedelMux.Mux, policies ...string) error {
 	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
 	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
 		var err error
-		contentSecurityPolicy, err = contentSecurityPolicyParsing.ParseContentSecurityPolicy(
+		contentSecurityPolicy, err = contentSecurityPolicyParsing.Parse(
 			[]byte(contentSecurityPolicyString),
 		)
 		if err != nil {
