@@ -3,6 +3,7 @@ package gmail
 import (
 	"context"
 	"fmt"
+
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	gcpUtilsAuth "github.com/altshiftab/gcp_utils/pkg/auth"
@@ -12,21 +13,22 @@ import (
 	"google.golang.org/api/option"
 )
 
-func MakeGmailUsersMessagesService(
+
+func MakeMessagesServiceWithAccountKey(
 	ctx context.Context,
 	accountKey []byte,
 	impersonateEmailAddress string,
 ) (*gmail.UsersMessagesService, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	if len(accountKey) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("context err: %w", err)
 	}
 
 	if impersonateEmailAddress == "" {
 		return nil, motmedelErrors.NewWithTrace(gcpUtilsAuthErrors.ErrEmptyImpersonateEmailAddress)
+	}
+
+	if len(accountKey) == 0 {
+		return nil, nil
 	}
 
 	httpClient, err := gcpUtilsAuth.MakeImpersonatedOauthClientFromAccountKey(
