@@ -18,8 +18,12 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
+	motmedelOs "github.com/Motmedel/utils_go/pkg/os"
+	motmedelOsErrors "github.com/Motmedel/utils_go/pkg/os/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	authErrors "github.com/altshiftab/gcp_utils/pkg/auth/errors"
+	"github.com/altshiftab/gcp_utils/pkg/auth/types/credentials_config"
+	"github.com/altshiftab/gcp_utils/pkg/auth/types/token_config"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -43,6 +47,9 @@ func TokenFromFilePath(ctx context.Context, path string) (*oauth2.Token, error) 
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("os open: %w", err))
+	}
+	if file == nil {
+		return nil, motmedelErrors.NewWithTrace(motmedelOsErrors.ErrNilFile)
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
@@ -84,7 +91,7 @@ func randomState(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func GetOauthTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
+func TokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context err: %w", err)
 	}
@@ -129,10 +136,8 @@ func GetOauthTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.T
 	configCopy := *config
 	configCopy.RedirectURL = fmt.Sprintf("http://localhost:%d/", port)
 
-	// Create a random state to prevent CSRF
 	state := randomState(16)
 
-	// Build auth URL and open the browser
 	authUrl := configCopy.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 	fmt.Printf("Opening browser for authorization...\nIf it doesn't open, visit this URL:\n%v\n", authUrl)
 	_ = openBrowser(authUrl)
@@ -204,6 +209,79 @@ func GetOauthTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.T
 	}
 
 	return token, nil
+}
+
+func GetToken(ctx context.Context, oauthConfig *oauth2.Config, options ...token_config.Option) (*oauth2.Token, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context err: %w", err)
+	}
+
+	if oauthConfig == nil {
+		return nil, motmedelErrors.NewWithTrace(errors.New("nil oauth config"))
+	}
+
+	tokenConfig := token_config.New(options...)
+
+	var token *oauth2.Token
+	var err error
+
+	tokenPath := tokenConfig.TokenPath
+	if motmedelOs.Exists(tokenPath) {
+		token, err = TokenFromFilePath(ctx, tokenPath)
+		if err != nil {
+			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("token from file path: %w", err), tokenPath)
+		}
+	} else {
+		token, err = TokenFromWeb(ctx, oauthConfig)
+		if err != nil {
+			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("token from web: %w", err))
+		}
+	}
+
+	if tokenConfig.WriteToken {
+		file, err := os.Create(tokenPath)
+		if err != nil {
+			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("os create: %w", err))
+		}
+		if file == nil {
+			return nil, motmedelErrors.NewWithTrace(motmedelOsErrors.ErrNilFile)
+		}
+		if err := json.MarshalWrite(file, token); err != nil {
+			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json marshal write: %w", err))
+		}
+	}
+
+	return token, nil
+}
+
+func GoogleCredentialsFromFilePath(path string, scopes ...string) (*oauth2.Config, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	credentialsData, err := os.ReadFile(path)
+	if err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("os open: %w", err))
+	}
+
+	config, err := google.ConfigFromJSON(credentialsData, scopes...)
+	if err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("google config from json: %w", err))
+	}
+
+	return config, nil
+}
+
+func GetGoogleCredentials(scopes []string, options ...credentials_config.Option) (*oauth2.Config, error) {
+	credentialsConfig := credentials_config.New(options...)
+
+	path := credentialsConfig.CredentialsPath
+	config, err := GoogleCredentialsFromFilePath(path, scopes...)
+	if err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("google credentials from file path: %w", err), path)
+	}
+
+	return config, nil
 }
 
 func GetDefaultCredentialsToken(ctx context.Context, scopes ...string) (*oauth2.Token, error) {
