@@ -272,7 +272,7 @@ func GoogleCredentialsFromFilePath(path string, scopes ...string) (*oauth2.Confi
 	return config, nil
 }
 
-func GetGoogleCredentials(scopes []string, options ...credentials_config.Option) (*oauth2.Config, error) {
+func GetGoogleOauthConfig(scopes []string, options ...credentials_config.Option) (*oauth2.Config, error) {
 	credentialsConfig := credentials_config.New(options...)
 
 	path := credentialsConfig.CredentialsPath
