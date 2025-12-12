@@ -6,8 +6,10 @@ cloud.google.com/go/compute/metadata v0.7.0 h1:PBWF+iiAerVNe8UCHxdOt6eHLVc3ydFeO
 cloud.google.com/go/compute/metadata v0.7.0/go.mod h1:j5MvL9PprKL39t166CoB1uVHfQMs4tFQZZcKwksXUjo=
 github.com/Motmedel/utils_go v0.0.234 h1:ESodbDQFM2OhElNWV4iDrd/nDY143bwIM+imgBsXEl0=
 github.com/Motmedel/utils_go v0.0.234/go.mod h1:kKm8jM7GA8M7ICIImi5etOMixRgQfnStBPjEoCMTgbg=
-github.com/altshiftab/gcp_utils/pkg/auth v0.0.4 h1:qcHc5EImhJsSqxUPrdRb4CtOJ6m1ohpW9q56ibASdZQ=
-github.com/altshiftab/gcp_utils/pkg/auth v0.0.4/go.mod h1:8Y7XvcxN+69nHjASEYbE8b3bHmUtIU08Fhw/43Paqac=
+github.com/Motmedel/utils_go/pkg/mail/validation/address v0.0.1 h1:cD6jkwKJnYEhyO51Rs3VYB/iPu//6/Lva5Uc/y6yVqE=
+github.com/Motmedel/utils_go/pkg/mail/validation/address v0.0.1/go.mod h1:tL7emgF1YOM8G/Wzw21t5mw/WCOTLRQLyXsMThvhMPo=
+github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5 h1:57lx54tX6LbHjMNv0qGnwQB/eo7axhbDnd6rVWyWjxc=
+github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5/go.mod h1:sRPKDiIl1+iQ0eT9amSQKzBdFWDFXtxi32mEvBPm4BU=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=

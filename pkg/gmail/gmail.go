@@ -1,53 +1,16 @@
 package gmail
 
 import (
-	"context"
+	"encoding/base64"
 	"fmt"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
-	gcpUtilsAuth "github.com/altshiftab/gcp_utils/pkg/auth"
-	gcpUtilsAuthErrors "github.com/altshiftab/gcp_utils/pkg/auth/errors"
 	gmailUtilsErrors "github.com/altshiftab/gcp_utils/pkg/gmail/errors"
+	"github.com/altshiftab/gcp_utils/pkg/gmail/types/message"
 	"google.golang.org/api/gmail/v1"
-	"google.golang.org/api/option"
 )
 
-
-func MakeMessagesServiceWithAccountKey(
-	ctx context.Context,
-	accountKey []byte,
-	impersonateEmailAddress string,
-) (*gmail.UsersMessagesService, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("context err: %w", err)
-	}
-
-	if impersonateEmailAddress == "" {
-		return nil, motmedelErrors.NewWithTrace(gcpUtilsAuthErrors.ErrEmptyImpersonateEmailAddress)
-	}
-
-	if len(accountKey) == 0 {
-		return nil, nil
-	}
-
-	httpClient, err := gcpUtilsAuth.MakeImpersonatedOauthClientFromAccountKey(
-		ctx,
-		accountKey,
-		impersonateEmailAddress,
-		gmail.GmailSendScope,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("make impersonated oauth client from account key: %w", err)
-	}
-	if httpClient == nil {
-		return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpClient)
-	}
-
-	gmailService, err := gmail.NewService(ctx, option.WithHTTPClient(httpClient))
-	if err != nil {
-		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("gmail new service: %w", err), httpClient)
-	}
+func getMessagesService(gmailService *gmail.Service) (*gmail.UsersMessagesService, error) {
 	if gmailService == nil {
 		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilService)
 	}
@@ -58,4 +21,40 @@ func MakeMessagesServiceWithAccountKey(
 	}
 
 	return gmailUsersService.Messages, nil
+}
+
+func SendMessage(msg *message.Message, service *gmail.Service) (*gmail.Message, error) {
+	if service == nil {
+		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilService)
+	}
+
+	if msg == nil {
+		return nil, nil
+	}
+
+	messageString, err := msg.String()
+	if err != nil {
+		return nil, fmt.Errorf("message string: %w", err)
+	}
+
+	messagesService, err := getMessagesService(service)
+	if err != nil {
+		return nil, fmt.Errorf("get messages service: %w", err)
+	}
+	if messagesService == nil {
+		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilUsersMessagesService)
+	}
+
+	sendCall := messagesService.Send("me", &gmail.Message{Raw: base64.URLEncoding.EncodeToString([]byte(messageString))})
+	if sendCall == nil {
+		return nil, motmedelErrors.NewWithTrace(gmailUtilsErrors.ErrNilUsersMessagesSendCall)
+	}
+
+	// "me" is a special UserID indicating the authenticated user
+	sentMessage, err := sendCall.Do()
+	if err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("user messages send call: %w", err), messageString)
+	}
+
+	return sentMessage, nil
 }
