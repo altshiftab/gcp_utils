@@ -3,7 +3,8 @@ module github.com/altshiftab/gcp_utils/pkg/gmail
 go 1.25
 
 require (
-	github.com/Motmedel/utils_go v0.0.309
+	github.com/Motmedel/ecs_go v0.0.70
+	github.com/Motmedel/utils_go v0.0.311
 	google.golang.org/api v0.257.0
 )
 
@@ -11,6 +12,7 @@ require (
 	cloud.google.com/go/auth v0.17.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
+	github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
