@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 
@@ -28,6 +30,39 @@ var (
 )
 
 const defaultCredentialsScope = "https://www.googleapis.com/auth/cloud-platform"
+
+func TokenFromFilePath(ctx context.Context, path string) (*oauth2.Token, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context err: %w", err)
+	}
+
+	if path == "" {
+		return nil, nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("os open: %w", err))
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.WarnContext(
+				motmedelContext.WithErrorContextValue(
+					ctx,
+					motmedelErrors.NewWithTrace(fmt.Errorf("file close: %w", err)),
+				),
+				"An error occurred when closing the file.",
+			)
+		}
+	}()
+
+	var token oauth2.Token
+	if err := json.UnmarshalRead(file, &token); err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json unmarshal read: %w", err))
+	}
+
+	return &token, nil
+}
 
 // openBrowser tries to open the provided URL in the default browser.
 func openBrowser(url string) error {
