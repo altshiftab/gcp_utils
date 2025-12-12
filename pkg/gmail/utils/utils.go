@@ -30,7 +30,9 @@ func ParseGmailMessage(ctx context.Context, message *gmail.Message) (*ecs.Base, 
 
 	var ecsEmail ecs.Email
 
-	ecsEmail.OriginationTimestamp = time.UnixMilli(message.InternalDate).UTC().Format("2006-01-02T15:04:05.999Z")
+	if internalDate := message.InternalDate; internalDate != 0 {
+		ecsEmail.OriginationTimestamp = time.UnixMilli(internalDate).UTC().Format("2006-01-02T15:04:05.999Z")
+	}
 
 	if messagePayload := message.Payload; messagePayload != nil {
 		headers := make(map[string]string)
@@ -67,8 +69,11 @@ func ParseGmailMessage(ctx context.Context, message *gmail.Message) (*ecs.Base, 
 			}
 
 			for _, address := range toAddressList {
-				if addr, _ := ecs.ParseEmailAddress(address.Address); addr != nil {
-					ecsEmail.To = append(ecsEmail.To, addr)
+				if address != nil {
+					ecsEmail.To = append(
+						ecsEmail.To,
+						&ecs.EmailAddress{Name: address.Name, Address: address.Address},
+					)
 				}
 			}
 		}
@@ -86,8 +91,11 @@ func ParseGmailMessage(ctx context.Context, message *gmail.Message) (*ecs.Base, 
 			}
 
 			for _, address := range replyToAddressList {
-				if addr, _ := ecs.ParseEmailAddress(address.Address); addr != nil {
-					ecsEmail.ReplyTo = append(ecsEmail.ReplyTo, addr)
+				if address != nil {
+					ecsEmail.ReplyTo = append(
+						ecsEmail.ReplyTo,
+						&ecs.EmailAddress{Name: address.Name, Address: address.Address},
+					)
 				}
 			}
 		}
