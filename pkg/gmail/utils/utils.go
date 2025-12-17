@@ -19,15 +19,6 @@ func ParseGmailMessage(ctx context.Context, message *gmail.Message) (*ecs.Base, 
 		return nil, nil
 	}
 
-	base := &ecs.Base{
-		Event: &ecs.Event{
-			Provider: "gmail",
-			Kind:     "event",
-			Category: []string{"email"},
-			Type:     []string{"info"},
-		},
-	}
-
 	var ecsEmail ecs.Email
 
 	if internalDate := message.InternalDate; internalDate != 0 {
@@ -62,7 +53,7 @@ func ParseGmailMessage(ctx context.Context, message *gmail.Message) (*ecs.Base, 
 				slog.WarnContext(
 					motmedelContext.WithErrorContextValue(
 						ctx,
-						motmedelErrors.NewWithTrace(fmt.Errorf("parse address list (to): %w", err), val),
+						motmedelErrors.NewWithTrace(fmt.Errorf("mail parse address list (to): %w", err), val),
 					),
 					"An error occurred when parsing the \"To\" header.",
 				)
@@ -84,7 +75,7 @@ func ParseGmailMessage(ctx context.Context, message *gmail.Message) (*ecs.Base, 
 				slog.WarnContext(
 					motmedelContext.WithErrorContextValue(
 						ctx,
-						motmedelErrors.NewWithTrace(fmt.Errorf("parse address list (reply-to): %w", err), val),
+						motmedelErrors.NewWithTrace(fmt.Errorf("mail parse address list (reply-to): %w", err), val),
 					),
 					"An error occurred when parsing the \"Reply-To\" header.",
 				)
@@ -109,7 +100,5 @@ func ParseGmailMessage(ctx context.Context, message *gmail.Message) (*ecs.Base, 
 		}
 	}
 
-	base.Email = &ecsEmail
-
-	return base, nil
+	return &ecs.Base{Email: &ecsEmail}, nil
 }

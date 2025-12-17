@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"fmt"
+	"log/slog"
 	"maps"
 	"net/http"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/jwt/types/token"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types"
 	"github.com/google/uuid"
 )
 
@@ -170,4 +172,37 @@ func MakeSessionCookieHeader(
 	}
 
 	return &muxResponse.HeaderEntry{Name: "Set-Cookie", Value: sessionCookie.String()}, nil
+}
+
+func MakeUserAttrsFromJwtToken(token *types.JwtToken) []any {
+	if token == nil {
+		return nil
+	}
+
+	roles := token.Roles
+	if len(roles) == 0 {
+		roles = make([]string, 0)
+	}
+
+	attrs := []any{
+		slog.String("id", token.SubjectId),
+		slog.String("email", token.SubjectEmailAddress),
+		slog.Any("roles", roles),
+	}
+
+	var groupAttrs []any
+
+	if tenantId := token.TenantId; tenantId != "" {
+		groupAttrs = append(groupAttrs, slog.String("id", tenantId))
+	}
+
+	if tenantName := token.TenantName; tenantName != "" {
+		groupAttrs = append(groupAttrs, slog.String("name", tenantName))
+	}
+
+	if len(groupAttrs) > 0 {
+		attrs = append(attrs, slog.Group("group", groupAttrs...))
+	}
+
+	return attrs
 }
