@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/Motmedel/ecs_go v0.0.70
-	github.com/Motmedel/utils_go v0.0.311
+	github.com/Motmedel/utils_go v0.0.318
 	google.golang.org/api v0.257.0
 )
 
