@@ -146,34 +146,33 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 		}
 	}
 
-	var allowed bool
-
 	if superAdminRoles := parser.SuperAdminRoles; len(superAdminRoles) != 0 {
 		for _, role := range jwtToken.Roles {
 			if slices.Contains(superAdminRoles, role) {
+				return &jwtToken, nil
+			}
+		}
+	}
+
+	var allowed bool
+
+	if allowedTenantId := parser.AllowedTenantId; allowedTenantId != "" {
+		if jwtToken.TenantId != allowedTenantId {
+			return nil, &response_error.ResponseError{
+				ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+					http.StatusForbidden,
+					"Invalid tenant id.",
+					nil,
+				),
+			}
+		}
+	}
+
+	if allowedRoles := parser.AllowedRoles; len(allowedRoles) != 0 {
+		for _, role := range jwtToken.Roles {
+			if slices.Contains(parser.AllowedRoles, role) {
 				allowed = true
 				break
-			}
-		}
-	} else {
-		if allowedTenantId := parser.AllowedTenantId; allowedTenantId != "" {
-			if jwtToken.TenantId != allowedTenantId {
-				return nil, &response_error.ResponseError{
-					ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
-						http.StatusForbidden,
-						"Invalid tenant id.",
-						nil,
-					),
-				}
-			}
-		}
-
-		if allowedRoles := parser.AllowedRoles; len(allowedRoles) != 0 {
-			for _, role := range jwtToken.Roles {
-				if slices.Contains(parser.AllowedRoles, role) {
-					allowed = true
-					break
-				}
 			}
 		}
 	}
