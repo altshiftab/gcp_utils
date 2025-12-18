@@ -175,6 +175,8 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 				break
 			}
 		}
+	} else {
+		allowed = true
 	}
 
 	if !allowed {
