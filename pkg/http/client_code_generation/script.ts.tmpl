@@ -29,7 +29,7 @@ export async function {{ .Endpoint.Name }}(
     clientJwk.use = "enc";
     {{- end }}
 
-    const url = new URL("{{ .Endpoint.URL }}");
+    const url = new URL("{{ .Endpoint.URL }}"{{ if hasPrefix .Endpoint.URL "/" }}, location.origin{{ end }});
     {{- if and (not $noRequestBody) $isNoBodyMethod }}
     for (const [__k, __v] of Object.entries(input as any)) {
         if (__v === undefined || __v === null)

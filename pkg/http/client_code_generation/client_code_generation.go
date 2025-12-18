@@ -12,7 +12,6 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
-	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
 	gcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
@@ -42,6 +41,8 @@ var scriptTemplate = template.Must(
 			}
 			return m, nil
 		},
+		// hasPrefix exposes strings.HasPrefix to templates
+		"hasPrefix": func(s, prefix string) bool { return strings.HasPrefix(s, prefix) },
 	}).Parse(scriptTemplateData),
 )
 
@@ -115,13 +116,8 @@ func makeTemplateInput(
 	tsContext *typeGenerationTypescriptTypes.Context,
 	baseUrl *url.URL,
 ) ([]*clientCodeGenerationTypes.TemplateInput, error) {
-
 	if tsContext == nil {
 		return nil, motmedelErrors.NewWithTrace(typeGenerationTypescriptErrors.ErrNilContext)
-	}
-
-	if baseUrl == nil {
-		return nil, motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilUrl)
 	}
 
 	if len(endpointSpecifications) == 0 {
@@ -203,6 +199,13 @@ func makeTemplateInput(
 			useAuthentication = true
 		}
 
+		var urlString string
+		if baseUrl != nil {
+			urlString = baseUrl.String() + path
+		} else {
+			urlString = path
+		}
+
 		templateInputs = append(
 			templateInputs,
 			&clientCodeGenerationTypes.TemplateInput{
@@ -213,7 +216,7 @@ func makeTemplateInput(
 				),
 				InputType:                 typescriptInputType,
 				ReturnType:                typescriptOutputType,
-				URL:                       baseUrl.String() + path,
+				URL:                       urlString,
 				Method:                    endpointSpecification.Method,
 				ContentType:               contentType,
 				ExpectedOutputContentType: outputContentType,
