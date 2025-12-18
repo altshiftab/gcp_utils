@@ -14,7 +14,6 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
-	gcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
 	typeGenerationTypescriptErrors "github.com/vphpersson/type_generation/pkg/producers/typescript/errors"
 	typeGenerationTypescriptTypes "github.com/vphpersson/type_generation/pkg/producers/typescript/types"
 	typeGenerationTypesContext "github.com/vphpersson/type_generation/pkg/types/context"
@@ -234,10 +233,6 @@ func Render(
 	baseUrl *url.URL,
 	options ...template_options.Option,
 ) (string, error) {
-	if baseUrl == nil {
-		return "", motmedelErrors.NewWithTrace(gcpUtilsHttpErrors.ErrNilBaseUrl)
-	}
-
 	if len(endpointSpecifications) == 0 {
 		return "", nil
 	}
