@@ -22,6 +22,7 @@ type GlobalTemplateInput struct {
 	CseKeyAlgorithm          string
 	CseKeyAlgorithmCurve     string
 	CseServerPublicJwk       string
-	UseEncryption   bool
-	AuthenticationMode template_options.AuthenticationMode
+	UseEncryption            bool
+	AuthenticationMode       template_options.AuthenticationMode
+	AcceptBaseUrlArgument    bool
 }

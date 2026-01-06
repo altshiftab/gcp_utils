@@ -272,6 +272,7 @@ func Render(
 			CseKeyAlgorithmCurve:     templateOptions.CseKeyAlgorithmCurve,
 			UseEncryption:            useEncryption,
 			AuthenticationMode:       templateOptions.AuthenticationMode,
+			AcceptBaseUrlArgument:    templateOptions.AcceptBaseUrlArgument,
 		},
 	}
 	if err := scriptTemplate.Execute(&buffer, data); err != nil {

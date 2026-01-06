@@ -1,6 +1,7 @@
 package template_options
 
 type AuthenticationMode string
+
 const (
 	AuthenticationModeCookie AuthenticationMode = "cookie"
 	AuthenticationModeBearer AuthenticationMode = "bearer"
@@ -16,16 +17,17 @@ const (
 type Option func(*Options)
 
 type Options struct {
-	AuthenticationMode AuthenticationMode
+	AuthenticationMode       AuthenticationMode
 	CseClientPublicJwkHeader string
 	CseContentEncryption     string
 	CseKeyAlgorithm          string
 	CseKeyAlgorithmCurve     string
+	AcceptBaseUrlArgument    bool
 }
 
 func New(options ...Option) *Options {
 	opts := &Options{
-		AuthenticationMode: AuthenticationModeCookie,
+		AuthenticationMode:       AuthenticationModeCookie,
 		CseClientPublicJwkHeader: DefaultCseClientPublicJwkHeader,
 		CseContentEncryption:     DefaultCseContentEncryption,
 		CseKeyAlgorithm:          DefaultCseKeyAlgorithm,
@@ -66,5 +68,11 @@ func WithCseKeyAlgorithm(keyAlgorithm string) Option {
 func WithCseKeyAlgorithmCurve(keyAlgorithmCurve string) Option {
 	return func(opts *Options) {
 		opts.CseKeyAlgorithmCurve = keyAlgorithmCurve
+	}
+}
+
+func WithAcceptBaseUrlArgument(acceptBaseUrlArgument bool) Option {
+	return func(opts *Options) {
+		opts.AcceptBaseUrlArgument = acceptBaseUrlArgument
 	}
 }

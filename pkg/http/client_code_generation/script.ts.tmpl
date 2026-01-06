@@ -11,6 +11,7 @@ import {fetchEx} from "@altshiftab/utils/http/utils";
 {{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
 {{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
 export async function {{ .Endpoint.Name }}(
+{{- if .Globals.AcceptBaseUrlArgument -}}baseUrl: string{{- if or (not $noRequestBody) (or $encryptedInput $authBearer) }}, {{ end }}{{- end -}}
 {{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if or $authBearer $encryptedInput }}, {{ end }}{{- end -}}
 {{- if $encryptedInput -}}serverJwk: JWK{{- if $authBearer }}, {{ end }}{{- end -}}
 {{- if $authBearer -}}token: string{{- end -}}
@@ -28,8 +29,11 @@ export async function {{ .Endpoint.Name }}(
     clientJwk.alg = "{{ .Globals.CseKeyAlgorithm }}";
     clientJwk.use = "enc";
     {{- end }}
-
+    {{- if .Globals.AcceptBaseUrlArgument }}
+    const url = new URL("{{ .Endpoint.URL }}", baseUrl);
+    {{- else }}
     const url = new URL("{{ .Endpoint.URL }}"{{ if hasPrefix .Endpoint.URL "/" }}, location.origin{{ end }});
+    {{- end }}
     {{- if and (not $noRequestBody) $isNoBodyMethod }}
     for (const [__k, __v] of Object.entries(input as any)) {
         if (__v === undefined || __v === null)
