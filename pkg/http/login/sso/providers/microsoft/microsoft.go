@@ -391,7 +391,7 @@ func PopulateBareEndpoints(
 						ContentEncryption: cseConfig.ContentEncryption,
 					},
 					processor.New(
-						func(decryptedPayload []byte) (*ssoTypes.TokenInput, *muxResponseError.ResponseError) {
+						func(ctx context.Context, decryptedPayload []byte) (*ssoTypes.TokenInput, *muxResponseError.ResponseError) {
 							tokenInput, responseError := tokenInputBodyParser.Parse(nil, decryptedPayload)
 							if responseError != nil {
 								return nil, responseError

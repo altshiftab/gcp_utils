@@ -180,7 +180,6 @@ func PopulateBareEndpoints(
 	cseConfig *cse_config.Config,
 	options ...path_config.Option,
 ) error {
-
 	if utils.IsNil(sessionHandler) {
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
@@ -424,7 +423,7 @@ func PopulateBareEndpoints(
 				ContentEncryption: cseConfig.ContentEncryption,
 			},
 			processor.New(
-				func(decryptedPayload []byte) (*ssoTypes.FedCmInput, *muxResponseError.ResponseError) {
+				func(ctx context.Context, decryptedPayload []byte) (*ssoTypes.FedCmInput, *muxResponseError.ResponseError) {
 					tokenInput, responseError := fedCmInputBodyParser.Parse(nil, decryptedPayload)
 					if responseError != nil {
 						return nil, responseError
@@ -515,7 +514,7 @@ func PopulateBareEndpoints(
 					ContentEncryption: cseConfig.ContentEncryption,
 				},
 				processor.New(
-					func(decryptedPayload []byte) (*ssoTypes.TokenInput, *muxResponseError.ResponseError) {
+					func(ctx context.Context, decryptedPayload []byte) (*ssoTypes.TokenInput, *muxResponseError.ResponseError) {
 						tokenInput, responseError := tokenInputBodyParser.Parse(nil, decryptedPayload)
 						if responseError != nil {
 							return nil, responseError
@@ -633,7 +632,6 @@ func MakeEndpoints(
 	cseConfig *cse_config.Config,
 	options ...path_config.Option,
 ) (*types.EndpointSpecificationOverview, error) {
-
 	bareEndpointsOverview := MakeBareEndpoints(options...)
 	if bareEndpointsOverview == nil {
 		return nil, motmedelErrors.NewWithTrace(ErrNilEndpointSpecificationOverview)
