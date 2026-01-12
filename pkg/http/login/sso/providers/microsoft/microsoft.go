@@ -12,12 +12,13 @@ import (
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux"
 	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
-	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_parser/adapter"
-	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/processor"
-	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser"
-	requestParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser"
+	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/processor"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
+	requestParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
@@ -383,13 +384,13 @@ func PopulateBareEndpoints(
 			ContentType: "application/jose",
 			MaxBytes:    4096,
 			Parser: bodyParserAdapter.New(
-				&muxUtils.BodyParserWithProcessor[[]byte, *ssoTypes.TokenInput]{
-					BodyParser: &client_side_encryption.BodyParser{
+				body_parser.WithProcessor(
+					&client_side_encryption.BodyParser{
 						PrivateKey:        cseConfig.PrivateKey,
 						KeyAlgorithm:      cseConfig.KeyAlgorithm,
 						ContentEncryption: cseConfig.ContentEncryption,
 					},
-					Processor: processor.ProcessorFunction[*ssoTypes.TokenInput, []byte](
+					processor.New(
 						func(decryptedPayload []byte) (*ssoTypes.TokenInput, *muxResponseError.ResponseError) {
 							tokenInput, responseError := tokenInputBodyParser.Parse(nil, decryptedPayload)
 							if responseError != nil {
@@ -398,7 +399,7 @@ func PopulateBareEndpoints(
 							return tokenInput, nil
 						},
 					),
-				},
+				),
 			),
 		}
 		tokenEndpointSpecification.Handler = func(request *http.Request, body []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
