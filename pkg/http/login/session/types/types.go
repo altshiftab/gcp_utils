@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtilsJwt "github.com/Motmedel/utils_go/pkg/http/mux/utils/jwt"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
