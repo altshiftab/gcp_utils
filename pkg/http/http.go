@@ -605,6 +605,65 @@ func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*u
 	return nil
 }
 
+// PatchChromeXmlRendererCsp adds CSP hashes for Chrome's XML renderer inline styles.
+// Chrome's built-in XML renderer applies inline styles that need these specific hashes.
+// These hash values are stable and provided by Chrome's CSP violation reports.
+func PatchChromeXmlRendererCsp(mux *motmedelMux.Mux) error {
+	if mux == nil {
+		return nil
+	}
+
+	defaultDocumentHeaders := mux.DefaultDocumentHeaders
+	if defaultDocumentHeaders == nil {
+		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilDefaultDocumentHeaders)
+	}
+
+	cspString := defaultDocumentHeaders[ContentSecurityPolicyHeader]
+	if cspString == "" {
+		// No CSP set yet, nothing to patch
+		return nil
+	}
+
+	csp, err := contentSecurityPolicyParsing.Parse([]byte(cspString))
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("parse content security policy: %w", err),
+			cspString,
+		)
+	}
+
+	// Chrome's XML renderer uses these two inline styles with stable hashes
+	chromeXmlHashes := []string{
+		"'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='",
+		"'sha256-p08VBe6m5i8+qtXWjnH/AN3klt1l4uoOLsjNn8BjdQo='",
+	}
+
+	styleSrcDirectiveI, found := csp.GetDirective("style-src")
+	if !found {
+		// Create new style-src directive with 'self' and the hashes
+		styleSrcDirective := &content_security_policy.StyleSrcDirective{
+			SourceExpressions: append([]string{"'self'"}, chromeXmlHashes...),
+		}
+		csp.Directives = append(csp.Directives, styleSrcDirective)
+	} else {
+		// Add hashes to existing style-src if not already present
+		if styleSrcDirective, ok := styleSrcDirectiveI.(*content_security_policy.StyleSrcDirective); ok {
+			for _, hash := range chromeXmlHashes {
+				if !slices.Contains(styleSrcDirective.SourceExpressions, hash) {
+					styleSrcDirective.SourceExpressions = append(
+						styleSrcDirective.SourceExpressions,
+						hash,
+					)
+				}
+			}
+		}
+	}
+
+	defaultDocumentHeaders[ContentSecurityPolicyHeader] = csp.String()
+
+	return nil
+}
+
 func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) error {
 	if mux == nil {
 		return nil
@@ -761,6 +820,10 @@ func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 
 	if err := PatchErrorReporting(mux, baseUrl); err != nil {
 		return fmt.Errorf("patch error reporting: %w", err)
+	}
+
+	if err := PatchChromeXmlRendererCsp(mux); err != nil {
+		return fmt.Errorf("patch chrome xml renderer csp: %w", err)
 	}
 
 	if err := PatchStrictTransportSecurity(mux); err != nil {
