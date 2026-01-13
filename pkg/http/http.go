@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
@@ -343,7 +345,27 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "A Content-Security-Policy report was received.")
+				ctx := request.Context()
+
+				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithErrorContextValue(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http content.",
+					)
+				}
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					"A content security policy report was received.",
+				)
+
 				return nil, nil
 			},
 		},
@@ -356,7 +378,27 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "A Content-Security-Policy report was received.")
+				ctx := request.Context()
+
+				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithErrorContextValue(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http content.",
+					)
+				}
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					"A content security policy report was received.",
+				)
+
 				return nil, nil
 			},
 		},
@@ -382,7 +424,27 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "An JavaScript unhandled rejection was reported.")
+				ctx := request.Context()
+
+				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithErrorContextValue(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http content.",
+					)
+				}
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					"An JavaScript unhandled rejection was reported.",
+				)
+
 				return nil, nil
 			},
 		},
@@ -395,7 +457,27 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "Network errors were reported.")
+				ctx := request.Context()
+
+				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithErrorContextValue(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http content.",
+					)
+				}
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					"A network error was reported.",
+				)
+
 				return nil, nil
 			},
 		},
@@ -407,7 +489,27 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "An Integrity-Policy report was received.")
+				ctx := request.Context()
+
+				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithErrorContextValue(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http content.",
+					)
+				}
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					"An integrity policy report was received.",
+				)
+
 				return nil, nil
 			},
 		},
