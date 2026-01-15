@@ -100,6 +100,27 @@ func PatchChromeXmlRenderer(mux *motmedelMux.Mux) error {
 		return fmt.Errorf("patch csp style src with hash: %w", err)
 	}
 
+	// Ensure 'self' is included in style-src as well
+	if styleSrc := csp.GetStyleSrc(); styleSrc != nil {
+		sourceMap := make(map[string]struct{})
+		for _, source := range styleSrc.Sources {
+			sourceMap[source.String()] = struct{}{}
+		}
+		selfSource := (&content_security_policy.KeywordSource{Keyword: "self"}).String()
+		if _, found := sourceMap[selfSource]; !found {
+			styleSrc.Sources = append(styleSrc.Sources, &content_security_policy.KeywordSource{Keyword: "self"})
+		}
+	} else {
+		// If style-src did not exist, create it with 'self'
+		csp.Directives = append(csp.Directives, &content_security_policy.StyleSrcDirective{
+			SourceDirective: content_security_policy.SourceDirective{
+				Sources: []content_security_policy.SourceI{
+					&content_security_policy.KeywordSource{Keyword: "self"},
+				},
+			},
+		})
+	}
+
 	if err := mux.SetContentSecurityPolicy(csp); err != nil {
 		return fmt.Errorf("set content security policy: %w", err)
 	}
