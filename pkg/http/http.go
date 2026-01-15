@@ -56,6 +56,11 @@ const (
 	IntegrityEndpointToken      = "integrity-endpoint"
 )
 
+var chromeXmlHashes = []string{
+	"sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+	"sha256-p08VBe6m5i8+qtXWjnH/AN3klt1l4uoOLsjNn8BjdQo=",
+}
+
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	if mux == nil {
 		return
@@ -72,18 +77,50 @@ func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	)
 }
 
-func PatchMux(mux *motmedelMux.Mux) {
+func PatchChromeXmlRenderer(mux *motmedelMux.Mux) error {
 	if mux == nil {
-		return
+		return nil
+	}
+
+	csp, err := mux.GetContentSecurityPolicy()
+	if err != nil {
+		return fmt.Errorf("mux get content security policy: %w", err)
+	}
+	if csp == nil {
+		csp, err = contentSecurityPolicyParsing.Parse([]byte(response_writer.DefaultContentSecurityPolicyString))
+		if err != nil {
+			return fmt.Errorf("parse content security policy: %w", err)
+		}
+	}
+	if csp == nil {
+		return motmedelErrors.NewWithTrace(contentSecurityPolicyParsing.ErrNilContentSecurityPolicy)
+	}
+
+	if err := cspUtils.PatchCspStyleSrcWithHash(csp, chromeXmlHashes...); err != nil {
+		return fmt.Errorf("patch csp style src with hash: %w", err)
+	}
+
+	return nil
+}
+
+func PatchMux(mux *motmedelMux.Mux) error {
+	if mux == nil {
+		return nil
 	}
 
 	PatchMuxProblemDetailConverter(mux)
+
+	if err := PatchChromeXmlRenderer(mux); err != nil {
+		return fmt.Errorf("patch chrome xml renderer: %w", err)
+	}
 
 	if motmedelGcpUtilsEnv.GetLogLevelWithDefault() == "DEBUG" {
 		mux.DoneCallback = func(ctx context.Context) {
 			slog.DebugContext(ctx, "An HTTP response was served.")
 		}
 	}
+
+	return nil
 }
 
 func makeSitemapXmlUrl(
@@ -645,16 +682,18 @@ func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) 
 func MakeMux(
 	specifications []*muxTypesEndpointSpecification.EndpointSpecification,
 	contextKeyValuePairs [][2]any,
-) *motmedelMux.Mux {
+) (*motmedelMux.Mux, error) {
 	mux := &motmedelMux.Mux{}
 	mux.DefaultHeaders = maps.Clone(response_writer.DefaultHeaders)
 	mux.DefaultDocumentHeaders = maps.Clone(response_writer.DefaultDocumentHeaders)
 	mux.SetContextKeyValuePairs = contextKeyValuePairs
 	mux.Add(specifications...)
 
-	PatchMux(mux)
+	if err := PatchMux(mux); err != nil {
+		return nil, fmt.Errorf("patch mux: %w", err)
+	}
 
-	return mux
+	return mux, nil
 }
 
 func PatchTrustedTypes(mux *motmedelMux.Mux, policies ...string) error {
@@ -846,7 +885,10 @@ func makeHttpService(
 		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrEmptyPort)
 	}
 
-	mux := MakeMux(staticContentEndpointSpecifications, nil)
+	mux, err := MakeMux(staticContentEndpointSpecifications, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("make mux: %w", err)
+	}
 	if mux == nil {
 		return nil, nil, motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
 	}
