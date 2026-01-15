@@ -100,6 +100,10 @@ func PatchChromeXmlRenderer(mux *motmedelMux.Mux) error {
 		return fmt.Errorf("patch csp style src with hash: %w", err)
 	}
 
+	if err := mux.SetContentSecurityPolicy(csp); err != nil {
+		return fmt.Errorf("set content security policy: %w", err)
+	}
+
 	return nil
 }
 
