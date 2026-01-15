@@ -231,7 +231,7 @@ func PopulateBareEndpoints(
 			Name:     callbackCookieName,
 			Value:    oauthFlowId,
 			Path:     pathConfig.CallbackPath,
-			Expires:  time.Now().Add(3 * time.Minute),
+			Expires:  time.Now().Add(8 * time.Minute),
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
