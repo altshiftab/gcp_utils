@@ -14,17 +14,17 @@ import (
 	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser"
 	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/adapter"
+	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/processor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	requestParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	queryExtractor "github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption"
-	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/utils/json/schema"
-	"github.com/Motmedel/utils_go/pkg/http/mux/utils/query"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
@@ -120,7 +120,7 @@ func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificati
 		Path:   pathConfig.CallbackPath,
 		Method: http.MethodGet,
 		UrlParserConfiguration: &parsing.UrlParserConfiguration{
-			Parser: requestParserAdapter.New(&query.Parser[*ssoTypes.CallbackUrlInput]{}),
+			Parser: requestParserAdapter.New(&queryExtractor.Parser[*ssoTypes.CallbackUrlInput]{}),
 		},
 		Handler: nil,
 		Hint: &endpoint_specification.Hint{
@@ -416,7 +416,7 @@ func PopulateBareEndpoints(
 		return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (fed cm input): %w", err))
 	}
 	fedCmEndpointSpecification.BodyParserConfiguration.Parser = bodyParserAdapter.New(
-		body_parser.WithProcessor(
+		body_parser.NewWithProcessor(
 			&client_side_encryption.BodyParser{
 				PrivateKey:        cseConfig.PrivateKey,
 				KeyAlgorithm:      cseConfig.KeyAlgorithm,
@@ -507,7 +507,7 @@ func PopulateBareEndpoints(
 			return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (token input): %w", err))
 		}
 		tokenEndpointSpecification.BodyParserConfiguration.Parser = bodyParserAdapter.New(
-			body_parser.WithProcessor(
+			body_parser.NewWithProcessor(
 				&client_side_encryption.BodyParser{
 					PrivateKey:        cseConfig.PrivateKey,
 					KeyAlgorithm:      cseConfig.KeyAlgorithm,
