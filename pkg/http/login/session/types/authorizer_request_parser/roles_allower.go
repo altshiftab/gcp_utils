@@ -1,4 +1,4 @@
-package types
+package authorizer_request_parser
 
 import (
 	"errors"
@@ -8,81 +8,37 @@ import (
 	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
-	muxUtilsJwt "github.com/Motmedel/utils_go/pkg/http/mux/utils/jwt"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
-	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
-	motmedelJwtErrors "github.com/Motmedel/utils_go/pkg/jwt/errors"
-	"github.com/Motmedel/utils_go/pkg/jwt/types/registered_claims"
-	motmedelUtils "github.com/Motmedel/utils_go/pkg/utils"
+	motmedelJwtErrors "github.com/Motmedel/utils_go/pkg/json/jose/jwt/errors"
+	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
+	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token"
+	"github.com/Motmedel/utils_go/pkg/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
-var (
-	ErrNilEndpointSpecificationOverview = errors.New("nil endpoint specification overview")
-)
-
-type EndpointSpecificationOverview struct {
-	RefreshEndpoint *endpoint_specification.EndpointSpecification
-	EndEndpoint     *endpoint_specification.EndpointSpecification
-}
-
-func (overview *EndpointSpecificationOverview) Endpoints() []*endpoint_specification.EndpointSpecification {
-	return []*endpoint_specification.EndpointSpecification{
-		overview.RefreshEndpoint,
-		overview.EndEndpoint,
-	}
-}
-
-type JwtToken struct {
-	*registered_claims.RegisteredClaims
-	SubjectId           string
-	SubjectEmailAddress string
-	TenantId            string
-	TenantName          string
-	Roles               []string
-}
-
-func (token *JwtToken) GetUser() *motmedelHttpTypes.HttpContextUser {
-	user := &motmedelHttpTypes.HttpContextUser{
-		Id:    token.SubjectId,
-		Email: token.SubjectEmailAddress,
-	}
-
-	if token.TenantId != "" || token.TenantName != "" {
-		user.Group = &motmedelHttpTypes.HttpContextGroup{
-			Id:   token.TenantId,
-			Name: token.TenantName,
-		}
-	}
-
-	user.Roles = token.Roles
-
-	return user
-}
-
-type JwtTokenRequestParser struct {
-	request_parser.RequestParser[*muxUtilsJwt.TokenWithRaw]
+type Parser struct {
+	request_parser.RequestParser[*motmedelJwtToken.Token]
 
 	AllowedRoles    []string
 	AllowedTenantId string
 	SuperAdminRoles []string
 }
 
-func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *response_error.ResponseError) {
-	tokenWithRaw, responseError := parser.RequestParser.Parse(request)
+func (parser *Parser) Parse(request *http.Request) (*session_token.Token, *response_error.ResponseError) {
+	jwtToken, responseError := parser.RequestParser.Parse(request)
 	if responseError != nil {
 		return nil, responseError
 	}
-	if tokenWithRaw == nil {
+	if jwtToken == nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(motmedelJwtErrors.ErrNilToken),
 		}
 	}
 
-	payload := tokenWithRaw.Payload
-	registeredClaims, err := registered_claims.FromMap(payload)
+	payload := jwtToken.Payload
+	registeredClaims, err := registered_claims.New(payload)
 	if err != nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.New(fmt.Errorf("registered claims from map: %w", err), payload),
@@ -94,14 +50,14 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 		}
 	}
 
-	jwtToken := JwtToken{RegisteredClaims: registeredClaims}
+	sessionToken := session_token.Token{Claims: registeredClaims}
 	var errs []error
 
 	rolesAny, rolesOk := payload["roles"]
 	if rolesOk {
-		roles, err := motmedelUtils.ConvertSlice[string](rolesAny)
+		roles, err := utils.ConvertSlice[string](rolesAny)
 		if err == nil {
-			jwtToken.Roles = roles
+			sessionToken.Roles = roles
 		} else {
 			errs = append(errs, fmt.Errorf("convert slice (roles): %w", err))
 		}
@@ -111,9 +67,9 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 
 	tenantIdAny, tenantIdOk := payload["tenant_id"]
 	if tenantIdOk {
-		tenantId, err := motmedelUtils.Convert[string](tenantIdAny)
+		tenantId, err := utils.Convert[string](tenantIdAny)
 		if err == nil {
-			jwtToken.TenantId = tenantId
+			sessionToken.TenantId = tenantId
 		} else {
 			errs = append(errs, fmt.Errorf("convert (tenant id): %w", err))
 		}
@@ -121,18 +77,18 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 
 	tenantNameAny, tenantNameOk := payload["tenant_name"]
 	if tenantNameOk {
-		tenantName, err := motmedelUtils.Convert[string](tenantNameAny)
+		tenantName, err := utils.Convert[string](tenantNameAny)
 		if err == nil {
-			jwtToken.TenantName = tenantName
+			sessionToken.TenantName = tenantName
 		} else {
 			errs = append(errs, fmt.Errorf("convert (tenant name): %w", err))
 		}
 	}
 
-	subjectId, subjectEmail, found := strings.Cut(jwtToken.Subject, ":")
+	subjectId, subjectEmail, found := strings.Cut(sessionToken.Subject, ":")
 	if found {
-		jwtToken.SubjectId = subjectId
-		jwtToken.SubjectEmailAddress = subjectEmail
+		sessionToken.SubjectId = subjectId
+		sessionToken.SubjectEmailAddress = subjectEmail
 	}
 
 	if len(errs) > 0 {
@@ -147,9 +103,9 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 	}
 
 	if superAdminRoles := parser.SuperAdminRoles; len(superAdminRoles) != 0 {
-		for _, role := range jwtToken.Roles {
+		for _, role := range sessionToken.Roles {
 			if slices.Contains(superAdminRoles, role) {
-				return &jwtToken, nil
+				return &sessionToken, nil
 			}
 		}
 	}
@@ -157,7 +113,7 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 	var allowed bool
 
 	if allowedTenantId := parser.AllowedTenantId; allowedTenantId != "" {
-		if jwtToken.TenantId != allowedTenantId {
+		if sessionToken.TenantId != allowedTenantId {
 			return nil, &response_error.ResponseError{
 				ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
 					http.StatusForbidden,
@@ -169,7 +125,7 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 	}
 
 	if allowedRoles := parser.AllowedRoles; len(allowedRoles) != 0 {
-		for _, role := range jwtToken.Roles {
+		for _, role := range sessionToken.Roles {
 			if slices.Contains(parser.AllowedRoles, role) {
 				allowed = true
 				break
@@ -189,5 +145,5 @@ func (parser *JwtTokenRequestParser) Parse(request *http.Request) (*JwtToken, *r
 		}
 	}
 
-	return &jwtToken, nil
+	return &sessionToken, nil
 }

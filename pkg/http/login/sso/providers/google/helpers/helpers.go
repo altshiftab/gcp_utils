@@ -11,7 +11,7 @@ import (
 	"github.com/coreos/go-oidc"
 )
 
-func HandleGoogleToken(ctx context.Context, accessToken string, verifier *oidc.IDTokenVerifier) (string, error) {
+func HandleGoogleToken(ctx context.Context, idTokenString string, verifier *oidc.IDTokenVerifier) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", fmt.Errorf("context error: %w", err)
 	}
@@ -20,11 +20,11 @@ func HandleGoogleToken(ctx context.Context, accessToken string, verifier *oidc.I
 		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrNilTokenVerifier)
 	}
 
-	if accessToken == "" {
+	if idTokenString == "" {
 		return "", nil
 	}
 
-	idToken, err := verifier.Verify(ctx, accessToken)
+	idToken, err := verifier.Verify(ctx, idTokenString)
 	if err != nil {
 		return "", motmedelErrors.NewWithTrace(
 			fmt.Errorf("token verifier verify: %w: %w", motmedelErrors.ErrValidationError, err),

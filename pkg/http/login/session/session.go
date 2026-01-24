@@ -20,7 +20,8 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types"
+	errors2 "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint_specification_overview"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/path_config"
 )
 
@@ -41,7 +42,7 @@ type SessionHandler interface {
 	GetSessionRequestParser() request_parser.RequestParser[SessionInput]
 }
 
-func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificationOverview {
+func MakeBareEndpoints(options ...path_config.Option) *endpoint_specification_overview.EndpointSpecificationOverview {
 	pathConfig := path_config.New(options...)
 
 	refreshEndpointSpecification := &endpoint_specification.EndpointSpecification{
@@ -58,13 +59,13 @@ func MakeBareEndpoints(options ...path_config.Option) *types.EndpointSpecificati
 		Handler:                   nil,
 	}
 
-	return &types.EndpointSpecificationOverview{
+	return &endpoint_specification_overview.EndpointSpecificationOverview{
 		RefreshEndpoint: refreshEndpointSpecification,
 		EndEndpoint:     endEndpointSpecification,
 	}
 }
 
-func PopulateBareEndpoints(bareEndpointsOverview *types.EndpointSpecificationOverview, sessionHandler SessionHandler) error {
+func PopulateBareEndpoints(bareEndpointsOverview *endpoint_specification_overview.EndpointSpecificationOverview, sessionHandler SessionHandler) error {
 	if utils.IsNil(sessionHandler) {
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
@@ -196,10 +197,10 @@ func PopulateBareEndpoints(bareEndpointsOverview *types.EndpointSpecificationOve
 	return nil
 }
 
-func MakeEndpoints(sessionHandler SessionHandler, options ...path_config.Option) (*types.EndpointSpecificationOverview, error) {
+func MakeEndpoints(sessionHandler SessionHandler, options ...path_config.Option) (*endpoint_specification_overview.EndpointSpecificationOverview, error) {
 	bareEndpointsOverview := MakeBareEndpoints(options...)
 	if bareEndpointsOverview == nil {
-		return nil, motmedelErrors.NewWithTrace(types.ErrNilEndpointSpecificationOverview)
+		return nil, motmedelErrors.NewWithTrace(errors2.ErrNilEndpointSpecificationOverview)
 	}
 
 	err := PopulateBareEndpoints(bareEndpointsOverview, sessionHandler)

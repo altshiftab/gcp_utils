@@ -92,15 +92,15 @@ func handleExchange(
 		return "", motmedelErrors.NewWithTrace(ssoErrors.ErrNilOauth2Token)
 	}
 
-	idToken := token.Extra("id_token")
-	accessToken, err := utils.ConvertToNonZero[string](idToken)
+	idTokenAny := token.Extra("id_token")
+	idToken, err := utils.ConvertToNonZero[string](idTokenAny)
 	if err != nil {
-		return "", motmedelErrors.New(fmt.Errorf("convert to non zero (id token): %w", err), idToken)
+		return "", motmedelErrors.New(fmt.Errorf("convert to non zero (id token): %w", err), idTokenAny)
 	}
 
-	userEmailAddress, err := googleHelpers.HandleGoogleToken(ctx, accessToken, oidcVerifier)
+	userEmailAddress, err := googleHelpers.HandleGoogleToken(ctx, idToken, oidcVerifier)
 	if err != nil {
-		return "", motmedelErrors.New(fmt.Errorf("handle google token: %w", err), accessToken)
+		return "", motmedelErrors.New(fmt.Errorf("handle google token: %w", err), idToken)
 	}
 
 	return userEmailAddress, nil

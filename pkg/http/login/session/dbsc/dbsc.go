@@ -3,60 +3,39 @@ package dbsc
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"path"
-	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux"
 	muxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
+	requestParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
-	"github.com/Motmedel/utils_go/pkg/interfaces/comparer"
-	motmedelJwt "github.com/Motmedel/utils_go/pkg/jwt"
-	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/base_validator"
-	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/header_validator"
-	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/jwk_validator"
-	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/registered_claims_validator"
-	"github.com/Motmedel/utils_go/pkg/jwt/validation/types/setting"
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
-	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	dbscErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/errors"
-	dbscHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/helpers"
-	dbscTypes "github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/dbsc_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/endpoint_specification_overview"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/parsed_input"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/refresh_request_parser"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/register_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/dbsc/types/session_registration_response"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/helpers"
+	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 )
-
-const (
-	sessionResponseHeaderName = "Sec-Session-Response"
-	sessionIdHeaderName       = "Sec-Session-Id"
-)
-
-type ParsedInput struct {
-	PublicKey        []byte
-	DbscSessionId    string
-	AuthenticationId string
-	UserId           string
-}
-
-func makeAudienceValue(origin url.URL, endpoint string) string {
-	origin.Path = path.Join(origin.Path, endpoint)
-	return origin.String()
-}
 
 type SessionHandler interface {
 	GetAuthenticationPublicKey(ctx context.Context, authenticationId string) ([]byte, error)
@@ -70,7 +49,7 @@ type SessionHandler interface {
 	GetSessionRequestParser() request_parser.RequestParser[session.SessionInput]
 }
 
-func MakeBareEndpoints() *dbscTypes.EndpointSpecificationOverview {
+func MakeBareEndpoints() *endpoint_specification_overview.EndpointSpecificationOverview {
 	registerEndpoint := &endpoint_specification.EndpointSpecification{
 		Path:                      dbsc_config.DefaultRegisterPath,
 		Method:                    http.MethodPost,
@@ -86,13 +65,27 @@ func MakeBareEndpoints() *dbscTypes.EndpointSpecificationOverview {
 		Handler:                   nil,
 	}
 
-	return &dbscTypes.EndpointSpecificationOverview{
+	return &endpoint_specification_overview.EndpointSpecificationOverview{
 		RefreshEndpoint:  refreshEndpoint,
 		RegisterEndpoint: registerEndpoint,
 	}
 }
 
-func PopulateBareEndpoints(bareEndpointsOverview *dbscTypes.EndpointSpecificationOverview, sessionHandler SessionHandler) error {
+func makeAudienceValue(origin url.URL, endpoint string) string {
+	origin.Path = path.Join(origin.Path, endpoint)
+	return origin.String()
+}
+
+func generateChallenge() (string, error) {
+	challenge := make([]byte, 64)
+	if _, err := rand.Read(challenge); err != nil {
+		return "", motmedelErrors.NewWithTrace(fmt.Errorf("rand read: %w", err))
+	}
+
+	return base64.URLEncoding.EncodeToString(challenge), nil
+}
+
+func PopulateBareEndpoints(bareEndpointsOverview *endpoint_specification_overview.EndpointSpecificationOverview, sessionHandler SessionHandler) error {
 	if utils.IsNil(sessionHandler) {
 		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
 	}
@@ -126,215 +119,25 @@ func PopulateBareEndpoints(bareEndpointsOverview *dbscTypes.EndpointSpecificatio
 	refreshPath := config.RefreshPath
 
 	registerAudience := makeAudienceValue(*originUrl, registerPath)
-	refreshAudience := makeAudienceValue(*originUrl, refreshPath)
-
-	handleSessionResponse := func(
-		ctx context.Context,
-		tokenString string,
-		authenticationId string,
-		dbscSessionId string,
-		expectedAudience string,
-	) (any, *muxResponseError.ResponseError) {
-		var userId string
-
-		_, jwkKey, err := motmedelJwt.ParseAndCheckJwkWithValidator(
-			tokenString,
-			&jwk_validator.JwkValidator{
-				BaseValidator: base_validator.BaseValidator{
-					HeaderValidator: &header_validator.HeaderValidator{
-						Settings: map[string]setting.Setting{
-							"alg": setting.SettingRequired,
-							"typ": setting.SettingRequired,
-						},
-						Expected: &header_validator.ExpectedFields{
-							Alg: comparer.NewEqualComparer(config.AllowedAlgs...),
-							Typ: comparer.NewEqualComparer("dbsc+jwt"),
-						},
-					},
-					PayloadValidator: &registered_claims_validator.RegisteredClaimsValidator{
-						Settings: map[string]setting.Setting{
-							"aud": setting.SettingRequired,
-							"iat": setting.SettingRequired,
-							"jti": setting.SettingRequired,
-							"key": setting.SettingRequired,
-						},
-						Expected: &registered_claims_validator.ExpectedRegisteredClaims{
-							AudienceComparer: comparer.NewEqualComparer(expectedAudience),
-							IdComparer: comparer.ComparerFunction[string](
-								func(jtiChallenge string) (bool, error) {
-									var err error
-									userId, err = sessionHandler.DeleteDbscChallenge(ctx, jtiChallenge, authenticationId)
-									if err != nil {
-										if motmedelErrors.IsAny(err, altshiftGcpUtilsHttpLoginErrors.ErrEmptyChallenge, motmedelTimeErrors.ErrExpired) {
-											return false, nil
-										}
-
-										return false, motmedelErrors.New(
-											fmt.Errorf("session handler delete dbsc challenge: %w", err),
-											sessionHandler, jtiChallenge, authenticationId,
-										)
-									}
-
-									return true, nil
-								},
-							),
-						},
-					},
-				},
-			},
+	registerRequestParser, err := register_request_parser.New(registerAudience, sessionHandler.DeleteDbscChallenge, sessionRequestParser)
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("register request parser new: %w", err),
+			registerAudience, sessionHandler.DeleteDbscChallenge, sessionRequestParser,
 		)
-		if err != nil {
-			wrappedErr := motmedelErrors.New(
-				fmt.Errorf("parse and check jwk with validator: %w", err),
-				tokenString, authenticationId,
-			)
-			if motmedelErrors.IsAny(wrappedErr, motmedelErrors.ErrValidationError, motmedelErrors.ErrVerificationError, motmedelErrors.ErrParseError) {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-						fmt.Sprintf("Invalid %s header.", sessionResponseHeaderName),
-						nil,
-					),
-					ClientError: wrappedErr,
-				}
-			}
-
-			return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
-		}
-
-		return &ParsedInput{
-			PublicKey:        jwkKey,
-			DbscSessionId:    dbscSessionId,
-			AuthenticationId: authenticationId,
-			UserId:           userId,
-		}, nil
 	}
-
-	registerRequestParser := request_parser.RequestParserFunction[any](
-		func(request *http.Request) (any, *muxResponseError.ResponseError) {
-			if request == nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpRequest),
-				}
-			}
-
-			requestHeader := request.Header
-			if requestHeader == nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpRequestHeader),
-				}
-			}
-
-			sessionInput, responseError := sessionRequestParser.Parse(request)
-			if responseError != nil {
-				return nil, responseError
-			}
-
-			if _, ok := requestHeader[sessionResponseHeaderName]; !ok {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-						fmt.Sprintf("Missing %s header.", sessionResponseHeaderName),
-						nil,
-					),
-				}
-			}
-
-			sessionResponseJwkString := requestHeader.Get(sessionResponseHeaderName)
-			if sessionResponseJwkString == "" {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-						fmt.Sprintf("Empty %s header.", sessionResponseHeaderName),
-						nil,
-					),
-				}
-			}
-
-			return handleSessionResponse(
-				request.Context(),
-				sessionResponseJwkString,
-				sessionInput.GetAuthenticationId(),
-				sessionInput.GetId(),
-				registerAudience,
-			)
-		},
-	)
-
-	refreshRequestParser := request_parser.RequestParserFunction[any](
-		func(request *http.Request) (any, *muxResponseError.ResponseError) {
-			if request == nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpRequest),
-				}
-			}
-
-			requestHeader := request.Header
-			if requestHeader == nil {
-				return nil, &muxResponseError.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpRequestHeader),
-				}
-			}
-
-			if _, ok := requestHeader[sessionIdHeaderName]; !ok {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-						fmt.Sprintf("Missing %s header.", sessionIdHeaderName),
-						nil,
-					),
-				}
-			}
-
-			dbscSessionId := requestHeader.Get(sessionIdHeaderName)
-
-			authenticationId, _, found := strings.Cut(dbscSessionId, ":")
-			if !found {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-						fmt.Sprintf("Malformed %s header.", sessionIdHeaderName),
-						nil,
-					),
-					ClientError: motmedelErrors.NewWithTrace(
-						fmt.Errorf("%w (claims id)", motmedelErrors.ErrBadSplit),
-						dbscSessionId,
-					),
-				}
-			}
-
-			if _, ok := requestHeader[sessionResponseHeaderName]; !ok {
-				return &ParsedInput{
-					PublicKey:        nil,
-					DbscSessionId:    dbscSessionId,
-					AuthenticationId: authenticationId,
-				}, nil
-			}
-
-			sessionResponseJwkString := requestHeader.Get(sessionResponseHeaderName)
-			if sessionResponseJwkString == "" {
-				return nil, &muxResponseError.ResponseError{
-					ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-						fmt.Sprintf("Empty %s header.", sessionResponseHeaderName),
-						nil,
-					),
-				}
-			}
-
-			return handleSessionResponse(
-				request.Context(),
-				sessionResponseJwkString,
-				authenticationId,
-				dbscSessionId,
-				refreshAudience,
-			)
-		},
-	)
 
 	registerEndpointSpecification := bareEndpointsOverview.RegisterEndpoint
 	if registerEndpointSpecification == nil {
 		return motmedelErrors.NewWithTrace(fmt.Errorf("%w (register)", muxErrors.ErrNilEndpointSpecification))
 	}
-	registerEndpointSpecification.HeaderParserConfiguration = &parsing.HeaderParserConfiguration{Parser: registerRequestParser}
+	registerEndpointSpecification.HeaderParserConfiguration = &parsing.HeaderParserConfiguration{
+		Parser: requestParserAdapter.New(registerRequestParser),
+	}
 	registerEndpointSpecification.Handler = func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 		ctx := request.Context()
 
-		parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*ParsedInput](ctx)
+		parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*parsed_input.Input](ctx)
 		if responseError != nil {
 			return nil, responseError
 		}
@@ -359,7 +162,7 @@ func PopulateBareEndpoints(bareEndpointsOverview *dbscTypes.EndpointSpecificatio
 				{
 					Type:       "cookie",
 					Name:       cookieName,
-					Attributes: helpers.GetSessionCookieAttributes(registeredDomain),
+					Attributes: session_cookie.Attributes(registeredDomain),
 				},
 			},
 		}
@@ -380,22 +183,33 @@ func PopulateBareEndpoints(bareEndpointsOverview *dbscTypes.EndpointSpecificatio
 		}, nil
 	}
 
+	refreshAudience := makeAudienceValue(*originUrl, refreshPath)
+	refreshRequestParser, err := refresh_request_parser.New(refreshAudience, sessionHandler.DeleteDbscChallenge)
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("refresh request parser new: %w", err),
+			refreshAudience, sessionHandler.DeleteDbscChallenge,
+		)
+	}
+
 	refreshEndpointSpecification := bareEndpointsOverview.RefreshEndpoint
 	if refreshEndpointSpecification == nil {
 		return motmedelErrors.NewWithTrace(fmt.Errorf("%w (refresh)", muxErrors.ErrNilEndpointSpecification))
 	}
-	refreshEndpointSpecification.HeaderParserConfiguration = &parsing.HeaderParserConfiguration{Parser: refreshRequestParser}
+	refreshEndpointSpecification.HeaderParserConfiguration = &parsing.HeaderParserConfiguration{
+		Parser: requestParserAdapter.New(refreshRequestParser),
+	}
 	refreshEndpointSpecification.Handler = func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
 		ctx := request.Context()
 
-		parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*ParsedInput](ctx)
+		parsedInput, responseError := muxUtils.GetServerNonZeroParsedRequestHeaders[*parsed_input.Input](ctx)
 		if responseError != nil {
 			return nil, responseError
 		}
 
 		publicKey := parsedInput.PublicKey
 		if publicKey == nil {
-			challenge, err := dbscHelpers.GenerateChallenge()
+			challenge, err := generateChallenge()
 			if err != nil {
 				return nil, &muxResponseError.ResponseError{
 					ServerError: fmt.Errorf("generate challenge: %w", err),
@@ -481,10 +295,10 @@ func PopulateBareEndpoints(bareEndpointsOverview *dbscTypes.EndpointSpecificatio
 	return nil
 }
 
-func MakeEndpoints(sessionHandler SessionHandler) (*dbscTypes.EndpointSpecificationOverview, error) {
+func MakeEndpoints(sessionHandler SessionHandler) (*endpoint_specification_overview.EndpointSpecificationOverview, error) {
 	bareEndpointsOverview := MakeBareEndpoints()
 	if bareEndpointsOverview == nil {
-		return nil, motmedelErrors.NewWithTrace(dbscTypes.ErrNilEndpointSpecificationOverview)
+		return nil, motmedelErrors.NewWithTrace(sessionErrors.ErrNilEndpointSpecificationOverview)
 	}
 
 	err := PopulateBareEndpoints(bareEndpointsOverview, sessionHandler)
