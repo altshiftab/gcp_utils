@@ -1,7 +1,5 @@
 package path_config
 
-type Option func(*Config)
-
 const (
 	DefaultRefreshPath = "/api/session/refresh"
 	DefaultEndPath     = "/api/session/end"
@@ -9,13 +7,15 @@ const (
 
 type Config struct {
 	RefreshPath string
-	EndPath string
+	EndPath     string
 }
+
+type Option func(*Config)
 
 func New(options ...Option) *Config {
 	config := &Config{
 		RefreshPath: DefaultRefreshPath,
-		EndPath: DefaultEndPath,
+		EndPath:     DefaultEndPath,
 	}
 
 	for _, option := range options {
