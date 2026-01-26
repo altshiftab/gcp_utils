@@ -3,6 +3,6 @@ package errors
 import "errors"
 
 var (
-	ErrNilEndpointSpecificationOverview = errors.New("nil endpoint specification overview")
-	ErrNilSessionInput                  = errors.New("nil session input")
+	ErrEndedAuthentication   = errors.New("ended authentication")
+	ErrExpiredAuthentication = errors.New("expired authentication")
 )
