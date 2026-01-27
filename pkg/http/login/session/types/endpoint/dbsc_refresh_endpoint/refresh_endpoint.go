@@ -3,8 +3,6 @@ package dbsc_refresh_endpoint
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +23,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/http/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
@@ -41,15 +40,6 @@ const (
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
 	SessionDuration time.Duration
-}
-
-func generateChallenge() (string, error) {
-	challenge := make([]byte, 64)
-	if _, err := rand.Read(challenge); err != nil {
-		return "", motmedelErrors.NewWithTrace(fmt.Errorf("rand read: %w", err))
-	}
-
-	return base64.URLEncoding.EncodeToString(challenge), nil
 }
 
 func (e *Endpoint) Initialize(
@@ -157,7 +147,7 @@ func (e *Endpoint) Initialize(
 		}
 
 		if len(publicKey) == 0 {
-			challenge, err := generateChallenge()
+			challenge, err := session.GenerateDbscChallenge()
 			if err != nil {
 				return nil, &response_error.ResponseError{
 					ServerError: fmt.Errorf("generate challenge: %w", err),
