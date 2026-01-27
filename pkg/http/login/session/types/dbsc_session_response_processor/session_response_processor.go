@@ -43,7 +43,7 @@ type Output struct {
 
 type Processor struct {
 	TokenValidator *validator.Validator
-	GetChallenge   func(ctx context.Context, challenge string, authenticationId string) (*session.Challenge, error)
+	GetChallenge   func(ctx context.Context, challenge string, authenticationId string) (*dbsc_challenge.Challenge, error)
 }
 
 func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *response_error.ResponseError) {
@@ -235,7 +235,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 
 func New(
 	audience string,
-	getChallenge func(ctx context.Context, challenge string, authenticationId string) (*session.Challenge, error),
+	getChallenge func(ctx context.Context, challenge string, authenticationId string) (*dbsc_challenge.Challenge, error),
 	options ...session_response_processor_config.Option,
 ) (*Processor, error) {
 	if audience == "" {
