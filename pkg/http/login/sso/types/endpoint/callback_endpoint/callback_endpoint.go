@@ -24,7 +24,9 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token/authenticated_token"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/database/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/callback_endpoint/callback_endpoint_config"
@@ -53,6 +55,8 @@ func (e *Endpoint) Initialize(
 	getOauthFlow func(ctx context.Context, id string) (*oauth_flow.Flow, error),
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
 	handleAuthenticatedIdToken func(context.Context, *authenticated_token.Token) (*authenticationPkg.Authentication, error),
+	insertDbscChallenge func(ctx context.Context, challenge string, authenticationId string) error,
+	sessionManager *session_manager.Manager,
 ) error {
 	if oauthConfig == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("oauth config"))
@@ -68,6 +72,14 @@ func (e *Endpoint) Initialize(
 
 	if handleAuthenticatedIdToken == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("handle authenticated id token"))
+	}
+
+	if insertDbscChallenge == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("insert dbsc challenge"))
+	}
+
+	if sessionManager == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
 	e.Handler = func(request *http.Request, body []byte) (*muxResponse.Response, *response_error.ResponseError) {
@@ -191,8 +203,40 @@ func (e *Endpoint) Initialize(
 				ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication")),
 			}
 		}
+		authenticationId := authentication.Id
+		if authenticationId == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+			}
+		}
 
-		// TODO: Use session manager to create a session
+		dbscChallenge, err := session.GenerateDbscChallenge()
+		if err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("generate dbsc challenge: %w", err)),
+			}
+		}
+		if dbscChallenge == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("dbsc challenge")),
+			}
+		}
+
+		if err = insertDbscChallenge(ctx, dbscChallenge, authenticationId); err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("insert dbsc challenge: %w", err)),
+			}
+		}
+
+		response, responseError := sessionManager.CreateSession(authentication, dbscChallenge)
+		if responseError != nil {
+			return nil, responseError
+		}
+		if response == nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("response")),
+			}
+		}
 
 		clearedCallbackCookie := http.Cookie{
 			Name:     e.CallbackCookieName,
@@ -203,8 +247,6 @@ func (e *Endpoint) Initialize(
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 		}
-
-		var response muxResponse.Response
 
 		response.Headers = append(
 			response.Headers,
@@ -218,7 +260,7 @@ func (e *Endpoint) Initialize(
 			},
 		)
 
-		return &response, nil
+		return response, nil
 	}
 
 	e.Initialized = true
