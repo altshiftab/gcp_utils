@@ -29,7 +29,7 @@ import (
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/refresh_endpoint_config"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_refresher"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
@@ -55,7 +55,7 @@ func generateChallenge() (string, error) {
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
-	refresher *session_refresher.Refresher,
+	sessionManager *session_manager.Manager,
 	getAuthentication func(ctx context.Context, authenticationId string) (*authenticationPkg.Authentication, error),
 	insertDbscChallenge func(ctx context.Context, challenge string, authenticationId string) error,
 ) error {
@@ -67,8 +67,8 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("dbsc session response processor"))
 	}
 
-	if refresher == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("session refresher"))
+	if sessionManager == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
 	if getAuthentication == nil {
@@ -219,7 +219,7 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		return refresher.Refresh(authentication, sessionToken, DbscAuthenticationMethod, e.SessionDuration)
+		return sessionManager.RefreshSession(authentication, sessionToken, DbscAuthenticationMethod, e.SessionDuration)
 	}
 
 	e.Initialized = true

@@ -72,6 +72,9 @@ func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_e
 		}
 		return nil, &response_error.ResponseError{ServerError: wrappedErr}
 	}
+	if sessionToken == nil {
+		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token"))}
+	}
 
 	if superAdminRoles := p.SuperAdminRoles; len(superAdminRoles) != 0 {
 		for _, role := range sessionToken.Roles {

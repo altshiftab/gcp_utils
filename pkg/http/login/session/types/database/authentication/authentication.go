@@ -7,6 +7,7 @@ import (
 )
 
 type Authentication struct {
+	Id               string           `postgres:"id,primarykey,type:uuid,default:gen_random_uuid()"`
 	Account          *account.Account `postgres:"account,ondelete:CASCADE"`
 	DbscPublicKey    []byte           `postgres:"dbsc_public_key,nullable"`
 	CreatedAt        *time.Time       `postgres:"created_at"`
@@ -26,11 +27,4 @@ type DbscChallenge struct {
 	Authentication *Authentication `postgres:"authentication,ondelete:CASCADE"`
 	Challenge      []byte          `postgres:"challenge"`
 	ExpiresAt      *time.Time      `postgres:"expires_at"`
-}
-
-type OauthFlow struct {
-	CodeVerifier string     `postgres:"code_verifier,unique"`
-	State        string     `postgres:"state"`
-	ExpiresAt    *time.Time `postgres:"expires_at"`
-	RedirectUrl  string     `postgres:"redirect_url"`
 }
