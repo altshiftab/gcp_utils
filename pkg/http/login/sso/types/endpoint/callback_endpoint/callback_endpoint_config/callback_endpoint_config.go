@@ -1,7 +1,7 @@
 package callback_endpoint_config
 
 var (
-	DefaultCallbackCookieName = "callback"
+	DefaultCallbackCookieName = "callback_id"
 )
 
 type Config struct {
