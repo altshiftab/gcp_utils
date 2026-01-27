@@ -26,7 +26,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/setting"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/dbsc_challenge"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor/session_response_processor_config"
 )
 
@@ -43,7 +43,7 @@ type Output struct {
 
 type Processor struct {
 	TokenValidator *validator.Validator
-	GetChallenge   func(ctx context.Context, challenge string, authenticationId string) (*authenticationPkg.DbscChallenge, error)
+	GetChallenge   func(ctx context.Context, challenge string, authenticationId string) (*session.Challenge, error)
 }
 
 func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *response_error.ResponseError) {
@@ -235,7 +235,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 
 func New(
 	audience string,
-	getChallenge func(ctx context.Context, challenge string, authenticationId string) (*authenticationPkg.DbscChallenge, error),
+	getChallenge func(ctx context.Context, challenge string, authenticationId string) (*session.Challenge, error),
 	options ...session_response_processor_config.Option,
 ) (*Processor, error) {
 	if audience == "" {
