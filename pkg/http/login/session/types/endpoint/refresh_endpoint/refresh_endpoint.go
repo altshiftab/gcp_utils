@@ -17,11 +17,11 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/errors"
+	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/refresh_endpoint/refresh_endpoint_config"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_refresher"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
@@ -39,7 +39,7 @@ type Endpoint struct {
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	getAuthentication func(ctx context.Context, authenticationId string) (*authenticationPkg.Authentication, error),
-	sessionRefresher *session_refresher.Refresher,
+	sessionManager *session_manager.Manager,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
@@ -49,8 +49,8 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("get authentication"))
 	}
 
-	if sessionRefresher == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("session refresher"))
+	if sessionManager == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
 	jwtExtractor := authorizerRequestParser.JwtExtractor
@@ -129,7 +129,7 @@ func (e *Endpoint) Initialize(
 		if remainingExpirationDuration < 0 {
 			return nil, &response_error.ResponseError{
 				ProblemDetail: problem_detail.New(http.StatusUnauthorized),
-				ClientError:   motmedelErrors.NewWithTrace(errors.ErrNegativeDuration),
+				ClientError:   motmedelErrors.NewWithTrace(motmedelTimeErrors.ErrNegativeDuration),
 			}
 		}
 
@@ -138,7 +138,7 @@ func (e *Endpoint) Initialize(
 			return nil, nil
 		}
 
-		return sessionRefresher.Refresh(authentication, sessionToken, RefreshAuthenticationMethod, e.SessionDuration)
+		return sessionManager.RefreshSession(authentication, sessionToken, RefreshAuthenticationMethod, e.SessionDuration)
 	}
 
 	e.Initialized = true

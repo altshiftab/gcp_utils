@@ -1,7 +1,9 @@
 package session_response_processor_config
 
+import "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
+
 var (
-	DefaultAlgs = []string{"ES256"}
+	DefaultAlgs = session_manager_config.DefaultDbscAlgs
 )
 
 type Config struct {
