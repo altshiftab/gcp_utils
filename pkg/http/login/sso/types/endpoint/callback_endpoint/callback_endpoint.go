@@ -238,6 +238,8 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
+		response.StatusCode = http.StatusSeeOther
+
 		clearedCallbackCookie := http.Cookie{
 			Name:     e.CallbackCookieName,
 			Path:     e.Path,
@@ -247,7 +249,6 @@ func (e *Endpoint) Initialize(
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 		}
-
 		response.Headers = append(
 			response.Headers,
 			&muxResponse.HeaderEntry{
