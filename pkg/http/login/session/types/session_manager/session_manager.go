@@ -19,6 +19,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/numeric_date"
+	motmedelTime "github.com/Motmedel/utils_go/pkg/time"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
@@ -86,6 +87,13 @@ func (m *Manager) CreateSession(
 		}
 	}
 
+	authenticationExpiresAt := authentication.ExpiresAt
+	if authenticationExpiresAt == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication expires at")),
+		}
+	}
+
 	authenticationCreatedAt := authentication.CreatedAt
 	if authenticationCreatedAt == nil {
 		return nil, &response_error.ResponseError{
@@ -136,7 +144,14 @@ func (m *Manager) CreateSession(
 	}
 
 	issuedAt := numeric_date.New(time.Now())
-	sessionExpiresAt := time.Now().Add(m.InitialSessionDuration)
+
+	sessionExpiresAtCandidate := time.Now().Add(m.InitialSessionDuration)
+	sessionExpiresAt := motmedelTime.Min(&sessionExpiresAtCandidate, authenticationExpiresAt)
+	if sessionExpiresAt == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session expires at")),
+		}
+	}
 
 	audienceClaimString, err := claim_strings.Convert(audience)
 	if err != nil {
@@ -151,7 +166,7 @@ func (m *Manager) CreateSession(
 			Issuer:    m.Issuer,
 			Audience:  audienceClaimString,
 			Subject:   strings.Join([]string{accountId, accountEmailAddress}, ":"),
-			ExpiresAt: numeric_date.New(sessionExpiresAt),
+			ExpiresAt: numeric_date.New(*sessionExpiresAt),
 			NotBefore: issuedAt,
 			IssuedAt:  issuedAt,
 		},
@@ -185,7 +200,7 @@ func (m *Manager) CreateSession(
 
 	sessionCookie, err := session_cookie.New(
 		sessionTokenString,
-		sessionExpiresAt,
+		*sessionExpiresAt,
 		m.CookieName,
 		m.CookieDomain,
 	)
