@@ -27,7 +27,6 @@ import (
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/cse_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/id_token_endpoint/id_token_endpoint_config"
 )
 
@@ -42,12 +41,12 @@ type Endpoint struct {
 }
 
 func (e *Endpoint) Initialize(
-	cseConfig *cse_config.Config,
+	cseBodyParser *client_side_encryption.BodyParser,
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
 	handleAuthenticatedIdToken func(context.Context, *authenticated_token.Token) (*authenticationPkg.Authentication, error),
 ) error {
-	if cseConfig == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("cse config"))
+	if cseBodyParser == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("cse body parser"))
 	}
 
 	if idTokenAuthenticator == nil {
@@ -65,11 +64,7 @@ func (e *Endpoint) Initialize(
 
 	bodyLoader.Parser = adapter.New(
 		body_parser.NewWithProcessor(
-			&client_side_encryption.BodyParser{
-				PrivateKey:        cseConfig.PrivateKey,
-				KeyAlgorithm:      cseConfig.KeyAlgorithm,
-				ContentEncryption: cseConfig.ContentEncryption,
-			},
+			cseBodyParser,
 			processor.New(
 				func(ctx context.Context, decryptedPayload []byte) (*BodyInput, *response_error.ResponseError) {
 					tokenInput, responseError := bodyInputParser.Parse(nil, decryptedPayload)

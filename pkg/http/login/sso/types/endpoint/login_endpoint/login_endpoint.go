@@ -65,7 +65,6 @@ func (e *Endpoint) Initialize(
 ) error {
 	if domain == "" {
 		return motmedelErrors.NewWithTrace(empty_error.New("domain"))
-
 	}
 
 	if oauthConfig == nil {
