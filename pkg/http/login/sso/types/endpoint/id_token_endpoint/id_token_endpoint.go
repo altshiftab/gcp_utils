@@ -25,7 +25,9 @@ import (
 	authenticatorPkg "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token/authenticated_token"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/id_token_endpoint/id_token_endpoint_config"
 )
@@ -44,6 +46,8 @@ func (e *Endpoint) Initialize(
 	cseBodyParser *client_side_encryption.BodyParser,
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
 	handleAuthenticatedIdToken func(context.Context, *authenticated_token.Token) (*authenticationPkg.Authentication, error),
+	insertDbscChallenge func(ctx context.Context, challenge string, authenticationId string) error,
+	sessionManager *session_manager.Manager,
 ) error {
 	if cseBodyParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("cse body parser"))
@@ -57,6 +61,14 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("handle authenticated id token"))
 	}
 
+	if insertDbscChallenge == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("insert dbsc challenge"))
+	}
+
+	if sessionManager == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
+	}
+	
 	bodyLoader := e.BodyLoader
 	if bodyLoader == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("body loader"))
@@ -129,9 +141,42 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		// TODO: Use "session manager" to create a session
+		authenticationId := authentication.Id
+		if authenticationId == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+			}
+		}
 
-		return nil, nil
+		dbscChallenge, err := session.GenerateDbscChallenge()
+		if err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("generate dbsc challenge: %w", err)),
+			}
+		}
+		if dbscChallenge == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("dbsc challenge")),
+			}
+		}
+
+		if err = insertDbscChallenge(ctx, dbscChallenge, authenticationId); err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("insert dbsc challenge: %w", err)),
+			}
+		}
+
+		response, responseError := sessionManager.CreateSession(authentication, dbscChallenge)
+		if responseError != nil {
+			return nil, responseError
+		}
+		if response == nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("response")),
+			}
+		}
+
+		return response, nil
 	}
 
 	e.Initialized = true
