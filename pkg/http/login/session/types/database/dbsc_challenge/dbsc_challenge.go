@@ -1,4 +1,4 @@
-package session
+package dbsc_challenge
 
 import (
 	"time"
