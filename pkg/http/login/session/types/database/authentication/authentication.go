@@ -17,14 +17,3 @@ type Authentication struct {
 	IpAddressCountry string           `postgres:"ip_address_country,nullable"`
 	UserAgent        string           `postgres:"user_agent,nullable"`
 }
-
-type PublicKeyAuthenticationRequest struct {
-	Challenge []byte     `postgres:"challenge,check:(length(challenge) = 64)"`
-	ExpiresAt *time.Time `postgres:"expires_at"`
-}
-
-type DbscChallenge struct {
-	Authentication *Authentication `postgres:"authentication,ondelete:CASCADE"`
-	Challenge      []byte          `postgres:"challenge"`
-	ExpiresAt      *time.Time      `postgres:"expires_at"`
-}
