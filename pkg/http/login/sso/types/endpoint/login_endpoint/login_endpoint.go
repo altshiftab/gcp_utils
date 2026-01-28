@@ -1,13 +1,15 @@
 package login_endpoint
 
 import (
-	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
+	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -21,7 +23,8 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/database/oauth_flow"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/login_endpoint/login_endpoint_config"
 	"golang.org/x/oauth2"
 )
@@ -55,13 +58,10 @@ type Endpoint struct {
 	*initialization_endpoint.Endpoint
 	CallbackCookieName string
 	CallbackPath       string
+	OauthFlowDuration  time.Duration
 }
 
-func (e *Endpoint) Initialize(
-	domain string,
-	oauthConfig *oauth2.Config,
-	addOauthFlow func(ctx context.Context, oauthFlow *oauth_flow.Flow) (string, error),
-) error {
+func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql.DB) error {
 	if domain == "" {
 		return motmedelErrors.NewWithTrace(empty_error.New("domain"))
 	}
@@ -70,8 +70,8 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("oauth config"))
 	}
 
-	if addOauthFlow == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("add oauth flow"))
+	if db == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
 	}
 
 	e.UrlParser = adapter.New(
@@ -88,6 +88,13 @@ func (e *Endpoint) Initialize(
 		redirectUrl, responseError := muxUtils.GetServerNonZeroParsedRequestUrl[*url.URL](ctx)
 		if responseError != nil {
 			return nil, responseError
+		}
+
+		redirectUrlString := redirectUrl.String()
+		if redirectUrlString == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("redirect url")),
+			}
 		}
 
 		codeVerifier, err := makeCodeVerifier()
@@ -114,8 +121,18 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
+		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+		defer dbCtxCancel()
+
 		oauthFlow := &oauth_flow.Flow{State: state, CodeVerifier: codeVerifier, RedirectUrl: redirectUrl.String()}
-		oauthFlowId, err := addOauthFlow(ctx, oauthFlow)
+		oauthFlowId, err := database.InsertOauthFlow(
+			dbCtx,
+			state,
+			codeVerifier,
+			redirectUrlString,
+			e.OauthFlowDuration,
+			db,
+		)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(fmt.Errorf("add oauth flow: %w", err), oauthFlow),
@@ -186,5 +203,6 @@ func New(path, callbackPath string, options ...login_endpoint_config.Option) (*E
 		},
 		CallbackCookieName: config.CallbackCookieName,
 		CallbackPath:       callbackPath,
+		OauthFlowDuration:  config.OauthFlowDuration,
 	}, nil
 }

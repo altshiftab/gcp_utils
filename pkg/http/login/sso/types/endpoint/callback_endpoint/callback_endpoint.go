@@ -1,12 +1,14 @@
 package callback_endpoint
 
 import (
-	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -21,15 +23,13 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	authenticatorPkg "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
-	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token/authenticated_token"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
-	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/database/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/callback_endpoint/callback_endpoint_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/provider_claims"
 	"golang.org/x/oauth2"
 )
 
@@ -45,41 +45,32 @@ type UrlInput struct {
 
 var urlInputParser = query_extractor.New[*UrlInput]()
 
-type Endpoint struct {
+type Endpoint[T provider_claims.ProviderClaims] struct {
 	*initialization_endpoint.Endpoint
-	CallbackCookieName string
+	CallbackCookieName    string
+	DbscChallengeDuration time.Duration
 }
 
-func (e *Endpoint) Initialize(
+func (e *Endpoint[T]) Initialize(
 	oauthConfig *oauth2.Config,
-	getOauthFlow func(ctx context.Context, id string) (*oauth_flow.Flow, error),
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
-	handleAuthenticatedIdToken func(context.Context, *authenticated_token.Token) (*authenticationPkg.Authentication, error),
-	insertDbscChallenge func(ctx context.Context, challenge string, authenticationId string) error,
 	sessionManager *session_manager.Manager,
+	db *sql.DB,
 ) error {
 	if oauthConfig == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("oauth config"))
-	}
-
-	if getOauthFlow == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("get oauth flow"))
 	}
 
 	if idTokenAuthenticator == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("id token authenticator"))
 	}
 
-	if handleAuthenticatedIdToken == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("handle authenticated id token"))
-	}
-
-	if insertDbscChallenge == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("insert dbsc challenge"))
-	}
-
 	if sessionManager == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
+	}
+
+	if db == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
 	}
 
 	e.Handler = func(request *http.Request, body []byte) (*muxResponse.Response, *response_error.ResponseError) {
@@ -111,7 +102,11 @@ func (e *Endpoint) Initialize(
 		}
 
 		oauthFlowId := callbackCookie.Value
-		oauthFlow, err := getOauthFlow(ctx, oauthFlowId)
+
+		dbPopCtx, dbPopCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+		defer dbPopCtxCancel()
+
+		oauthFlow, err := database.PopOauthFlow(dbPopCtx, oauthFlowId, db)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(fmt.Errorf("get oauth flow: %w", err), oauthFlowId),
@@ -189,46 +184,40 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		authentication, err := handleAuthenticatedIdToken(ctx, authenticatedIdToken)
+		var providerClaims T
+		tokenRaw := authenticatedIdToken.Raw()
+		if err := json.Unmarshal([]byte(tokenRaw), &providerClaims); err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(
+					fmt.Errorf("json unmarshal (authenticated id token raw): %w", err),
+					tokenRaw,
+				),
+			}
+		}
+
+		emailAddress, err := providerClaims.VerifiedEmailAddress()
 		if err != nil {
+			wrappedErr := motmedelErrors.New(
+				fmt.Errorf("provider claims verified email address: %w", err),
+				providerClaims,
+			)
 			if errors.Is(err, ssoErrors.ErrForbiddenUser) {
 				return nil, &response_error.ResponseError{
-					ClientError:   err,
-					ProblemDetail: problem_detail.New(http.StatusForbidden),
+					ProblemDetail: problem_detail.New(
+						http.StatusForbidden,
+						problem_detail_config.WithDetail("Invalid email address."),
+					),
 				}
 			}
+			return nil, &response_error.ResponseError{ServerError: wrappedErr}
 		}
-		if authentication == nil {
+		if emailAddress == "" {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication")),
-			}
-		}
-		authenticationId := authentication.Id
-		if authenticationId == "" {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("email address")),
 			}
 		}
 
-		dbscChallenge, err := session.GenerateDbscChallenge()
-		if err != nil {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("generate dbsc challenge: %w", err)),
-			}
-		}
-		if dbscChallenge == "" {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("dbsc challenge")),
-			}
-		}
-
-		if err = insertDbscChallenge(ctx, dbscChallenge, authenticationId); err != nil {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("insert dbsc challenge: %w", err)),
-			}
-		}
-
-		response, responseError := sessionManager.CreateSession(authentication, dbscChallenge)
+		response, responseError := sessionManager.CreateSession(ctx, emailAddress)
 		if responseError != nil {
 			return nil, responseError
 		}
@@ -269,13 +258,13 @@ func (e *Endpoint) Initialize(
 	return nil
 }
 
-func New(path string, options ...callback_endpoint_config.Option) (*Endpoint, error) {
+func New[T provider_claims.ProviderClaims](path string, options ...callback_endpoint_config.Option) (*Endpoint[T], error) {
 	if path == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("path"))
 	}
 
 	config := callback_endpoint_config.New(options...)
-	return &Endpoint{
+	return &Endpoint[T]{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
 				Path:      path,
