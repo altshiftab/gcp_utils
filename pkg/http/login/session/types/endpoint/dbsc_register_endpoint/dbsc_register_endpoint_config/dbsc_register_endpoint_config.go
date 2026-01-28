@@ -1,18 +1,25 @@
 package dbsc_register_endpoint_config
 
+import (
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
+)
+
 var (
-	DefaultPath = "/api/session/dbsc/register"
+	DefaultPath        = "/api/session/dbsc/register"
+	DefaultRefreshPath = dbsc_refresh_endpoint_config.DefaultPath
 )
 
 type Config struct {
-	Path string
+	Path        string
+	RefreshPath string
 }
 
 type Option func(*Config)
 
 func New(options ...Option) *Config {
 	config := &Config{
-		Path: DefaultPath,
+		Path:        DefaultPath,
+		RefreshPath: DefaultRefreshPath,
 	}
 	for _, option := range options {
 		option(config)
@@ -24,5 +31,11 @@ func New(options ...Option) *Config {
 func WithPath(path string) Option {
 	return func(config *Config) {
 		config.Path = path
+	}
+}
+
+func WithRefreshPath(refreshPath string) Option {
+	return func(config *Config) {
+		config.RefreshPath = refreshPath
 	}
 }
