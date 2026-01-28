@@ -89,7 +89,11 @@ func (e *Endpoint[T]) Initialize(
 		idToken := idTokenInput.Token
 		if idToken == "" {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("id token")),
+				ClientError: motmedelErrors.NewWithTrace(empty_error.New("id token")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The id token is empty."),
+				),
 			}
 		}
 		authenticatedIdToken, err := idTokenAuthenticator.Authenticate(ctx, idToken)

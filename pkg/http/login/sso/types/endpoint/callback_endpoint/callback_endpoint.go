@@ -1,6 +1,7 @@
 package callback_endpoint
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -107,9 +108,17 @@ func (e *Endpoint[T]) Initialize(
 
 		oauthFlow, err := database.PopOauthFlow(dbPopCtx, oauthFlowId, db)
 		if err != nil {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.New(fmt.Errorf("get oauth flow: %w", err), oauthFlowId),
+			wrappedErr := motmedelErrors.New(fmt.Errorf("get oauth flow: %w", err), oauthFlowId)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, &response_error.ResponseError{
+					ClientError: wrappedErr,
+					ProblemDetail: problem_detail.New(
+						http.StatusBadRequest,
+						problem_detail_config.WithDetail("No OAuth flow matches the callback cookie value."),
+					),
+				}
 			}
+			return nil, &response_error.ResponseError{ServerError: wrappedErr}
 		}
 		if oauthFlow == nil {
 			return nil, &response_error.ResponseError{
