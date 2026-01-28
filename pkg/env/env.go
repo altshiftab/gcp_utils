@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
-	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"log/slog"
 	"os"
+
+	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
+	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 )
 
 const (
@@ -42,7 +43,7 @@ func ReadEnvironmentVariableFatal(ctx context.Context, name string) string {
 
 	if err != nil {
 		slog.ErrorContext(
-			motmedelContext.WithErrorContextValue(ctx, err),
+			motmedelContext.WithError(ctx, err),
 			"An environment variable could not be read.",
 		)
 		os.Exit(1)
