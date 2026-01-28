@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 
+	motmedelCryptoInterfaces "github.com/Motmedel/utils_go/pkg/crypto/interfaces"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -22,6 +23,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/session_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/setting"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser/authorizer_request_parser_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
@@ -120,7 +122,16 @@ func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_e
 	return sessionToken, nil
 }
 
-func New(issuer string, audience string, options ...authorizer_request_parser_config.Option) (*Parser, error) {
+func New(
+	verifier motmedelCryptoInterfaces.NamedVerifier,
+	issuer string,
+	audience string,
+	options ...authorizer_request_parser_config.Option,
+) (*Parser, error) {
+	if utils.IsNil(verifier) {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("verifier"))
+	}
+
 	if issuer == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("issuer"))
 	}
@@ -139,6 +150,7 @@ func New(issuer string, audience string, options ...authorizer_request_parser_co
 	jwtExtractor, err := jwt_extractor.New(
 		token_cookie_extractor.New(token_cookie_extractor_config.WithName(config.CookieName)),
 		jwtAuthenticator.New(
+			authenticator_config.WithSignatureVerifier(verifier),
 			authenticator_config.WithClaimsValidator(
 				&session_claims_validator.Validator{
 					RegisteredClaimsValidator: &registered_claims_validator.Validator{
