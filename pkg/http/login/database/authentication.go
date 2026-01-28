@@ -79,7 +79,7 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 	var ended bool
 	var expiresAt time.Time
 	var dbscPublicKey []byte
-	if err := row.Scan(&ended, &expiresAt); err != nil {
+	if err := row.Scan(&ended, &expiresAt, &dbscPublicKey); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
@@ -278,7 +278,7 @@ func PopOauthFlow(ctx context.Context, id string, database *sql.DB) (*oauth_flow
 
 const (
 	dbscChallengeInsertQuery = `INSERT INTO dbsc_challenge (challenge, authentication, expires_at) VALUES ($1, $2, $3);`
-	dbscChallengeDeleteQuery = `DELETE FROM dbsc_challenge WHERE challenge = $1 AND authentication = $2 RETURNING c.expires_at;`
+	dbscChallengeDeleteQuery = `DELETE FROM dbsc_challenge WHERE challenge = $1 AND authentication = $2 RETURNING expires_at;`
 )
 
 func InsertDbscChallenge(

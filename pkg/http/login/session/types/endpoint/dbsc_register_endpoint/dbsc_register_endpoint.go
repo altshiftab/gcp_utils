@@ -17,6 +17,8 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
@@ -135,7 +137,11 @@ func (e *Endpoint) Initialize(
 		}
 		if len(publicKey) == 0 {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("public key")),
+				ClientError: motmedelErrors.NewWithTrace(empty_error.New("public key")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The public key is empty."),
+				),
 			}
 		}
 
