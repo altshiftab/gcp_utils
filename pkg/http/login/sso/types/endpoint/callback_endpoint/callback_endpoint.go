@@ -1,7 +1,6 @@
 package callback_endpoint
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,7 +54,6 @@ func (e *Endpoint[T]) Initialize(
 	oauthConfig *oauth2.Config,
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
 	sessionManager *session_manager.Manager,
-	db *sql.DB,
 ) error {
 	if oauthConfig == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("oauth config"))
@@ -69,8 +67,9 @@ func (e *Endpoint[T]) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
+	db := sessionManager.Db
 	if db == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
+		return motmedelErrors.NewWithTrace(nil_error.New("session manager sql db"))
 	}
 
 	e.Handler = func(request *http.Request, body []byte) (*muxResponse.Response, *response_error.ResponseError) {
