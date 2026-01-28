@@ -10,11 +10,12 @@ import (
 	"text/template"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
+	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
-	typeGenerationTypescriptErrors "github.com/vphpersson/type_generation/pkg/producers/typescript/errors"
 	typeGenerationTypescriptTypes "github.com/vphpersson/type_generation/pkg/producers/typescript/types"
 	typeGenerationTypesContext "github.com/vphpersson/type_generation/pkg/types/context"
 	"golang.org/x/text/cases"
@@ -47,15 +48,15 @@ var scriptTemplate = template.Must(
 
 var caser = cases.Title(language.English, cases.NoLower)
 
-func makeTypescriptContext(endpointSpecifications []*endpoint_specification.EndpointSpecification) (*typeGenerationTypescriptTypes.Context, error) {
+func makeTypescriptContext(endpoints []*endpointPkg.Endpoint) (*typeGenerationTypescriptTypes.Context, error) {
 	typesSet := make(map[reflect.Type]struct{})
 
-	for _, endpointSpecification := range endpointSpecifications {
-		if endpointSpecification == nil {
+	for _, endpoint := range endpoints {
+		if endpoint == nil {
 			continue
 		}
 
-		hint := endpointSpecification.Hint
+		hint := endpoint.Hint
 		if hint == nil {
 			continue
 		}
@@ -111,12 +112,12 @@ func isEmptyInterfaceType(t reflect.Type) bool {
 }
 
 func makeTemplateInput(
-	endpointSpecifications []*endpoint_specification.EndpointSpecification,
+	endpointSpecifications []*endpointPkg.Endpoint,
 	tsContext *typeGenerationTypescriptTypes.Context,
 	baseUrl *url.URL,
 ) ([]*clientCodeGenerationTypes.TemplateInput, error) {
 	if tsContext == nil {
-		return nil, motmedelErrors.NewWithTrace(typeGenerationTypescriptErrors.ErrNilContext)
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("typescript context"))
 	}
 
 	if len(endpointSpecifications) == 0 {
@@ -188,13 +189,13 @@ func makeTemplateInput(
 		}
 
 		var contentType string
-		bodyParserConfiguration := endpointSpecification.BodyParserConfiguration
-		if bodyParserConfiguration != nil {
-			contentType = bodyParserConfiguration.ContentType
+		bodyLoader := endpointSpecification.BodyLoader
+		if bodyLoader != nil {
+			contentType = bodyLoader.ContentType
 		}
 
 		var useAuthentication bool
-		if config := endpointSpecification.AuthenticationConfiguration; config != nil {
+		if parser := endpointSpecification.AuthenticationParser; !utils.IsNil(parser) {
 			useAuthentication = true
 		}
 
@@ -229,20 +230,20 @@ func makeTemplateInput(
 }
 
 func Render(
-	endpointSpecifications []*endpoint_specification.EndpointSpecification,
+	endpoints []*endpointPkg.Endpoint,
 	baseUrl *url.URL,
 	options ...template_options.Option,
 ) (string, error) {
-	if len(endpointSpecifications) == 0 {
+	if len(endpoints) == 0 {
 		return "", nil
 	}
 
-	tsContext, err := makeTypescriptContext(endpointSpecifications)
+	tsContext, err := makeTypescriptContext(endpoints)
 	if err != nil {
 		return "", fmt.Errorf("make typescript context: %w", err)
 	}
 
-	templateInputs, err := makeTemplateInput(endpointSpecifications, tsContext, baseUrl)
+	templateInputs, err := makeTemplateInput(endpoints, tsContext, baseUrl)
 	if err != nil {
 		return "", motmedelErrors.New(fmt.Errorf("make template input: %w", err), tsContext)
 	}
