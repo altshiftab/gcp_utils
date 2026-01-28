@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
@@ -21,6 +20,7 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/database/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/login_endpoint/login_endpoint_config"
 	"golang.org/x/oauth2"
@@ -53,9 +53,8 @@ func (u *UrlInput) URL() string {
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
-	CallbackCookieDuration time.Duration
-	CallbackCookieName     string
-	CallbackPath           string
+	CallbackCookieName string
+	CallbackPath       string
 }
 
 func (e *Endpoint) Initialize(
@@ -127,12 +126,18 @@ func (e *Endpoint) Initialize(
 				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow id")),
 			}
 		}
+		oauthFlowExpiresAt := oauthFlow.ExpiresAt
+		if oauthFlowExpiresAt == nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow expires at")),
+			}
+		}
 
 		callbackCookie := http.Cookie{
 			Name:     e.CallbackCookieName,
 			Value:    oauthFlowId,
 			Path:     e.CallbackPath,
-			Expires:  time.Now().Add(e.CallbackCookieDuration),
+			Expires:  *oauthFlowExpiresAt,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
@@ -167,7 +172,6 @@ func New(path, callbackPath string, options ...login_endpoint_config.Option) (*E
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("callback path"))
 	}
 
-	// TODO: Add hint?
 	config := login_endpoint_config.New(options...)
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
@@ -175,10 +179,12 @@ func New(path, callbackPath string, options ...login_endpoint_config.Option) (*E
 				Path:   path,
 				Method: http.MethodGet,
 				Public: true,
+				Hint: &endpoint.Hint{
+					InputType: motmedelReflect.TypeOf[UrlInput](),
+				},
 			},
 		},
-		CallbackCookieName:     config.CallbackCookieName,
-		CallbackCookieDuration: config.CallbackCookieDuration,
-		CallbackPath:           callbackPath,
+		CallbackCookieName: config.CallbackCookieName,
+		CallbackPath:       callbackPath,
 	}, nil
 }
