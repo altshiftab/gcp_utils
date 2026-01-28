@@ -1,6 +1,8 @@
 package session_manager
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	motmedelCryptoInterfaces "github.com/Motmedel/utils_go/pkg/crypto/interfaces"
+	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -21,7 +24,9 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/numeric_date"
 	motmedelTime "github.com/Motmedel/utils_go/pkg/time"
 	"github.com/Motmedel/utils_go/pkg/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
@@ -33,13 +38,11 @@ type Manager struct {
 	Signer       motmedelCryptoInterfaces.NamedSigner
 	Issuer       string
 	CookieDomain string
+	Db           *sql.DB
 	*session_manager_config.Config
 }
 
-func (m *Manager) CreateSession(
-	authentication *authenticationPkg.Authentication,
-	dbscChallenge string,
-) (*response.Response, *response_error.ResponseError) {
+func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*response.Response, *response_error.ResponseError) {
 	signer := m.Signer
 	if utils.IsNil(signer) {
 		return nil, &response_error.ResponseError{
@@ -68,15 +71,91 @@ func (m *Manager) CreateSession(
 		}
 	}
 
-	if authentication == nil {
+	if emailAddress == "" {
 		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication")),
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("email address")),
 		}
 	}
 
-	if dbscChallenge != "" {
+	selectSessionAccountCtx, selectSessionAccountCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+	defer selectSessionAccountCtxCancel()
+	account, err := database.SelectSessionEmailAddressAccount(selectSessionAccountCtx, emailAddress, m.Db)
+	wrappedErr := motmedelErrors.New(fmt.Errorf("select email address account id: %w", err), emailAddress)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, &response_error.ResponseError{
+				ClientError: wrappedErr,
+				ProblemDetail: problem_detail.New(
+					http.StatusForbidden,
+					problem_detail_config.WithDetail("The email address is not associated with an account."),
+				),
+			}
+		}
+		return nil, &response_error.ResponseError{ServerError: wrappedErr}
+	}
+	if account == nil {
 		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(empty_error.New("dbsc challenge")),
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("account")),
+		}
+	}
+	accountId := account.Id
+	if accountId == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("account id")),
+		}
+	}
+
+	accountEmailAddress := account.EmailAddress
+	if accountEmailAddress == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account email address")),
+		}
+	}
+
+	var authorizedParty string
+	customer := account.Customer
+	if customer != nil {
+		customerId := customer.Id
+		if customerId == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account customer id")),
+			}
+		}
+
+		customerName := customer.Name
+		if customerName == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account customer name")),
+			}
+		}
+
+		authorizedParty = strings.Join([]string{customerId, customerName}, ":")
+	}
+
+	if account.Locked {
+		return nil, &response_error.ResponseError{
+			ProblemDetail: problem_detail.New(
+				http.StatusForbidden,
+				problem_detail_config.WithDetail("The account is locked."),
+			),
+		}
+	}
+
+	// TODO: Insert name?
+	// TODO: Extract IP address, user agent from context (http context)
+
+	insertDbCtx, insertDbCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+	defer insertDbCancel()
+
+	authentication, err := database.InsertAuthentication(insertDbCtx, accountId, m.AuthenticationDuration, m.Db)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(fmt.Errorf("insert authentication: %w", err)),
+		}
+	}
+	if authentication == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication")),
 		}
 	}
 
@@ -84,6 +163,31 @@ func (m *Manager) CreateSession(
 	if authenticationId == "" {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+		}
+	}
+
+	dbscChallenge, err := session.GenerateDbscChallenge()
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("generate dbsc challenge: %w", err)),
+		}
+	}
+	if dbscChallenge == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("dbsc challenge")),
+		}
+	}
+
+	dbInsertCtx, dbInsertCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+	defer dbInsertCtxCancel()
+	err = database.InsertDbscChallenge(dbInsertCtx, dbscChallenge, authenticationId, m.DbscChallengeDuration, m.Db)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(
+				fmt.Errorf("insert dbsc challenge: %w", err),
+				authenticationId,
+				dbscChallenge,
+			),
 		}
 	}
 
@@ -98,48 +202,6 @@ func (m *Manager) CreateSession(
 	if authenticationCreatedAt == nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication created at")),
-		}
-	}
-
-	account := authentication.Account
-	if account == nil {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication account")),
-		}
-	}
-
-	accountId := account.Id
-	if accountId == "" {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account id")),
-		}
-	}
-
-	accountEmailAddress := account.EmailAddress
-	if accountEmailAddress == "" {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account email address")),
-		}
-	}
-
-	customer := account.Customer
-	if customer == nil {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication account customer")),
-		}
-	}
-
-	customerId := customer.Id
-	if customerId == "" {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account customer id")),
-		}
-	}
-
-	customerName := customer.Name
-	if customerName == "" {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account customer name")),
 		}
 	}
 
@@ -173,7 +235,7 @@ func (m *Manager) CreateSession(
 		// TODO: Use constant
 		AuthenticationMethods: []string{"ext"},
 		AuthenticatedAt:       numeric_date.New(*authenticationCreatedAt),
-		AuthorizedParty:       strings.Join([]string{customerId, customerName}, ":"),
+		AuthorizedParty:       authorizedParty,
 		Roles:                 account.Roles,
 	}
 	sessionToken, err := session_token.Parse(sessionClaims)
@@ -345,12 +407,17 @@ func (m *Manager) RefreshSession(
 
 func New(
 	signer motmedelCryptoInterfaces.NamedSigner,
+	db *sql.DB,
 	issuer string,
 	cookieDomain string,
 	options ...session_manager_config.Option,
 ) (*Manager, error) {
 	if utils.IsNil(signer) {
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("signer"))
+	}
+
+	if db == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("db"))
 	}
 
 	if issuer == "" {
@@ -363,5 +430,5 @@ func New(
 
 	config := session_manager_config.New(options...)
 
-	return &Manager{Signer: signer, CookieDomain: cookieDomain, Config: config}, nil
+	return &Manager{Signer: signer, Db: db, CookieDomain: cookieDomain, Config: config}, nil
 }

@@ -10,7 +10,9 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/customer"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 )
@@ -86,6 +88,48 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 		ExpiresAt:     &expiresAt,
 		DbscPublicKey: dbscPublicKey,
 	}, nil
+}
+
+func SelectSessionEmailAddressAccount(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error) {
+	if emailAddress == "" {
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("email address"))
+	}
+
+	if database == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql database"))
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context err: %w", err)
+	}
+
+	var (
+		accountId    string
+		locked       bool
+		customerId   sql.NullString
+		customerName sql.NullString
+		roles        []string
+	)
+
+	row := database.QueryRowContext(
+		ctx,
+		`SELECT a.id, a.locked, c.id, c.name, COALESCE(a.roles, '{}'::text[]) AS roles FROM account a LEFT JOIN customer c ON c.id = a.customer WHERE a.email_address = $1;`,
+		emailAddress,
+	)
+	if row == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
+	}
+
+	if err := row.Scan(&accountId, &locked, &customerId, &customerName, &roles); err != nil {
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
+	}
+
+	account := &accountPkg.Account{Id: accountId, EmailAddress: emailAddress, Roles: roles}
+	if customerId.Valid {
+		account.Customer = &customer.Customer{Id: customerId.String, Name: customerName.String}
+	}
+
+	return account, nil
 }
 
 func UpdateAuthenticationWithDbscPublicKey(ctx context.Context, id string, key []byte, database *sql.DB) error {
