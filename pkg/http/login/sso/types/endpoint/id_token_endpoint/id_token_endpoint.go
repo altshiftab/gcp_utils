@@ -170,7 +170,8 @@ func New[T provider_claims.ProviderClaims](path string, options ...id_token_endp
 	return &Endpoint[T]{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
-				Path: path,
+				Path:   path,
+				Method: http.MethodPost,
 				BodyLoader: &body_loader.Loader{
 					ContentType: "application/jose",
 					MaxBytes:    4096,
