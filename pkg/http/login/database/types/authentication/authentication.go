@@ -3,7 +3,7 @@ package authentication
 import (
 	"time"
 
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/account"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 )
 
 type Authentication struct {

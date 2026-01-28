@@ -1,10 +1,11 @@
 package end_endpoint
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 
+	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -15,6 +16,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/end_endpoint/end_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
@@ -24,15 +26,13 @@ type Endpoint struct {
 	*initialization_endpoint.Endpoint
 }
 
-func (e *Endpoint) Initialize(
-	authorizerRequestParser *authorizer_request_parser.Parser,
-	endSession func(ctx context.Context, authenticationId string) error,
-) error {
+func (e *Endpoint) Initialize(authorizerRequestParser *authorizer_request_parser.Parser, db *sql.DB) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
 	}
-	if endSession == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("end session"))
+
+	if db == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
@@ -51,8 +51,9 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		// TODO: Make sure I do not delete authentications (for traceability) - what I want to do is mark them as ended.
-		if err := endSession(ctx, authenticationId); err != nil {
+		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+		defer dbCtxCancel()
+		if err := database.UpdateAuthenticationWithEnded(dbCtx, authenticationId, db); err != nil {
 			return nil, &muxResponseError.ResponseError{
 				ServerError: motmedelErrors.New(fmt.Errorf("end session: %w", err), authenticationId),
 			}

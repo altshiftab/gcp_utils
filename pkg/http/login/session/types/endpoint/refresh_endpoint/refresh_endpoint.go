@@ -1,7 +1,7 @@
 package refresh_endpoint
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"slices"
@@ -18,8 +18,8 @@ import (
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
-	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/refresh_endpoint/refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
@@ -38,19 +38,19 @@ type Endpoint struct {
 
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
-	getAuthentication func(ctx context.Context, authenticationId string) (*authenticationPkg.Authentication, error),
 	sessionManager *session_manager.Manager,
+	db *sql.DB,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
 	}
 
-	if getAuthentication == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("get authentication"))
-	}
-
 	if sessionManager == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
+	}
+
+	if db == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
 	}
 
 	jwtExtractor := authorizerRequestParser.JwtExtractor
@@ -108,7 +108,7 @@ func (e *Endpoint) Initialize(
 			return nil, nil
 		}
 
-		authentication, err := getAuthentication(ctx, authenticationId)
+		authentication, err := database.SelectRefreshAuthentication(ctx, authenticationId, db)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(fmt.Errorf("get authentication: %w", err), authenticationId),

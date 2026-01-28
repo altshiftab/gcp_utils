@@ -17,8 +17,8 @@ import (
 	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token"
 	motmedelTime "github.com/Motmedel/utils_go/pkg/time"
 	"github.com/Motmedel/utils_go/pkg/utils"
+	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
-	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
 )
 
 type Token struct {

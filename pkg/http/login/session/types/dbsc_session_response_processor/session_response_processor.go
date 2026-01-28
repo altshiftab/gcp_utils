@@ -26,7 +26,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/setting"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/dbsc_challenge"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor/session_response_processor_config"
 )
 

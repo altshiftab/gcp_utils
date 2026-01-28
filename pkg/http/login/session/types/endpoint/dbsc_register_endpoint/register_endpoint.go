@@ -1,11 +1,12 @@
 package dbsc_register_endpoint
 
 import (
-	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
+	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -17,6 +18,7 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_register_endpoint/dbsc_register_endpoint_config"
@@ -33,7 +35,7 @@ type Endpoint struct {
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
-	setAuthenticationPublicKey func(ctx context.Context, authenticationId string, publicKey []byte) error,
+	db *sql.DB,
 	refreshPath string,
 	cookieName string,
 	registeredDomain string,
@@ -46,8 +48,8 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("dbsc session response processor"))
 	}
 
-	if setAuthenticationPublicKey == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("set authentication public key"))
+	if db == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
@@ -105,7 +107,9 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		if err := setAuthenticationPublicKey(ctx, authenticationId, publicKey); err != nil {
+		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+		defer dbCtxCancel()
+		if err := database.UpdateAuthenticationWithDbscPublicKey(dbCtx, authenticationId, publicKey, db); err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(
 					fmt.Errorf("set authentication public key: %w", err),
@@ -121,7 +125,7 @@ func (e *Endpoint) Initialize(
 				Origin:      fmt.Sprintf("https://%s", registeredDomain),
 				IncludeSite: true,
 			},
-			Credentials: []Credential{
+			Credentials: []*Credential{
 				{
 					Type:       "cookie",
 					Name:       cookieName,
@@ -176,8 +180,8 @@ type Credential struct {
 }
 
 type Response struct {
-	SessionIdentifier string       `json:"session_identifier"`
-	RefreshURL        string       `json:"refresh_url"`
-	Scope             Scope        `json:"scope"`
-	Credentials       []Credential `json:"credentials"`
+	SessionIdentifier string        `json:"session_identifier"`
+	RefreshURL        string        `json:"refresh_url"`
+	Scope             Scope         `json:"scope"`
+	Credentials       []*Credential `json:"credentials"`
 }
