@@ -2,12 +2,13 @@ package dbsc_refresh_endpoint
 
 import (
 	"bytes"
-	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/mismatch_error"
@@ -23,11 +24,11 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/http/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
-	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/refresh_endpoint_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
@@ -39,15 +40,15 @@ const (
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
-	SessionDuration time.Duration
+	SessionDuration   time.Duration
+	ChallengeDuration time.Duration
 }
 
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
 	sessionManager *session_manager.Manager,
-	getAuthentication func(ctx context.Context, authenticationId string) (*authenticationPkg.Authentication, error),
-	insertDbscChallenge func(ctx context.Context, challenge string, authenticationId string) error,
+	db *sql.DB,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
@@ -61,12 +62,8 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
-	if getAuthentication == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("get authentication"))
-	}
-
-	if insertDbscChallenge == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("insert dbsc challenge"))
+	if db == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
@@ -154,7 +151,10 @@ func (e *Endpoint) Initialize(
 				}
 			}
 
-			if err := insertDbscChallenge(ctx, challenge, authenticationId); err != nil {
+			insertDbCtx, insertDbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+			defer insertDbCtxCancel()
+
+			if err := database.InsertDbscChallenge(insertDbCtx, challenge, authenticationId, e.ChallengeDuration, db); err != nil {
 				return nil, &response_error.ResponseError{
 					ServerError: motmedelErrors.New(
 						fmt.Errorf("insert dbsc challenge: %w", err),
@@ -174,7 +174,10 @@ func (e *Endpoint) Initialize(
 			}, nil
 		}
 
-		authentication, err := getAuthentication(ctx, authenticationId)
+		selectDbCtx, selectDbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+		defer selectDbCtxCancel()
+
+		authentication, err := database.SelectRefreshAuthentication(selectDbCtx, authenticationId, db)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(
@@ -217,8 +220,8 @@ func (e *Endpoint) Initialize(
 	return nil
 }
 
-func New(options ...refresh_endpoint_config.Option) *Endpoint {
-	config := refresh_endpoint_config.New(options...)
+func New(options ...dbsc_refresh_endpoint_config.Option) *Endpoint {
+	config := dbsc_refresh_endpoint_config.New(options...)
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
@@ -226,6 +229,7 @@ func New(options ...refresh_endpoint_config.Option) *Endpoint {
 				Method: http.MethodPost,
 			},
 		},
-		SessionDuration: config.SessionDuration,
+		SessionDuration:   config.SessionDuration,
+		ChallengeDuration: config.ChallengeDuration,
 	}
 }

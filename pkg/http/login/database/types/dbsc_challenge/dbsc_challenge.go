@@ -3,7 +3,7 @@ package dbsc_challenge
 import (
 	"time"
 
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 )
 
 type Challenge struct {

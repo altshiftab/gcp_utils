@@ -3,7 +3,7 @@ package account
 import (
 	"time"
 
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/database/customer"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/customer"
 )
 
 type Account struct {
