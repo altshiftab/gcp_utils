@@ -15,34 +15,33 @@ import (
 
 	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
-	motmedelMuxErrors "github.com/Motmedel/utils_go/pkg/http/mux/errors"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
-	muxTypesEndpointSpecification "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader"
+	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/static_content"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_writer"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/static_content"
-	"github.com/Motmedel/utils_go/pkg/http/mux/utils/generate"
+	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	contentSecurityPolicyParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_security_policy"
-	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/content_security_policy"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
 	cspUtils "github.com/Motmedel/utils_go/pkg/http/utils/content_security_policy"
 	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
 	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	motmedelGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
 	altshiftabGcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
-
-const DomainVariableName = "DOMAIN"
 
 const (
 	PermissionsPolicyHeader     = "Permissions-Policy"
@@ -67,7 +66,7 @@ func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	}
 
 	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
-		func(detail *problem_detail.ProblemDetail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
+		func(detail *problem_detail.Detail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
 			data, contentType, err := response_error.ConvertProblemDetail(detail, negotiation)
 			if contentType == "application/problem+xml" {
 				contentType = "application/xml"
@@ -195,7 +194,7 @@ func makeSitemapXmlUrl(
 func PatchCrawlable(
 	mux *motmedelMux.Mux,
 	baseUrl *url.URL,
-	specifications []*endpoint_specification.EndpointSpecification,
+	endpoints []*endpointPkg.Endpoint,
 ) error {
 	if mux == nil {
 		return nil
@@ -209,13 +208,13 @@ func PatchCrawlable(
 
 	var sitemapXmlUrls []*motmedelHttpTypesSitemapxml.Url
 
-	for _, specification := range specifications {
-		staticContent := specification.StaticContent
+	for _, endpoint := range endpoints {
+		staticContent := endpoint.StaticContent
 		if staticContent == nil {
 			continue
 		}
 
-		path := specification.Path
+		path := endpoint.Path
 		pathUrl := baseUrl.JoinPath(path)
 		if pathUrl == nil {
 			return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilPathUrl, path)
@@ -256,7 +255,7 @@ func PatchCrawlable(
 		}
 
 		mux.Add(
-			&endpoint_specification.EndpointSpecification{
+			&endpointPkg.Endpoint{
 				Path:   "/sitemap.xml",
 				Method: http.MethodGet,
 				StaticContent: &static_content.StaticContent{
@@ -264,7 +263,7 @@ func PatchCrawlable(
 						Data:         sitemapXmlData,
 						Etag:         sitemapXmlEtag,
 						LastModified: sitemapXmlLastModified,
-						Headers: generate.MakeStaticContentHeaders(
+						Headers: muxUtils.MakeStaticContentHeaders(
 							"application/xml",
 							"no-cache",
 							sitemapXmlEtag,
@@ -272,6 +271,7 @@ func PatchCrawlable(
 						),
 					},
 				},
+				Public: true,
 			},
 		)
 
@@ -279,7 +279,7 @@ func PatchCrawlable(
 	}
 
 	mux.Add(
-		generate.MakeRobotsTxt(
+		endpointPkg.NewRobotsTxt(
 			&motmedelHttpTypes.RobotsTxt{
 				Groups: []*motmedelHttpTypes.RobotsTxtGroup{
 					{UserAgents: []string{"*"}, Disallowed: []string{"/"}},
@@ -398,24 +398,24 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	)
 	mux.Add(
 		// TODO: Not sure about the content type.
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   CspReportToEndpoint,
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
+			BodyLoader: &body_loader.Loader{
 				ContentType: "application/reports+json",
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
 					ctx,
 					motmedelMux.MuxHttpContextContextKey,
 				)
 				if err != nil {
 					slog.ErrorContext(
-						motmedelContext.WithErrorContextValue(
+						motmedelContext.WithError(
 							request.Context(),
 							fmt.Errorf("get non-zero context value: %w", err),
 						),
@@ -431,24 +431,24 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				return nil, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   CspReportUriEndpoint,
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
+			BodyLoader: &body_loader.Loader{
 				ContentType: "application/reports+json",
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
 					ctx,
 					motmedelMux.MuxHttpContextContextKey,
 				)
 				if err != nil {
 					slog.ErrorContext(
-						motmedelContext.WithErrorContextValue(
+						motmedelContext.WithError(
 							request.Context(),
 							fmt.Errorf("get non-zero context value: %w", err),
 						),
@@ -464,11 +464,11 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				return nil, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/api/report/error",
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
+			BodyLoader: &body_loader.Loader{
 				ContentType: "application/json",
 				MaxBytes:    8192,
 			},
@@ -477,24 +477,24 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				return nil, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/api/report/unhandled-rejection",
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
+			BodyLoader: &body_loader.Loader{
 				ContentType: "application/json",
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
 					ctx,
 					motmedelMux.MuxHttpContextContextKey,
 				)
 				if err != nil {
 					slog.ErrorContext(
-						motmedelContext.WithErrorContextValue(
+						motmedelContext.WithError(
 							request.Context(),
 							fmt.Errorf("get non-zero context value: %w", err),
 						),
@@ -510,24 +510,24 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				return nil, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   NetworkErrorLoggingEndpoint,
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
+			BodyLoader: &body_loader.Loader{
 				ContentType: "application/reports+json",
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
 					ctx,
 					motmedelMux.MuxHttpContextContextKey,
 				)
 				if err != nil {
 					slog.ErrorContext(
-						motmedelContext.WithErrorContextValue(
+						motmedelContext.WithError(
 							request.Context(),
 							fmt.Errorf("get non-zero context value: %w", err),
 						),
@@ -543,23 +543,24 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				return nil, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   IntegrityEndpoint,
 			Method: http.MethodPost,
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
+			// TODO: Add body parsing.
+			BodyLoader: &body_loader.Loader{
 				ContentType: "application/reports+json",
 				MaxBytes:    8192,
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				httpContext, err := motmedelContext.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
 					ctx,
 					motmedelMux.MuxHttpContextContextKey,
 				)
 				if err != nil {
 					slog.ErrorContext(
-						motmedelContext.WithErrorContextValue(
+						motmedelContext.WithError(
 							request.Context(),
 							fmt.Errorf("get non-zero context value: %w", err),
 						),
@@ -590,7 +591,7 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 	lastModified := nowUtc.Format("Mon, 02 Jan 2006 15:04:05") + " GMT"
 
 	mux.Add(
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/security.txt",
 			Method: http.MethodGet,
 			Handler: func(request *http.Request, bytes []byte) (*response.Response, *response_error.ResponseError) {
@@ -599,8 +600,9 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 					Headers:    []*response.HeaderEntry{{Name: "Location", Value: "/.well-known/security.txt"}},
 				}, nil
 			},
+			Public: true,
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/.well-known/security.txt",
 			Method: http.MethodGet,
 			StaticContent: &static_content.StaticContent{
@@ -608,7 +610,7 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 					Data:         data,
 					Etag:         etag,
 					LastModified: lastModified,
-					Headers: generate.MakeStaticContentHeaders(
+					Headers: muxUtils.MakeStaticContentHeaders(
 						"text/plain",
 						"no-cache",
 						etag,
@@ -616,6 +618,7 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 					),
 				},
 			},
+			Public: true,
 		},
 	)
 }
@@ -679,7 +682,7 @@ func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) 
 	urlString := securityTxtUrl.String()
 
 	mux.Add(
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/security.txt",
 			Method: http.MethodGet,
 			Handler: func(request *http.Request, bytes []byte) (*response.Response, *response_error.ResponseError) {
@@ -688,8 +691,9 @@ func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) 
 					Headers:    []*response.HeaderEntry{{Name: "Location", Value: urlString}},
 				}, nil
 			},
+			Public: true,
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/.well-known/security.txt",
 			Method: http.MethodGet,
 			Handler: func(request *http.Request, bytes []byte) (*response.Response, *response_error.ResponseError) {
@@ -698,6 +702,7 @@ func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) 
 					Headers:    []*response.HeaderEntry{{Name: "Location", Value: urlString}},
 				}, nil
 			},
+			Public: true,
 		},
 	)
 
@@ -705,14 +710,14 @@ func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) 
 }
 
 func MakeMux(
-	specifications []*muxTypesEndpointSpecification.EndpointSpecification,
+	endpoints []*endpointPkg.Endpoint,
 	contextKeyValuePairs [][2]any,
 ) (*motmedelMux.Mux, error) {
 	mux := &motmedelMux.Mux{}
 	mux.DefaultHeaders = maps.Clone(response_writer.DefaultHeaders)
 	mux.DefaultDocumentHeaders = maps.Clone(response_writer.DefaultDocumentHeaders)
 	mux.SetContextKeyValuePairs = contextKeyValuePairs
-	mux.Add(specifications...)
+	mux.Add(endpoints...)
 
 	if err := PatchMux(mux); err != nil {
 		return nil, fmt.Errorf("patch mux: %w", err)
@@ -723,7 +728,7 @@ func MakeMux(
 
 func PatchTrustedTypes(mux *motmedelMux.Mux, policies ...string) error {
 	if mux == nil {
-		return motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+		return motmedelErrors.NewWithTrace(nil_error.New("mux"))
 	}
 
 	if len(policies) == 0 {
@@ -815,7 +820,7 @@ func PatchTrustedTypes(mux *motmedelMux.Mux, policies ...string) error {
 
 func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	if mux == nil {
-		return motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+		return motmedelErrors.NewWithTrace(nil_error.New("mux"))
 	}
 
 	if baseUrl == nil {
@@ -836,7 +841,7 @@ func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 
 func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	if mux == nil {
-		return motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+		return motmedelErrors.NewWithTrace(nil_error.New("mux"))
 	}
 
 	if baseUrl == nil {
@@ -880,7 +885,7 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	)
 
 	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
-		func(detail *problem_detail.ProblemDetail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
+		func(detail *problem_detail.Detail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
 			data, contentType, err := response_error.ConvertProblemDetail(detail, negotiation)
 			if err != nil {
 				return nil, "", fmt.Errorf("convert problem detail: %w", err)
@@ -898,7 +903,7 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 func makeHttpService(
 	domain string,
 	port string,
-	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
+	staticContentEndpoints []*endpointPkg.Endpoint,
 	public bool,
 	redirects ...[2]string,
 ) (*http.Server, *motmedelMux.Mux, error) {
@@ -910,12 +915,12 @@ func makeHttpService(
 		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrEmptyPort)
 	}
 
-	mux, err := MakeMux(staticContentEndpointSpecifications, nil)
+	mux, err := MakeMux(staticContentEndpoints, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("make mux: %w", err)
 	}
 	if mux == nil {
-		return nil, nil, motmedelErrors.NewWithTrace(motmedelMuxErrors.ErrNilMux)
+		return nil, nil, motmedelErrors.NewWithTrace(nil_error.New("mux"))
 	}
 
 	baseUrlString := fmt.Sprintf("https://%s", domain)
@@ -965,16 +970,16 @@ func makeHttpService(
 func MakePublicHttpService(
 	domain string,
 	port string,
-	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
+	staticContentEndpoints []*endpointPkg.Endpoint,
 	redirects ...[2]string,
 ) (*http.Server, *motmedelMux.Mux, error) {
-	return makeHttpService(domain, port, staticContentEndpointSpecifications, true, redirects...)
+	return makeHttpService(domain, port, staticContentEndpoints, true, redirects...)
 }
 
 func MakeHttpService(
 	domain string,
 	port string,
-	staticContentEndpointSpecifications []*muxTypesEndpointSpecification.EndpointSpecification,
+	staticContentEndpointSpecifications []*endpointPkg.Endpoint,
 	redirects ...[2]string,
 ) (*http.Server, *motmedelMux.Mux, error) {
 	return makeHttpService(domain, port, staticContentEndpointSpecifications, false, redirects...)
@@ -1023,9 +1028,9 @@ func (configurator *CorsConfigurator) Parse(request *http.Request) (*motmedelHtt
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ClientError: motmedelErrors.NewWithTrace(fmt.Errorf("url parse (origin): %w", err), origin),
-				ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-					"Invalid Origin header.",
-					nil,
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("Invalid Origin header."),
 				),
 			}
 		}
@@ -1034,9 +1039,9 @@ func (configurator *CorsConfigurator) Parse(request *http.Request) (*motmedelHtt
 		originDomainBreakdown := domain_breakdown.GetDomainBreakdown(originHostname)
 		if originDomainBreakdown == nil {
 			return nil, &response_error.ResponseError{
-				ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-					"Invalid Origin header hostname.",
-					nil,
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("Invalid Origin header hostname."),
 				),
 			}
 		}

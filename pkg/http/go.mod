@@ -3,10 +3,10 @@ module github.com/altshiftab/gcp_utils/pkg/http
 go 1.25.0
 
 require (
-	github.com/Motmedel/utils_go v0.0.350
-	github.com/Motmedel/utils_go/pkg/http/mux v0.0.145
+	github.com/Motmedel/utils_go v0.0.368
+	github.com/Motmedel/utils_go/pkg/http/mux v0.0.156
 	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.33
-	github.com/Motmedel/utils_go/pkg/http/problem_detail v1.0.5
+	github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.8
 	github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5
 	github.com/altshiftab/gcp_utils v0.0.8
 	golang.org/x/net v0.49.0
