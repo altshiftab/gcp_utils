@@ -30,18 +30,32 @@ var sessionResponseRequestParser = &header_extractor.Parser{Name: "Sec-Session-R
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
+	RefreshPath string
 }
 
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
-	db *sql.DB,
-	refreshPath string,
-	cookieName string,
 	registeredDomain string,
+	db *sql.DB,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
+	}
+
+	jwtExtractor := authorizerRequestParser.JwtExtractor
+	if jwtExtractor == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("jwt extractor"))
+	}
+
+	tokenExtractor := jwtExtractor.TokenExtractor
+	if tokenExtractor == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("jwt token extractor"))
+	}
+
+	cookieName := tokenExtractor.Name
+	if cookieName == "" {
+		return motmedelErrors.NewWithTrace(empty_error.New("cookie name"))
 	}
 
 	if dbscSessionResponseProcessor == nil {
@@ -120,7 +134,7 @@ func (e *Endpoint) Initialize(
 
 		response := Response{
 			SessionIdentifier: sessionId,
-			RefreshURL:        refreshPath,
+			RefreshURL:        e.RefreshPath,
 			Scope: Scope{
 				Origin:      fmt.Sprintf("https://%s", registeredDomain),
 				IncludeSite: true,
@@ -164,6 +178,7 @@ func New(options ...dbsc_register_endpoint_config.Option) *Endpoint {
 				Method: http.MethodPost,
 			},
 		},
+		RefreshPath: config.RefreshPath,
 	}
 }
 
