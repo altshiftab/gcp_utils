@@ -147,12 +147,24 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow")),
 			}
 		}
+		oauthFlowId := oauthFlow.Id
+		if oauthFlowId == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("oauth flow id")),
+			}
+		}
+		oauthFlowExpiresAt := oauthFlow.ExpiresAt
+		if oauthFlowExpiresAt == nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow expires at")),
+			}
+		}
 
 		callbackCookie := http.Cookie{
 			Name:     e.CallbackCookieName,
-			Value:    oauthFlow.Id,
+			Value:    oauthFlowId,
 			Path:     e.CallbackPath,
-			Expires:  *oauthFlow.ExpiresAt,
+			Expires:  *oauthFlowExpiresAt,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
