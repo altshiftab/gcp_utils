@@ -1,7 +1,6 @@
 package refresh_endpoint
 
 import (
-	"database/sql"
 	"fmt"
 	"net/http"
 	"slices"
@@ -39,7 +38,6 @@ type Endpoint struct {
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	sessionManager *session_manager.Manager,
-	db *sql.DB,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
@@ -49,8 +47,9 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
+	db := sessionManager.Db
 	if db == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
+		return motmedelErrors.NewWithTrace(nil_error.New("session manager sql db"))
 	}
 
 	jwtExtractor := authorizerRequestParser.JwtExtractor

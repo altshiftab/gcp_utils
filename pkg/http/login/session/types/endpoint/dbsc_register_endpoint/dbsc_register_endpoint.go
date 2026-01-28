@@ -1,7 +1,6 @@
 package dbsc_register_endpoint
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,6 +25,25 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
+type Scope struct {
+	Origin        string `json:"origin,omitempty"`
+	IncludeSite   bool   `json:"include_site,omitempty"`
+	DeferRequests bool   `json:"defer_requests,omitempty"`
+}
+
+type Credential struct {
+	Type       string `json:"type,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Attributes string `json:"attributes,omitempty"`
+}
+
+type Response struct {
+	SessionIdentifier string        `json:"session_identifier"`
+	RefreshURL        string        `json:"refresh_url"`
+	Scope             Scope         `json:"scope"`
+	Credentials       []*Credential `json:"credentials"`
+}
+
 var sessionResponseRequestParser = &header_extractor.Parser{Name: "Sec-Session-Response"}
 
 type Endpoint struct {
@@ -37,7 +55,6 @@ func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
 	registeredDomain string,
-	db *sql.DB,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
@@ -62,8 +79,9 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("dbsc session response processor"))
 	}
 
+	db := dbscSessionResponseProcessor.Db
 	if db == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
+		return motmedelErrors.NewWithTrace(nil_error.New("dbsc session response processor sql db"))
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
@@ -180,23 +198,4 @@ func New(options ...dbsc_register_endpoint_config.Option) *Endpoint {
 		},
 		RefreshPath: config.RefreshPath,
 	}
-}
-
-type Scope struct {
-	Origin        string `json:"origin,omitempty"`
-	IncludeSite   bool   `json:"include_site,omitempty"`
-	DeferRequests bool   `json:"defer_requests,omitempty"`
-}
-
-type Credential struct {
-	Type       string `json:"type,omitempty"`
-	Name       string `json:"name,omitempty"`
-	Attributes string `json:"attributes,omitempty"`
-}
-
-type Response struct {
-	SessionIdentifier string        `json:"session_identifier"`
-	RefreshURL        string        `json:"refresh_url"`
-	Scope             Scope         `json:"scope"`
-	Credentials       []*Credential `json:"credentials"`
 }

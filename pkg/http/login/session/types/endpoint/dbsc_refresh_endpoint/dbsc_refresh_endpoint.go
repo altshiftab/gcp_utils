@@ -2,7 +2,6 @@ package dbsc_refresh_endpoint
 
 import (
 	"bytes"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -48,7 +47,6 @@ func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
 	sessionManager *session_manager.Manager,
-	db *sql.DB,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
@@ -62,8 +60,9 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
+	db := sessionManager.Db
 	if db == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
+		return motmedelErrors.NewWithTrace(nil_error.New("session manager sql db"))
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
