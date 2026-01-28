@@ -71,7 +71,7 @@ func DefaultFatal(ctx context.Context, options ...configPkg.Option) *motmedelErr
 	logger, err := Default(options...)
 	if err != nil {
 		slog.New(slog.NewJSONHandler(os.Stdout, nil)).ErrorContext(
-			motmedelContext.WithErrorContextValue(ctx, fmt.Errorf("default: %w", err)),
+			motmedelContext.WithError(ctx, fmt.Errorf("default: %w", err)),
 			"An error occurred when making a default logger.",
 		)
 		os.Exit(1)
