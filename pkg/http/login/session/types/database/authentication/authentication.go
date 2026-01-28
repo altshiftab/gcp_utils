@@ -13,6 +13,7 @@ type Authentication struct {
 	CreatedAt        *time.Time       `postgres:"created_at"`
 	ExpiresAt        *time.Time       `postgres:"expires_at"`
 	Ended            bool             `postgres:"ended"`
+	EndedAt          *time.Time       `postgres:"ended_at,nullable"`
 	IpAddress        string           `postgres:"ip_address,type:inet,nullable"`
 	IpAddressCountry string           `postgres:"ip_address_country,nullable"`
 	UserAgent        string           `postgres:"user_agent,nullable"`
