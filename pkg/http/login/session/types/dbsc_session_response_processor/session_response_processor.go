@@ -3,6 +3,7 @@ package dbsc_session_response_processor
 import (
 	"context"
 	"crypto/x509"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,7 +27,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/setting"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor/session_response_processor_config"
 )
 
@@ -43,7 +44,7 @@ type Output struct {
 
 type Processor struct {
 	TokenValidator *validator.Validator
-	GetChallenge   func(ctx context.Context, challenge string, authenticationId string) (*dbsc_challenge.Challenge, error)
+	Db             *sql.DB
 }
 
 func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *response_error.ResponseError) {
@@ -200,7 +201,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		}
 	}
 
-	dbscChallenge, err := p.GetChallenge(ctx, jti, authenticationId)
+	dbscChallenge, err := database.PopDbscChallenge(ctx, jti, authenticationId, p.Db)
 	if err != nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.New(fmt.Errorf("get challenge: %w", err), jti, authenticationId),
@@ -233,17 +234,13 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 	return derEncodedKeyMateral, nil
 }
 
-func New(
-	audience string,
-	getChallenge func(ctx context.Context, challenge string, authenticationId string) (*dbsc_challenge.Challenge, error),
-	options ...session_response_processor_config.Option,
-) (*Processor, error) {
+func New(audience string, db *sql.DB, options ...session_response_processor_config.Option) (*Processor, error) {
 	if audience == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("audience"))
 	}
 
-	if getChallenge == nil {
-		return nil, motmedelErrors.NewWithTrace(empty_error.New("get challenge"))
+	if db == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("db"))
 	}
 
 	config := session_response_processor_config.New(options...)
@@ -272,5 +269,5 @@ func New(
 		},
 	}
 
-	return &Processor{TokenValidator: tokenValidator, GetChallenge: getChallenge}, nil
+	return &Processor{TokenValidator: tokenValidator, Db: db}, nil
 }
