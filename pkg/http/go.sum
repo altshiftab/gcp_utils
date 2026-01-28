@@ -10,8 +10,8 @@ github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.8 h1:VpIoHN9i5FU
 github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.8/go.mod h1:zH1Ox51uchMVH2Xlg/jM5DhBD+FFnZZ138ypOQdOUl8=
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5 h1:57lx54tX6LbHjMNv0qGnwQB/eo7axhbDnd6rVWyWjxc=
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5/go.mod h1:sRPKDiIl1+iQ0eT9amSQKzBdFWDFXtxi32mEvBPm4BU=
-github.com/altshiftab/gcp_utils v0.0.8 h1:+PtgxYzEvgch40YhSccwZMWzSTZXCSaylcK8tYIKI9c=
-github.com/altshiftab/gcp_utils v0.0.8/go.mod h1:Fprfs+Cj46RPe86o3zaLPQ6kzLN07pIfm7FyiQ9n8ok=
+github.com/altshiftab/gcp_utils v0.0.9 h1:DMAkINxivdtS1Jkooujw7H5hzC+nUsuA16rpDvvTg7w=
+github.com/altshiftab/gcp_utils v0.0.9/go.mod h1:M1HSJQcIDDgg9YnoWmPFnEY1PGCTm8ojHTa7DCsWkJE=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gammazero/deque v1.2.0 h1:scEFO8Uidhw6KDU5qg1HA5fYwM0+us2qdeJqm43bitU=
