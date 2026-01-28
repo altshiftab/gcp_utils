@@ -129,8 +129,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer dbCtxCancel()
 
-		oauthFlowExpiresAt := time.Now().Add(e.OauthFlowDuration)
-		oauthFlowId, err := database.InsertOauthFlow(
+		oauthFlow, err := database.InsertOauthFlow(
 			dbCtx,
 			state,
 			codeVerifier,
@@ -143,17 +142,17 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 				ServerError: motmedelErrors.New(fmt.Errorf("add oauth flow: %w", err), state, codeVerifier, redirectUrlString),
 			}
 		}
-		if oauthFlowId == "" {
+		if oauthFlow == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow id")),
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow")),
 			}
 		}
 
 		callbackCookie := http.Cookie{
 			Name:     e.CallbackCookieName,
-			Value:    oauthFlowId,
+			Value:    oauthFlow.Id,
 			Path:     e.CallbackPath,
-			Expires:  oauthFlowExpiresAt,
+			Expires:  *oauthFlow.ExpiresAt,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
