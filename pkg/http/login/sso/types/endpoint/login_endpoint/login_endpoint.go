@@ -22,9 +22,10 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/login_endpoint/login_endpoint_config"
 	"golang.org/x/oauth2"
 )
@@ -93,7 +94,11 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 		redirectUrlString := redirectUrl.String()
 		if redirectUrlString == "" {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("redirect url")),
+				ClientError: motmedelErrors.NewWithTrace(empty_error.New("redirect url")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The redirect URL is empty."),
+				),
 			}
 		}
 
@@ -124,8 +129,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer dbCtxCancel()
 
-		oauthFlow := &oauth_flow.Flow{State: state, CodeVerifier: codeVerifier, RedirectUrl: redirectUrl.String()}
-		oauthFlowId, err := database.InsertOauthFlow(
+		oauthFlow, err := database.InsertOauthFlow(
 			dbCtx,
 			state,
 			codeVerifier,
@@ -135,26 +139,20 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 		)
 		if err != nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.New(fmt.Errorf("add oauth flow: %w", err), oauthFlow),
+				ServerError: motmedelErrors.New(fmt.Errorf("add oauth flow: %w", err), state, codeVerifier, redirectUrlString),
 			}
 		}
-		if oauthFlowId == "" {
+		if oauthFlow == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow id")),
-			}
-		}
-		oauthFlowExpiresAt := oauthFlow.ExpiresAt
-		if oauthFlowExpiresAt == nil {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow expires at")),
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow")),
 			}
 		}
 
 		callbackCookie := http.Cookie{
 			Name:     e.CallbackCookieName,
-			Value:    oauthFlowId,
+			Value:    oauthFlow.Id,
 			Path:     e.CallbackPath,
-			Expires:  *oauthFlowExpiresAt,
+			Expires:  *oauthFlow.ExpiresAt,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,

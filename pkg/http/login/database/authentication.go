@@ -79,7 +79,7 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 	var ended bool
 	var expiresAt time.Time
 	var dbscPublicKey []byte
-	if err := row.Scan(&ended, &expiresAt); err != nil {
+	if err := row.Scan(&ended, &expiresAt, &dbscPublicKey); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
@@ -213,40 +213,46 @@ func InsertOauthFlow(
 	redirectUrl string,
 	expirationDuration time.Duration,
 	database *sql.DB,
-) (string, error) {
+) (*oauth_flow.Flow, error) {
 	if codeVerifier == "" {
-		return "", motmedelErrors.NewWithTrace(empty_error.New("code verifier"))
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("code verifier"))
 	}
 
 	// TODO: Use empty instance error?
 	if redirectUrl == "" {
-		return "", motmedelErrors.NewWithTrace(empty_error.New("redirect url"))
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("redirect url"))
 	}
 
 	if expirationDuration == 0 {
-		return "", motmedelErrors.NewWithTrace(empty_error.New("expiration duration"))
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("expiration duration"))
 	}
 
 	if database == nil {
-		return "", motmedelErrors.NewWithTrace(motmedelSqlErrors.ErrNilSqlDatabase)
+		return nil, motmedelErrors.NewWithTrace(motmedelSqlErrors.ErrNilSqlDatabase)
 	}
 
 	if err := ctx.Err(); err != nil {
-		return "", fmt.Errorf("context err: %w", err)
+		return nil, fmt.Errorf("context err: %w", err)
 	}
 
 	expiresAt := time.Now().Add(expirationDuration)
 	row := database.QueryRowContext(ctx, oauthFlowInsertQuery, state, codeVerifier, redirectUrl, expiresAt)
 	if row == nil {
-		return "", motmedelErrors.NewWithTrace(motmedelSqlErrors.ErrNilRow)
+		return nil, motmedelErrors.NewWithTrace(motmedelSqlErrors.ErrNilRow)
 	}
 
 	var id string
 	if err := row.Scan(&id); err != nil {
-		return "", motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err), row)
+		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err), row)
 	}
 
-	return id, nil
+	return &oauth_flow.Flow{
+		Id:           id,
+		State:        state,
+		CodeVerifier: codeVerifier,
+		RedirectUrl:  redirectUrl,
+		ExpiresAt:    &expiresAt,
+	}, nil
 }
 
 func PopOauthFlow(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error) {
@@ -278,7 +284,7 @@ func PopOauthFlow(ctx context.Context, id string, database *sql.DB) (*oauth_flow
 
 const (
 	dbscChallengeInsertQuery = `INSERT INTO dbsc_challenge (challenge, authentication, expires_at) VALUES ($1, $2, $3);`
-	dbscChallengeDeleteQuery = `DELETE FROM dbsc_challenge WHERE challenge = $1 AND authentication = $2 RETURNING c.expires_at;`
+	dbscChallengeDeleteQuery = `DELETE FROM dbsc_challenge WHERE challenge = $1 AND authentication = $2 RETURNING expires_at;`
 )
 
 func InsertDbscChallenge(
