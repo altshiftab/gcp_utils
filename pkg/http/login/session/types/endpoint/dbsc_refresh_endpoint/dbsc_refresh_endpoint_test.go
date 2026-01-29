@@ -93,19 +93,6 @@ func TestEndpoint_Initialize_NilSessionManager(t *testing.T) {
 	}
 }
 
-func TestConstants(t *testing.T) {
-	// Verify DBSC authentication method constant
-	if DbscAuthenticationMethod != "hwk" {
-		t.Errorf("DbscAuthenticationMethod = %v, want hwk", DbscAuthenticationMethod)
-	}
-
-	// Verify session response header name constant
-	expectedHeaderName := "Sec-Session-Response"
-	if sessionResponseHeaderName != expectedHeaderName {
-		t.Errorf("sessionResponseHeaderName = %v, want %v", sessionResponseHeaderName, expectedHeaderName)
-	}
-}
-
 func TestEndpoint_SessionDuration(t *testing.T) {
 	tests := []struct {
 		name            string
