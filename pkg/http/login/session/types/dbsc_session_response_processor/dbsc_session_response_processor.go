@@ -27,8 +27,8 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/registered_claims_validator"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/validator/setting"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor/session_response_processor_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor/dbsc_session_response_processor_config"
 )
 
 type Input struct {
@@ -45,6 +45,8 @@ type Output struct {
 type Processor struct {
 	TokenValidator *validator.Validator
 	Db             *sql.DB
+
+	popDbscChallenge func(ctx context.Context, challenge string, authenticationId string, db *sql.DB) (*dbsc_challenge.Challenge, error)
 }
 
 func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *response_error.ResponseError) {
@@ -101,7 +103,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 	}
 	if key == nil {
 		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(motmedelErrors.ErrNilMap),
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("token key object")),
 			ProblemDetail: problem_detail.New(
 				http.StatusBadRequest,
 				problem_detail_config.WithDetail("Invalid token; nil key object."),
@@ -124,7 +126,12 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		return nil, &response_error.ResponseError{ServerError: wrappedErr}
 	}
 	if jwkKey == nil {
-		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(motmedelJwkErrors.ErrNilKey)}
+		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(nil_error.New("jwk key"))}
+	}
+
+	material := jwkKey.Material
+	if utils.IsNil(material) {
+		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(nil_error.New("jwk key material"))}
 	}
 
 	namedVerifier, err := jwkKey.NamedVerifier()
@@ -145,7 +152,16 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(motmedelCryptoErrors.ErrNilVerifier)}
 	}
 
-	derEncodedKeyMateral, err := x509.MarshalPKIXPublicKey(jwkKey.Material)
+	publicKey, err := material.PublicKey()
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(
+				fmt.Errorf("%w: jwk key material public key: %w", err),
+			),
+		}
+	}
+
+	derEncodedKeyMaterial, err := x509.MarshalPKIXPublicKey(publicKey)
 	if err != nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(
@@ -154,7 +170,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 			),
 		}
 	}
-	if len(derEncodedKeyMateral) == 0 {
+	if len(derEncodedKeyMaterial) == 0 {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(empty_error.New("x509 marshal pkix public key material")),
 		}
@@ -163,6 +179,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 	authenticatedToken, err := authenticated_token.New(
 		tokenString,
 		authenticated_token_config.WithTokenValidator(p.TokenValidator),
+		authenticated_token_config.WithAllowUnauthenticated(true),
 	)
 	if err != nil {
 		wrappedErr := motmedelErrors.New(
@@ -187,21 +204,21 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		}
 	}
 
-	authenticatedTokenHeader := authenticatedToken.Header
-	if authenticatedTokenHeader == nil {
+	authenticatedTokenPayload := authenticatedToken.Payload
+	if authenticatedTokenPayload == nil {
 		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authenticated jwt token header")),
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authenticated jwt token payload")),
 		}
 	}
 
-	jti, err := utils.MapGetConvert[string](authenticatedTokenHeader, "jti")
+	jti, err := utils.MapGetConvert[string](authenticatedTokenPayload, "jti")
 	if err != nil {
 		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.New(fmt.Errorf("map get convert (jti): %w", err), authenticatedTokenHeader),
+			ServerError: motmedelErrors.New(fmt.Errorf("map get convert (jti): %w", err), authenticatedTokenPayload),
 		}
 	}
 
-	dbscChallenge, err := database.PopDbscChallenge(ctx, jti, authenticationId, p.Db)
+	dbscChallenge, err := p.popDbscChallenge(ctx, jti, authenticationId, p.Db)
 	if err != nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.New(fmt.Errorf("get challenge: %w", err), jti, authenticationId),
@@ -231,10 +248,10 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		}
 	}
 
-	return derEncodedKeyMateral, nil
+	return derEncodedKeyMaterial, nil
 }
 
-func New(audience string, db *sql.DB, options ...session_response_processor_config.Option) (*Processor, error) {
+func New(audience string, db *sql.DB, options ...dbsc_session_response_processor_config.Option) (*Processor, error) {
 	if audience == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("audience"))
 	}
@@ -243,7 +260,7 @@ func New(audience string, db *sql.DB, options ...session_response_processor_conf
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("db"))
 	}
 
-	config := session_response_processor_config.New(options...)
+	config := dbsc_session_response_processor_config.New(options...)
 
 	tokenValidator := &validator.Validator{
 		HeaderValidator: &header_validator.Validator{
@@ -269,5 +286,5 @@ func New(audience string, db *sql.DB, options ...session_response_processor_conf
 		},
 	}
 
-	return &Processor{TokenValidator: tokenValidator, Db: db}, nil
+	return &Processor{TokenValidator: tokenValidator, Db: db, popDbscChallenge: config.PopDbscChallenge}, nil
 }

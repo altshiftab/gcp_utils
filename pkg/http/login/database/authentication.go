@@ -255,7 +255,7 @@ func InsertOauthFlow(
 	}, nil
 }
 
-func PopOauthFlow(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error) {
+func PopOauthFlow(ctx context.Context, id string, db *sql.DB) (*oauth_flow.Flow, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context err: %w", err)
 	}
@@ -264,13 +264,13 @@ func PopOauthFlow(ctx context.Context, id string, database *sql.DB) (*oauth_flow
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("oauth flow id"))
 	}
 
-	if database == nil {
-		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql database"))
+	if db == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql db"))
 	}
 
 	var flow oauth_flow.Flow
 
-	row := database.QueryRowContext(ctx, oauthFlowDeleteQuery, id)
+	row := db.QueryRowContext(ctx, oauthFlowDeleteQuery, id)
 	if row == nil {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("sql row"))
 	}
@@ -292,12 +292,8 @@ func InsertDbscChallenge(
 	challenge string,
 	authenticationId string,
 	expirationDuration time.Duration,
-	database *sql.DB,
+	db *sql.DB,
 ) error {
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("context err: %w", err)
-	}
-
 	if challenge == "" {
 		return motmedelErrors.NewWithTrace(empty_error.New("dbsc challenge"))
 	}
@@ -310,14 +306,18 @@ func InsertDbscChallenge(
 		return motmedelErrors.NewWithTrace(empty_error.New("expiration duration"))
 	}
 
-	if database == nil {
-		return motmedelErrors.NewWithTrace(motmedelSqlErrors.ErrNilSqlDatabase)
+	if db == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("sql db"))
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context err: %w", err)
 	}
 
 	expiresAt := time.Now().Add(expirationDuration)
-	if _, err := database.ExecContext(ctx, dbscChallengeInsertQuery, []byte(challenge), authenticationId, expiresAt); err != nil {
+	if _, err := db.ExecContext(ctx, dbscChallengeInsertQuery, []byte(challenge), authenticationId, expiresAt); err != nil {
 		return motmedelErrors.NewWithTrace(
-			fmt.Errorf("database exec context: %w", err),
+			fmt.Errorf("sql db exec context: %w", err),
 			expiresAt,
 		)
 	}
@@ -325,14 +325,26 @@ func InsertDbscChallenge(
 	return nil
 }
 
-func PopDbscChallenge(ctx context.Context, challenge string, authenticationId string, database *sql.DB) (*dbsc_challenge.Challenge, error) {
+func PopDbscChallenge(ctx context.Context, challenge string, authenticationId string, db *sql.DB) (*dbsc_challenge.Challenge, error) {
+	if challenge == "" {
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("challenge"))
+	}
+
+	if authenticationId == "" {
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("authentication id"))
+	}
+
+	if db == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql db"))
+	}
+
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context err: %w", err)
 	}
 
 	var expiresAt time.Time
 
-	row := database.QueryRowContext(ctx, dbscChallengeDeleteQuery, challenge, authenticationId)
+	row := db.QueryRowContext(ctx, dbscChallengeDeleteQuery, challenge, authenticationId)
 	if row == nil {
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}

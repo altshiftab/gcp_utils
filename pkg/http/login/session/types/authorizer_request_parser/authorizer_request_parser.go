@@ -34,6 +34,8 @@ type Parser struct {
 	AllowedRoles    []string
 	AllowedTenantId string
 	SuperAdminRoles []string
+
+	verifier motmedelCryptoInterfaces.NamedVerifier
 }
 
 func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_error.ResponseError) {
@@ -120,6 +122,10 @@ func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_e
 	}
 
 	return sessionToken, nil
+}
+
+func (p *Parser) Verifier() motmedelCryptoInterfaces.NamedVerifier {
+	return p.verifier
 }
 
 func New(
