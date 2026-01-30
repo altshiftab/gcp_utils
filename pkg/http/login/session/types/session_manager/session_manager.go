@@ -24,7 +24,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/numeric_date"
 	motmedelTime "github.com/Motmedel/utils_go/pkg/time"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
@@ -40,7 +40,16 @@ type Manager struct {
 	Issuer       string
 	CookieDomain string
 	Db           *sql.DB
-	*session_manager_config.Config
+
+	CookieName                       string
+	InitialSessionDuration           time.Duration
+	AuthenticationDuration           time.Duration
+	DbscChallengeDuration            time.Duration
+	DbscRegisterPath                 string
+	DbscAlgs                         []string
+	selectSessionEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
+	insertAuthentication             func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
+	insertDbscChallenge              func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
 }
 
 func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*response.Response, *response_error.ResponseError) {
@@ -80,8 +89,8 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 
 	selectSessionAccountCtx, selectSessionAccountCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 	defer selectSessionAccountCtxCancel()
-	account, err := database.SelectSessionEmailAddressAccount(selectSessionAccountCtx, emailAddress, m.Db)
-	wrappedErr := motmedelErrors.New(fmt.Errorf("select email address account id: %w", err), emailAddress)
+	account, err := m.selectSessionEmailAddressAccount(selectSessionAccountCtx, emailAddress, m.Db)
+	wrappedErr := motmedelErrors.New(fmt.Errorf("select email address account: %w", err), emailAddress)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, &response_error.ResponseError{
@@ -148,7 +157,7 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 	insertDbCtx, insertDbCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 	defer insertDbCancel()
 
-	authentication, err := database.InsertAuthentication(insertDbCtx, accountId, m.AuthenticationDuration, m.Db)
+	authentication, err := m.insertAuthentication(insertDbCtx, accountId, m.AuthenticationDuration, m.Db)
 	if err != nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.New(fmt.Errorf("insert authentication: %w", err)),
@@ -181,7 +190,7 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 
 	dbInsertCtx, dbInsertCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 	defer dbInsertCtxCancel()
-	err = database.InsertDbscChallenge(dbInsertCtx, dbscChallenge, authenticationId, m.DbscChallengeDuration, m.Db)
+	err = m.insertDbscChallenge(dbInsertCtx, dbscChallenge, authenticationId, m.DbscChallengeDuration, m.Db)
 	if err != nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.New(
@@ -430,5 +439,18 @@ func New(
 
 	config := session_manager_config.New(options...)
 
-	return &Manager{Signer: signer, Db: db, CookieDomain: cookieDomain, Config: config}, nil
+	return &Manager{
+		Signer:                           signer,
+		Db:                               db,
+		CookieDomain:                     cookieDomain,
+		CookieName:                       config.CookieName,
+		InitialSessionDuration:           config.InitialSessionDuration,
+		AuthenticationDuration:           config.AuthenticationDuration,
+		DbscChallengeDuration:            config.DbscChallengeDuration,
+		DbscRegisterPath:                 config.DbscRegisterPath,
+		DbscAlgs:                         config.DbscAlgs,
+		selectSessionEmailAddressAccount: config.SelectSessionEmailAddressAccount,
+		insertAuthentication:             config.InsertAuthentication,
+		insertDbscChallenge:              config.InsertDbscChallenge,
+	}, nil
 }
