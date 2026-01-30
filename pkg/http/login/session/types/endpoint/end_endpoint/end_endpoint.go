@@ -7,8 +7,9 @@ import (
 
 	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader/body_setting"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
@@ -16,6 +17,8 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/end_endpoint/end_endpoint_config"
@@ -47,7 +50,10 @@ func (e *Endpoint) Initialize(authorizerRequestParser *authorizer_request_parser
 		authenticationId := sessionToken.AuthenticationId
 		if authenticationId == "" {
 			return nil, &muxResponseError.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("Missing authentication id in the session token."),
+				),
 			}
 		}
 
@@ -74,8 +80,9 @@ func New(options ...end_endpoint_config.Option) *Endpoint {
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
-				Path:   config.Path,
-				Method: http.MethodPost,
+				Path:       config.Path,
+				Method:     http.MethodPost,
+				BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 			},
 		},
 	}

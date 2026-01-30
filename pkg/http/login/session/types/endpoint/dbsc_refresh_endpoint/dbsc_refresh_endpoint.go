@@ -2,6 +2,8 @@ package dbsc_refresh_endpoint
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -24,6 +26,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/http/utils"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
@@ -33,14 +36,19 @@ import (
 )
 
 const (
-	DbscAuthenticationMethod  = "hwk"
-	sessionResponseHeaderName = "Sec-Session-Response"
+	DbscAuthenticationMethod   = "hwk"
+	sessionResponseHeaderName  = "Sec-Session-Response"
+	sessionChallengeHeaderName = "Sec-Session-Challenge"
 )
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
 	SessionDuration   time.Duration
 	ChallengeDuration time.Duration
+
+	insertDbscChallenge         func(ctx context.Context, challenge string, authenticationId string, challengeDuration time.Duration, db *sql.DB) error
+	selectRefreshAuthentication func(ctx context.Context, id string, database *sql.DB) (*authenticationPkg.Authentication, error)
+	generateDbscChallenge       func() (string, error)
 }
 
 func (e *Endpoint) Initialize(
@@ -89,7 +97,7 @@ func (e *Endpoint) Initialize(
 			if err != nil {
 				wrappedErr := motmedelErrors.New(fmt.Errorf("get single header: %w", err))
 				if errors.Is(err, motmedelHttpErrors.ErrMissingHeader) {
-					return nil, nil
+					return []byte{}, nil
 				} else if errors.Is(err, motmedelHttpErrors.ErrMultipleHeaderValues) {
 					return nil, &response_error.ResponseError{
 						ClientError: wrappedErr,
@@ -124,12 +132,6 @@ func (e *Endpoint) Initialize(
 			return nil, responseError
 		}
 
-		sessionId := sessionToken.SessionId
-		if sessionId == "" {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("dbsc session id")),
-			}
-		}
 		authenticationId := sessionToken.AuthenticationId
 		if authenticationId == "" {
 			return nil, &response_error.ResponseError{
@@ -143,7 +145,7 @@ func (e *Endpoint) Initialize(
 		}
 
 		if len(publicKey) == 0 {
-			challenge, err := session.GenerateDbscChallenge()
+			challenge, err := e.generateDbscChallenge()
 			if err != nil {
 				return nil, &response_error.ResponseError{
 					ServerError: fmt.Errorf("generate challenge: %w", err),
@@ -153,7 +155,7 @@ func (e *Endpoint) Initialize(
 			insertDbCtx, insertDbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 			defer insertDbCtxCancel()
 
-			if err := database.InsertDbscChallenge(insertDbCtx, challenge, authenticationId, e.ChallengeDuration, db); err != nil {
+			if err := e.insertDbscChallenge(insertDbCtx, challenge, authenticationId, e.ChallengeDuration, db); err != nil {
 				return nil, &response_error.ResponseError{
 					ServerError: motmedelErrors.New(
 						fmt.Errorf("insert dbsc challenge: %w", err),
@@ -166,8 +168,8 @@ func (e *Endpoint) Initialize(
 				StatusCode: http.StatusUnauthorized,
 				Headers: []*muxResponse.HeaderEntry{
 					{
-						Name:  "Sec-Session-Challenge",
-						Value: fmt.Sprintf("\"%s\";id=\"%s\"", challenge, sessionId),
+						Name:  sessionChallengeHeaderName,
+						Value: fmt.Sprintf("\"%s\";id=\"%s\"", challenge, authenticationId),
 					},
 				},
 			}, nil
@@ -176,14 +178,20 @@ func (e *Endpoint) Initialize(
 		selectDbCtx, selectDbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer selectDbCtxCancel()
 
-		authentication, err := database.SelectRefreshAuthentication(selectDbCtx, authenticationId, db)
+		authentication, err := e.selectRefreshAuthentication(selectDbCtx, authenticationId, db)
 		if err != nil {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.New(
-					fmt.Errorf("get authentication: %w", err),
-					authenticationId,
-				),
+			wrappedErr := motmedelErrors.New(fmt.Errorf("select refresh authentication: %w", err), authenticationId)
+			if errors.Is(err, sql.ErrNoRows) {
+				// TODO: Should 404 be returned?
+				return nil, &response_error.ResponseError{
+					ClientError: wrappedErr,
+					ProblemDetail: problem_detail.New(
+						http.StatusBadRequest,
+						problem_detail_config.WithDetail("No authentication matches the authentication id."),
+					),
+				}
 			}
+			return nil, &response_error.ResponseError{ServerError: wrappedErr}
 		}
 		if authentication == nil {
 			return nil, &response_error.ResponseError{
@@ -228,7 +236,10 @@ func New(options ...dbsc_refresh_endpoint_config.Option) *Endpoint {
 				Method: http.MethodPost,
 			},
 		},
-		SessionDuration:   config.SessionDuration,
-		ChallengeDuration: config.ChallengeDuration,
+		SessionDuration:             config.SessionDuration,
+		ChallengeDuration:           config.ChallengeDuration,
+		insertDbscChallenge:         database.InsertDbscChallenge,
+		selectRefreshAuthentication: database.SelectRefreshAuthentication,
+		generateDbscChallenge:       session.GenerateDbscChallenge,
 	}
 }

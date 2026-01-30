@@ -185,6 +185,7 @@ func Parse(claims *session_claims.Claims) (*Token, error) {
 	}
 
 	return &Token{
+		Claims:              claims,
 		AuthenticationId:    authenticationId,
 		SessionId:           sessionId,
 		SubjectId:           subjectId,
