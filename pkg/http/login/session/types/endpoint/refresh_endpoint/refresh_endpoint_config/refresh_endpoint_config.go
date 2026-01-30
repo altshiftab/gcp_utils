@@ -1,23 +1,33 @@
 package refresh_endpoint_config
 
-import "time"
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
+)
 
 var (
-	DefaultPath            = "/api/session/refresh"
-	DefaultSessionDuration = 12 * time.Hour
+	DefaultPath                        = "/api/session/refresh"
+	DefaultSessionDuration             = 12 * time.Hour
+	DefaultSelectRefreshAuthentication = database.SelectRefreshAuthentication
 )
 
 type Config struct {
-	Path            string
-	SessionDuration time.Duration
+	Path                        string
+	SessionDuration             time.Duration
+	SelectRefreshAuthentication func(ctx context.Context, id string, database *sql.DB) (*authenticationPkg.Authentication, error)
 }
 
 type Option func(*Config)
 
 func New(options ...Option) *Config {
 	config := &Config{
-		Path:            DefaultPath,
-		SessionDuration: DefaultSessionDuration,
+		Path:                        DefaultPath,
+		SessionDuration:             DefaultSessionDuration,
+		SelectRefreshAuthentication: DefaultSelectRefreshAuthentication,
 	}
 	for _, option := range options {
 		option(config)
@@ -35,5 +45,11 @@ func WithPath(path string) Option {
 func WithSessionDuration(sessionDuration time.Duration) Option {
 	return func(config *Config) {
 		config.SessionDuration = sessionDuration
+	}
+}
+
+func WithSelectRefreshAuthentication(selectRefreshAuthentication func(ctx context.Context, id string, database *sql.DB) (*authenticationPkg.Authentication, error)) Option {
+	return func(config *Config) {
+		config.SelectRefreshAuthentication = selectRefreshAuthentication
 	}
 }

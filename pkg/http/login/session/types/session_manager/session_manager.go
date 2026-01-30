@@ -28,6 +28,7 @@ import (
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
@@ -232,8 +233,7 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 			NotBefore: issuedAt,
 			IssuedAt:  issuedAt,
 		},
-		// TODO: Use constant
-		AuthenticationMethods: []string{"ext"},
+		AuthenticationMethods: []string{authentication_method.Sso},
 		AuthenticatedAt:       numeric_date.New(*authenticationCreatedAt),
 		AuthorizedParty:       authorizedParty,
 		Roles:                 account.Roles,

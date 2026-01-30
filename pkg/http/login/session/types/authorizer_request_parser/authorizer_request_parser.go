@@ -65,7 +65,7 @@ func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_e
 	sessionToken, err := session_token.Parse(sessionClaims)
 	if err != nil {
 		wrappedErr := motmedelErrors.New(fmt.Errorf("session token new from session claims: %w", err), sessionClaims)
-		if errors.Is(err, motmedelErrors.ErrBadSplit) {
+		if errors.Is(err, motmedelErrors.ErrParseError) {
 			return nil, &response_error.ResponseError{
 				ClientError: wrappedErr,
 				ProblemDetail: problem_detail.New(
@@ -77,7 +77,9 @@ func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_e
 		return nil, &response_error.ResponseError{ServerError: wrappedErr}
 	}
 	if sessionToken == nil {
-		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token"))}
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token")),
+		}
 	}
 
 	if superAdminRoles := p.SuperAdminRoles; len(superAdminRoles) != 0 {
@@ -95,7 +97,7 @@ func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_e
 			return nil, &response_error.ResponseError{
 				ProblemDetail: problem_detail.New(
 					http.StatusForbidden,
-					problem_detail_config.WithDetail("Invalid tenant id."),
+					problem_detail_config.WithDetail("The session token's tenant id does not match the allowed tenant id."),
 				),
 			}
 		}
@@ -116,7 +118,7 @@ func (p *Parser) Parse(request *http.Request) (*session_token.Token, *response_e
 		return nil, &response_error.ResponseError{
 			ProblemDetail: problem_detail.New(
 				http.StatusForbidden,
-				problem_detail_config.WithDetail("Invalid role."),
+				problem_detail_config.WithDetail("None of the session token's roles match the allowed roles."),
 			),
 		}
 	}

@@ -1,18 +1,28 @@
 package end_endpoint_config
 
+import (
+	"context"
+	"database/sql"
+
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+)
+
 var (
-	DefaultPath = "/api/session/end"
+	DefaultPath                          = "/api/session/end"
+	DefaultUpdateAuthenticationWithEnded = database.UpdateAuthenticationWithEnded
 )
 
 type Config struct {
-	Path string
+	Path                          string
+	UpdateAuthenticationWithEnded func(ctx context.Context, id string, database *sql.DB) error
 }
 
 type Option func(*Config)
 
 func New(options ...Option) *Config {
 	config := &Config{
-		Path: DefaultPath,
+		Path:                          DefaultPath,
+		UpdateAuthenticationWithEnded: DefaultUpdateAuthenticationWithEnded,
 	}
 	for _, option := range options {
 		option(config)
@@ -24,5 +34,11 @@ func New(options ...Option) *Config {
 func WithPath(path string) Option {
 	return func(config *Config) {
 		config.Path = path
+	}
+}
+
+func WithUpdateAuthenticationWithEnded(updateAuthenticationWithEnded func(ctx context.Context, id string, database *sql.DB) error) Option {
+	return func(config *Config) {
+		config.UpdateAuthenticationWithEnded = updateAuthenticationWithEnded
 	}
 }

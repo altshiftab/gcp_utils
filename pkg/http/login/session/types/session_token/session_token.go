@@ -162,7 +162,9 @@ func Parse(claims *session_claims.Claims) (*Token, error) {
 		var found bool
 		authenticationId, sessionId, found = strings.Cut(id, ":")
 		if !found {
-			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("%w (jti)", motmedelErrors.ErrBadSplit))
+			return nil, motmedelErrors.NewWithTrace(
+				fmt.Errorf("%w: %w (jti)", motmedelErrors.ErrParseError, motmedelErrors.ErrBadSplit),
+			)
 		}
 	}
 
@@ -171,7 +173,9 @@ func Parse(claims *session_claims.Claims) (*Token, error) {
 		var found bool
 		subjectId, subjectEmailAddress, found = strings.Cut(sub, ":")
 		if !found {
-			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("%w (sub)", motmedelErrors.ErrBadSplit))
+			return nil, motmedelErrors.NewWithTrace(
+				fmt.Errorf("%w: %w (sub)", motmedelErrors.ErrParseError, motmedelErrors.ErrBadSplit),
+			)
 		}
 	}
 
@@ -180,7 +184,9 @@ func Parse(claims *session_claims.Claims) (*Token, error) {
 		var found bool
 		tenantId, tenantName, found = strings.Cut(azp, ":")
 		if !found {
-			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("%w (azp)", motmedelErrors.ErrBadSplit))
+			return nil, motmedelErrors.NewWithTrace(
+				fmt.Errorf("%w: %w (azp)", motmedelErrors.ErrParseError, motmedelErrors.ErrBadSplit),
+			)
 		}
 	}
 
@@ -192,6 +198,6 @@ func Parse(claims *session_claims.Claims) (*Token, error) {
 		SubjectEmailAddress: subjectEmailAddress,
 		TenantId:            tenantId,
 		TenantName:          tenantName,
-		Roles:               nil,
+		Roles:               claims.Roles,
 	}, nil
 }
