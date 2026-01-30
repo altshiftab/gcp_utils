@@ -1,6 +1,8 @@
 package dbsc_register_endpoint
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -19,12 +21,17 @@ import (
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_register_endpoint/dbsc_register_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
+)
+
+// Use centralized DBSC header constants from the session package.
+const (
+	sessionResponseHeaderName = session.DbscSessionResponseHeaderName
 )
 
 type Scope struct {
@@ -46,11 +53,12 @@ type Response struct {
 	Credentials       []*Credential `json:"credentials"`
 }
 
-var sessionResponseRequestParser = &header_extractor.Parser{Name: "Sec-Session-Response"}
+var sessionResponseRequestParser *header_extractor.Parser
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
-	RefreshPath string
+	RefreshPath                           string
+	updateAuthenticationWithDbscPublicKey func(ctx context.Context, id string, key []byte, database *sql.DB) error
 }
 
 func (e *Endpoint) Initialize(
@@ -118,12 +126,6 @@ func (e *Endpoint) Initialize(
 			return nil, responseError
 		}
 
-		sessionId := sessionToken.SessionId
-		if sessionId == "" {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("dbsc session id")),
-			}
-		}
 		authenticationId := sessionToken.AuthenticationId
 		if authenticationId == "" {
 			return nil, &response_error.ResponseError{
@@ -147,7 +149,7 @@ func (e *Endpoint) Initialize(
 
 		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer dbCtxCancel()
-		if err := database.UpdateAuthenticationWithDbscPublicKey(dbCtx, authenticationId, publicKey, db); err != nil {
+		if err := e.updateAuthenticationWithDbscPublicKey(dbCtx, authenticationId, publicKey, db); err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(
 					fmt.Errorf("set authentication public key: %w", err),
@@ -157,7 +159,7 @@ func (e *Endpoint) Initialize(
 		}
 
 		response := Response{
-			SessionIdentifier: sessionId,
+			SessionIdentifier: authenticationId,
 			RefreshURL:        e.RefreshPath,
 			Scope: Scope{
 				Origin:      fmt.Sprintf("https://%s", registeredDomain),
@@ -202,6 +204,15 @@ func New(options ...dbsc_register_endpoint_config.Option) *Endpoint {
 				Method: http.MethodPost,
 			},
 		},
-		RefreshPath: config.RefreshPath,
+		RefreshPath:                           config.RefreshPath,
+		updateAuthenticationWithDbscPublicKey: config.UpdateAuthenticationWithDbscPublicKey,
+	}
+}
+
+func init() {
+	var err error
+	sessionResponseRequestParser, err = header_extractor.New(sessionResponseHeaderName)
+	if err != nil {
+		panic(fmt.Errorf("header extractor new (session response): %w", err))
 	}
 }

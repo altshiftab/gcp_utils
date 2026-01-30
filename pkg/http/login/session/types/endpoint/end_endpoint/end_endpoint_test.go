@@ -1,12 +1,12 @@
 package end_endpoint
 
 import (
+	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"reflect"
 	"testing"
 
 	motmedelCryptoInterfaces "github.com/Motmedel/utils_go/pkg/crypto/interfaces"
@@ -17,33 +17,27 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/end_endpoint/end_endpoint_config"
-	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/testing"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-var httpServer *httptest.Server
-var testEndpoint = New()
-var testDb *sql.DB
+var defaultSessionCookieString string
+var defaultAuthorizationRequestParser *authorizer_request_parser.Parser
+
+var db *sql.DB
 var method motmedelCryptoInterfaces.Method
 
 func TestMain(m *testing.M) {
-	var authorizerRequestParser *authorizer_request_parser.Parser
-	authorizerRequestParser, method, testDb = loginTesting.SetUp()
 
-	if err := testEndpoint.Initialize(authorizerRequestParser, testDb); err != nil {
-		panic(fmt.Errorf("test endpoint initialize: %w", err))
-	}
-
-	mux := &muxPkg.Mux{}
-	mux.Add(testEndpoint.Endpoint.Endpoint)
-
-	httpServer = httptest.NewServer(mux)
+	defaultAuthorizationRequestParser, method, db = loginTesting.SetUp()
+	defaultSessionCookieString = loginTesting.MakeStandardCookie(loginTesting.AuthenticationId, method)
 
 	code := m.Run()
-	httpServer.Close()
-	if testDb != nil {
-		_ = testDb.Close()
+	if db != nil {
+		_ = db.Close()
 	}
 
 	os.Exit(code)
@@ -52,27 +46,35 @@ func TestMain(m *testing.M) {
 func TestEndpoint(t *testing.T) {
 	t.Parallel()
 
-	authenticationIdCookie := loginTesting.MakeCookie("authentication-id", method)
-	emptyAuthenticationIdToken := loginTesting.MakeCookie("", method)
+	emptyAuthenticationIdToken := loginTesting.MakeStandardCookie("", method)
 
 	testCases := []struct {
-		name string
-		args *muxTesting.Args
+		name  string
+		args  *muxTesting.Args
+		dbErr error
 	}{
 		{
-			name: "unauthenticated (no cookie)",
+			name: "authenticated happy path",
 			args: &muxTesting.Args{
-				ExpectedStatusCode: http.StatusUnauthorized,
+				Headers: [][2]string{
+					{"Cookie", defaultSessionCookieString},
+				},
+				ExpectedStatusCode: http.StatusNoContent,
+				ExpectedHeaders: [][2]string{
+					{"Clear-Site-Data", "\"cookies\""},
+				},
 			},
 		},
 		{
-			name: "authenticated",
+			name: "authenticated with db error",
 			args: &muxTesting.Args{
 				Headers: [][2]string{
-					{"Cookie", authenticationIdCookie},
+					{"Cookie", defaultSessionCookieString},
 				},
-				ExpectedStatusCode: http.StatusNoContent,
+				ExpectedStatusCode:    http.StatusInternalServerError,
+				ExpectedProblemDetail: &problem_detail.Detail{},
 			},
+			dbErr: errors.New("db error"),
 		},
 		{
 			name: "authenticated with empty authentication id",
@@ -92,6 +94,20 @@ func TestEndpoint(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
+			testEndpoint := New()
+			if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, db); err != nil {
+				t.Fatalf("test endpoint initialize: %v", err)
+			}
+
+			testEndpoint.updateAuthenticationWithEnded = func(ctx context.Context, authenticationId string, db *sql.DB) error {
+				return testCase.dbErr
+			}
+
+			mux := &muxPkg.Mux{}
+			mux.Add(testEndpoint.Endpoint.Endpoint)
+			httpServer := httptest.NewServer(mux)
+			defer httpServer.Close()
+
 			testCase.args.Path = testEndpoint.Path
 			testCase.args.Method = testEndpoint.Method
 
@@ -99,44 +115,6 @@ func TestEndpoint(t *testing.T) {
 		})
 	}
 
-}
-
-// TestEndpoint_DbError spins up a dedicated server with a closed DB to hit the
-// database error path in the handler and assert a 5xx response.
-func TestEndpoint_DbError(t *testing.T) {
-	t.Parallel()
-
-	// Fresh setup to avoid affecting the shared TestMain server/DB.
-	arp, signer, db := loginTesting.SetUp()
-	ep := New()
-	if err := ep.Initialize(arp, db); err != nil {
-		t.Fatalf("endpoint initialize: %v", err)
-	}
-
-	// Close the DB to force an execution error on update.
-	_ = db.Close()
-
-	mux := &muxPkg.Mux{}
-	mux.Add(ep.Endpoint.Endpoint)
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	// Make a valid cookie to reach the DB update call.
-	cookie := loginTesting.MakeCookie("auth-for-db-error", signer)
-
-	args := &muxTesting.Args{
-		Path:   ep.Path,
-		Method: ep.Method,
-		Headers: [][2]string{
-			{"Cookie", cookie},
-		},
-		ExpectedStatusCode: http.StatusInternalServerError,
-		ExpectedProblemDetail: &problem_detail.Detail{
-			Title: "Internal Server Error",
-		},
-	}
-
-	muxTesting.TestArgs(t, args, srv.URL)
 }
 
 func TestEndpoint_Initialize(t *testing.T) {
@@ -155,7 +133,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 			name: "empty authorizer request parser",
 			args: args{
 				authorizerRequestParser: nil,
-				db:                      testDb,
+				db:                      db,
 			},
 			wantErr: true,
 		},
@@ -171,7 +149,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 			name: "success",
 			args: args{
 				authorizerRequestParser: &authorizer_request_parser.Parser{},
-				db:                      testDb,
+				db:                      db,
 			},
 		},
 	}
@@ -186,6 +164,13 @@ func TestEndpoint_Initialize(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	t.Parallel()
+
+	opts := []cmp.Option{
+		cmpopts.IgnoreFields(
+			Endpoint{},
+			"updateAuthenticationWithEnded",
+		),
+	}
 
 	type args struct {
 		options []end_endpoint_config.Option
@@ -226,8 +211,9 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := New(tt.args.options...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("New() = %v, want %v", got, tt.want)
+			got := New(tt.args.options...)
+			if diff := cmp.Diff(tt.want, got, opts...); diff != "" {
+				t.Errorf("endpoint mismatch (-expected +got):\n%s", diff)
 			}
 		})
 	}

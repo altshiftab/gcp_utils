@@ -1,6 +1,8 @@
 package refresh_endpoint
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"slices"
@@ -16,23 +18,20 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/refresh_endpoint/refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
-const (
-	RefreshAuthenticationMethod = "rtoken"
-	DbscAuthenticationMethod    = "hwk"
-	SsoAuthenticationMethod     = "ext"
-)
-
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
-	SessionDuration time.Duration
+	SessionDuration             time.Duration
+	selectRefreshAuthentication func(ctx context.Context, id string, database *sql.DB) (*authenticationPkg.Authentication, error)
 }
 
 func (e *Endpoint) Initialize(
@@ -64,10 +63,11 @@ func (e *Endpoint) Initialize(
 
 	cookieName := tokenExtractor.Name
 	if cookieName == "" {
-		return motmedelErrors.NewWithTrace(empty_error.New("token cookie name"))
+		return motmedelErrors.NewWithTrace(empty_error.New("authentication parser jwt extractor token extractor name"))
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
+
 	e.Handler = func(request *http.Request, bytes []byte) (*muxResponse.Response, *response_error.ResponseError) {
 		ctx := request.Context()
 
@@ -78,36 +78,54 @@ func (e *Endpoint) Initialize(
 
 		authenticationId := sessionToken.AuthenticationId
 		if authenticationId == "" {
-			return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id"))}
+			return nil, &response_error.ResponseError{
+				ClientError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The session token authentication id is empty."),
+				),
+			}
 		}
 
 		claims := sessionToken.Claims
 		if claims == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token claims")),
+				ClientError: motmedelErrors.NewWithTrace(nil_error.New("session token claims")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The session token claims are empty."),
+				),
 			}
 		}
 
 		sessionExpiresAt := claims.ExpiresAt
 		if sessionExpiresAt == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token claims expires at")),
+				ClientError: motmedelErrors.NewWithTrace(nil_error.New("session token claims expires at")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The session token expires at is empty."),
+				),
 			}
 		}
 
 		sessionNotBefore := claims.NotBefore
 		if sessionNotBefore == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token claims not before")),
+				ClientError: motmedelErrors.NewWithTrace(nil_error.New("session token claims not before")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The session token not before is empty."),
+				),
 			}
 		}
 
 		// Don't refresh if the refresh is handled by the DBSC mechanism.
-		if slices.Contains(claims.AuthenticationMethods, DbscAuthenticationMethod) {
+		if slices.Contains(claims.AuthenticationMethods, authentication_method.Dbsc) {
 			return nil, nil
 		}
 
-		authentication, err := database.SelectRefreshAuthentication(ctx, authenticationId, db)
+		authentication, err := e.selectRefreshAuthentication(ctx, authenticationId, db)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(fmt.Errorf("get authentication: %w", err), authenticationId),
@@ -120,15 +138,18 @@ func (e *Endpoint) Initialize(
 		}
 
 		// Don't refresh if this is the first session and DBSC has been added.
-		if slices.Contains(claims.AuthenticationMethods, SsoAuthenticationMethod) && len(authentication.DbscPublicKey) > 0 {
+		if slices.Contains(claims.AuthenticationMethods, authentication_method.Sso) && len(authentication.DbscPublicKey) > 0 {
 			return nil, nil
 		}
 
 		remainingExpirationDuration := time.Until(sessionExpiresAt.Time)
 		if remainingExpirationDuration < 0 {
 			return nil, &response_error.ResponseError{
-				ProblemDetail: problem_detail.New(http.StatusUnauthorized),
-				ClientError:   motmedelErrors.NewWithTrace(motmedelTimeErrors.ErrNegativeDuration),
+				ClientError: motmedelErrors.NewWithTrace(motmedelTimeErrors.ErrNegativeDuration),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The expiration duration is negative, indicating an invalid session token."),
+				),
 			}
 		}
 
@@ -137,7 +158,7 @@ func (e *Endpoint) Initialize(
 			return nil, nil
 		}
 
-		return sessionManager.RefreshSession(authentication, sessionToken, RefreshAuthenticationMethod, e.SessionDuration)
+		return sessionManager.RefreshSession(authentication, sessionToken, authentication_method.Refresh, e.SessionDuration)
 	}
 
 	e.Initialized = true
@@ -154,6 +175,7 @@ func New(options ...refresh_endpoint_config.Option) *Endpoint {
 				Method: http.MethodPost,
 			},
 		},
-		SessionDuration: config.SessionDuration,
+		SessionDuration:             config.SessionDuration,
+		selectRefreshAuthentication: config.SelectRefreshAuthentication,
 	}
 }

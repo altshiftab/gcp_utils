@@ -28,6 +28,7 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
@@ -35,10 +36,10 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
+// Use centralized DBSC header constants from the session package.
 const (
-	DbscAuthenticationMethod   = "hwk"
-	sessionResponseHeaderName  = "Sec-Session-Response"
-	sessionChallengeHeaderName = "Sec-Session-Challenge"
+	sessionResponseHeaderName  = session.DbscSessionResponseHeaderName
+	sessionChallengeHeaderName = session.DbscSessionChallengeHeaderName
 )
 
 type Endpoint struct {
@@ -219,7 +220,7 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		return sessionManager.RefreshSession(authentication, sessionToken, DbscAuthenticationMethod, e.SessionDuration)
+		return sessionManager.RefreshSession(authentication, sessionToken, authentication_method.Dbsc, e.SessionDuration)
 	}
 
 	e.Initialized = true

@@ -156,7 +156,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 	if err != nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(
-				fmt.Errorf("%w: jwk key material public key: %w", err),
+				fmt.Errorf("jwk key material public key: %w", err),
 			),
 		}
 	}

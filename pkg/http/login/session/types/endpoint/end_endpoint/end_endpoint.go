@@ -1,6 +1,7 @@
 package end_endpoint
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/end_endpoint/end_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
@@ -27,6 +27,7 @@ import (
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
+	updateAuthenticationWithEnded func(ctx context.Context, id string, database *sql.DB) error
 }
 
 func (e *Endpoint) Initialize(authorizerRequestParser *authorizer_request_parser.Parser, db *sql.DB) error {
@@ -59,9 +60,9 @@ func (e *Endpoint) Initialize(authorizerRequestParser *authorizer_request_parser
 
 		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer dbCtxCancel()
-		if err := database.UpdateAuthenticationWithEnded(dbCtx, authenticationId, db); err != nil {
+		if err := e.updateAuthenticationWithEnded(dbCtx, authenticationId, db); err != nil {
 			return nil, &muxResponseError.ResponseError{
-				ServerError: motmedelErrors.New(fmt.Errorf("end session: %w", err), authenticationId),
+				ServerError: motmedelErrors.New(fmt.Errorf("update authentication with ended: %w", err), authenticationId),
 			}
 		}
 
@@ -85,5 +86,6 @@ func New(options ...end_endpoint_config.Option) *Endpoint {
 				BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 			},
 		},
+		updateAuthenticationWithEnded: config.UpdateAuthenticationWithEnded,
 	}
 }
