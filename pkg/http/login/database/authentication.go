@@ -214,6 +214,10 @@ func InsertOauthFlow(
 	expirationDuration time.Duration,
 	database *sql.DB,
 ) (*oauth_flow.Flow, error) {
+	if state == "" {
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("state"))
+	}
+
 	if codeVerifier == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("code verifier"))
 	}
@@ -272,7 +276,7 @@ func PopOauthFlow(ctx context.Context, id string, db *sql.DB) (*oauth_flow.Flow,
 
 	row := db.QueryRowContext(ctx, oauthFlowDeleteQuery, id)
 	if row == nil {
-		return nil, motmedelErrors.NewWithTrace(empty_error.New("sql row"))
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
 	if err := row.Scan(&flow.State, &flow.CodeVerifier, &flow.ExpiresAt, &flow.RedirectUrl); err != nil {
