@@ -246,6 +246,17 @@ func GetToken(ctx context.Context, oauthConfig *oauth2.Config, options ...token_
 		if file == nil {
 			return nil, motmedelErrors.NewWithTrace(motmedelOsErrors.ErrNilFile)
 		}
+		defer func() {
+			if err := file.Close(); err != nil {
+				slog.WarnContext(
+					motmedelContext.WithErrorContextValue(
+						ctx,
+						motmedelErrors.NewWithTrace(fmt.Errorf("file close: %w", err)),
+					),
+					"An error occurred when closing the file.",
+				)
+			}
+		}()
 		if err := json.MarshalWrite(file, token); err != nil {
 			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("json marshal write: %w", err))
 		}
