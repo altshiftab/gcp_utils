@@ -10,7 +10,7 @@ require (
 	github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.6
 	github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.9
 	github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1
-	github.com/altshiftab/gcp_utils/pkg/http/login v0.0.41
+	github.com/altshiftab/gcp_utils/pkg/http/login v0.0.42
 	github.com/go-jose/go-jose/v4 v4.1.3
 	golang.org/x/oauth2 v0.34.0
 )
