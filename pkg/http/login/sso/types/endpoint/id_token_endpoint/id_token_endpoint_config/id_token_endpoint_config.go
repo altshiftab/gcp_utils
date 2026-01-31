@@ -1,7 +1,5 @@
 package id_token_endpoint_config
 
-var ()
-
 type Config struct {
 }
 
