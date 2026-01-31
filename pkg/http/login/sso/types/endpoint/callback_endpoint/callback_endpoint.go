@@ -1,6 +1,7 @@
 package callback_endpoint
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -22,10 +23,11 @@ import (
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	motmedelJwt "github.com/Motmedel/utils_go/pkg/json/jose/jwt"
 	authenticatorPkg "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/callback_endpoint/callback_endpoint_config"
@@ -49,6 +51,7 @@ type Endpoint[T provider_claims.ProviderClaims] struct {
 	*initialization_endpoint.Endpoint
 	CallbackCookieName    string
 	DbscChallengeDuration time.Duration
+	popOauthFlow          func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
 }
 
 func (e *Endpoint[T]) Initialize(
@@ -102,11 +105,20 @@ func (e *Endpoint[T]) Initialize(
 		}
 
 		oauthFlowId := callbackCookie.Value
+		if oauthFlowId == "" {
+			return nil, &response_error.ResponseError{
+				ClientError: motmedelErrors.NewWithTrace(empty_error.New("callback cookie value")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("Empty callback cookie."),
+				),
+			}
+		}
 
 		dbPopCtx, dbPopCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer dbPopCtxCancel()
 
-		oauthFlow, err := database.PopOauthFlow(dbPopCtx, oauthFlowId, db)
+		oauthFlow, err := e.popOauthFlow(dbPopCtx, oauthFlowId, db)
 		if err != nil {
 			wrappedErr := motmedelErrors.New(fmt.Errorf("get oauth flow: %w", err), oauthFlowId)
 			if errors.Is(err, sql.ErrNoRows) {
@@ -122,14 +134,18 @@ func (e *Endpoint[T]) Initialize(
 		}
 		if oauthFlow == nil {
 			return nil, &response_error.ResponseError{
-				ProblemDetail: problem_detail.New(
-					http.StatusBadRequest,
-					problem_detail_config.WithDetail("No OAuth flow matches the callback cookie value."),
-				),
+				ServerError: motmedelErrors.New(nil_error.New("oauth flow")),
 			}
 		}
 
-		if oauthFlow.ExpiresAt.Before(time.Now()) {
+		oauthFlowExpiresAt := oauthFlow.ExpiresAt
+		if oauthFlowExpiresAt == nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("oauth flow expires at")),
+			}
+		}
+
+		if oauthFlowExpiresAt.Before(time.Now()) {
 			return nil, &response_error.ResponseError{
 				ProblemDetail: problem_detail.New(
 					http.StatusBadRequest,
@@ -142,7 +158,7 @@ func (e *Endpoint[T]) Initialize(
 			return nil, &response_error.ResponseError{
 				ProblemDetail: problem_detail.New(
 					http.StatusBadRequest,
-					problem_detail_config.WithDetail("The OAuth flow state and callback state do not match."),
+					problem_detail_config.WithDetail("The OAuth flow state and url state do not match."),
 				),
 			}
 		}
@@ -166,25 +182,15 @@ func (e *Endpoint[T]) Initialize(
 				ServerError: motmedelErrors.New(fmt.Errorf("convert to non zero (id token): %w", err), idTokenAny),
 			}
 		}
-		if idToken == "" {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("id token")),
-			}
-		}
 
 		authenticatedIdToken, err := idTokenAuthenticator.Authenticate(ctx, idToken)
 		if err != nil {
-			wrappedErr := motmedelErrors.New(fmt.Errorf("authenticator authenticate: %w", err), idToken)
-			if motmedelErrors.IsAny(err, motmedelErrors.ErrValidationError, motmedelErrors.ErrVerificationError) {
-				return nil, &response_error.ResponseError{
-					ClientError: wrappedErr,
-					ProblemDetail: problem_detail.New(
-						http.StatusBadRequest,
-						problem_detail_config.WithDetail("The id token could not be authenticated."),
-					),
-				}
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.New(
+					fmt.Errorf("authenticator with key handler authenticate: %w", err),
+					idToken,
+				),
 			}
-			return nil, &response_error.ResponseError{ServerError: wrappedErr}
 		}
 		if authenticatedIdToken == nil {
 			return nil, &response_error.ResponseError{
@@ -192,13 +198,24 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
+		_, idTokenPayload, _, err := motmedelJwt.Parse(idToken)
+		if err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jwt parse: %w", err), idToken),
+			}
+		}
+		if len(idTokenPayload) == 0 {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("id token payload")),
+			}
+		}
+
 		var providerClaims T
-		tokenRaw := authenticatedIdToken.Raw()
-		if err := json.Unmarshal([]byte(tokenRaw), &providerClaims); err != nil {
+		if err := json.Unmarshal(idTokenPayload, &providerClaims); err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(
 					fmt.Errorf("json unmarshal (authenticated id token raw): %w", err),
-					tokenRaw,
+					idTokenPayload,
 				),
 			}
 		}
@@ -213,7 +230,7 @@ func (e *Endpoint[T]) Initialize(
 				return nil, &response_error.ResponseError{
 					ProblemDetail: problem_detail.New(
 						http.StatusForbidden,
-						problem_detail_config.WithDetail("Invalid email address."),
+						problem_detail_config.WithDetail("The email address that is tied to the id token is unverified or invalid."),
 					),
 				}
 			}
@@ -285,5 +302,6 @@ func New[T provider_claims.ProviderClaims](path string, options ...callback_endp
 			},
 		},
 		CallbackCookieName: config.CallbackCookieName,
+		popOauthFlow:       config.PopOauthFlow,
 	}, nil
 }
