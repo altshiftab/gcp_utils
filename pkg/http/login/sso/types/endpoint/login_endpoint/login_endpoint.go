@@ -1,6 +1,7 @@
 package login_endpoint
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -26,6 +27,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/login_endpoint/login_endpoint_config"
 	"golang.org/x/oauth2"
 )
@@ -60,6 +62,10 @@ type Endpoint struct {
 	CallbackCookieName string
 	CallbackPath       string
 	OauthFlowDuration  time.Duration
+
+	makeState        func() (string, error)
+	makeCodeVerifier func() (string, error)
+	insertOauthFlow  func(ctx context.Context, state string, codeVerifier string, redirectUrl string, expirationDuration time.Duration, database *sql.DB) (*oauth_flow.Flow, error)
 }
 
 func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql.DB) error {
@@ -93,6 +99,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 
 		redirectUrlString := redirectUrl.String()
 		if redirectUrlString == "" {
+			// NOTE: Should be impossible. Should be covered by `url_allower`.
 			return nil, &response_error.ResponseError{
 				ClientError: motmedelErrors.NewWithTrace(empty_error.New("redirect url")),
 				ProblemDetail: problem_detail.New(
@@ -102,7 +109,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 			}
 		}
 
-		codeVerifier, err := makeCodeVerifier()
+		codeVerifier, err := e.makeCodeVerifier()
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("make code verifier: %w", err)),
@@ -114,7 +121,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 			}
 		}
 
-		state, err := makeState()
+		state, err := e.makeState()
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("make state: %w", err)),
@@ -129,7 +136,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 		dbCtx, dbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer dbCtxCancel()
 
-		oauthFlow, err := database.InsertOauthFlow(
+		oauthFlow, err := e.insertOauthFlow(
 			dbCtx,
 			state,
 			codeVerifier,
@@ -214,5 +221,9 @@ func New(path, callbackPath string, options ...login_endpoint_config.Option) (*E
 		CallbackCookieName: config.CallbackCookieName,
 		CallbackPath:       callbackPath,
 		OauthFlowDuration:  config.OauthFlowDuration,
+
+		makeState:        makeState,
+		makeCodeVerifier: makeCodeVerifier,
+		insertOauthFlow:  database.InsertOauthFlow,
 	}, nil
 }

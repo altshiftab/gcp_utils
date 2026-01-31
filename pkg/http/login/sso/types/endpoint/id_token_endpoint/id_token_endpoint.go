@@ -23,6 +23,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	motmedelJwt "github.com/Motmedel/utils_go/pkg/json/jose/jwt"
 	authenticatorPkg "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
@@ -88,6 +89,7 @@ func (e *Endpoint[T]) Initialize(
 
 		idToken := idTokenInput.Token
 		if idToken == "" {
+			// NOTE: Should be impossible. Should be covered by the jsonschema validation.
 			return nil, &response_error.ResponseError{
 				ClientError: motmedelErrors.NewWithTrace(empty_error.New("id token")),
 				ProblemDetail: problem_detail.New(
@@ -96,15 +98,16 @@ func (e *Endpoint[T]) Initialize(
 				),
 			}
 		}
+
 		authenticatedIdToken, err := idTokenAuthenticator.Authenticate(ctx, idToken)
 		if err != nil {
-			wrappedErr := motmedelErrors.New(fmt.Errorf("authenticator authenticate: %w", err), idToken)
-			if motmedelErrors.IsAny(err, motmedelErrors.ErrValidationError, motmedelErrors.ErrVerificationError) {
+			wrappedErr := motmedelErrors.New(fmt.Errorf("authenticator with key handler authenticate: %w", err), idToken)
+			if motmedelErrors.IsAny(err, motmedelErrors.ErrParseError, motmedelErrors.ErrValidationError, motmedelErrors.ErrVerificationError) {
 				return nil, &response_error.ResponseError{
 					ClientError: wrappedErr,
 					ProblemDetail: problem_detail.New(
 						http.StatusBadRequest,
-						problem_detail_config.WithDetail("The id token could not be authenticated."),
+						problem_detail_config.WithDetail("Invalid id token."),
 					),
 				}
 			}
@@ -116,13 +119,24 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
+		_, idTokenPayload, _, err := motmedelJwt.Parse(idToken)
+		if err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jwt parse: %w", err), idToken),
+			}
+		}
+		if len(idTokenPayload) == 0 {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("id token payload")),
+			}
+		}
+
 		var providerClaims T
-		tokenRaw := authenticatedIdToken.Raw()
-		if err := json.Unmarshal([]byte(tokenRaw), &providerClaims); err != nil {
+		if err := json.Unmarshal(idTokenPayload, &providerClaims); err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(
-					fmt.Errorf("json unmarshal (authenticated id token raw): %w", err),
-					tokenRaw,
+					fmt.Errorf("json unmarshal (id token payload): %w", err),
+					idTokenPayload,
 				),
 			}
 		}
@@ -137,7 +151,7 @@ func (e *Endpoint[T]) Initialize(
 				return nil, &response_error.ResponseError{
 					ProblemDetail: problem_detail.New(
 						http.StatusForbidden,
-						problem_detail_config.WithDetail("Invalid email address."),
+						problem_detail_config.WithDetail("The email address that is tied to the id token is unverified or invalid."),
 					),
 				}
 			}
