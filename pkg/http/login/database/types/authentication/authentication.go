@@ -12,7 +12,7 @@ type Authentication struct {
 	DbscPublicKey    []byte           `postgres:"dbsc_public_key,nullable"`
 	CreatedAt        *time.Time       `postgres:"created_at"`
 	ExpiresAt        *time.Time       `postgres:"expires_at"`
-	Ended            bool             `postgres:"ended"`
+	Ended            bool             `postgres:"ended,default:false"`
 	EndedAt          *time.Time       `postgres:"ended_at,nullable"`
 	IpAddress        string           `postgres:"ip_address,type:inet,nullable"`
 	IpAddressCountry string           `postgres:"ip_address_country,nullable"`
