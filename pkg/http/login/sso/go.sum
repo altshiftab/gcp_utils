@@ -20,8 +20,8 @@ github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5 h1:57lx54tX6LbHjMNv
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5/go.mod h1:sRPKDiIl1+iQ0eT9amSQKzBdFWDFXtxi32mEvBPm4BU=
 github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1 h1:3zlYWfUCKXSKUalYVcnZcumg36HJZSEzCsWWQxSSq0w=
 github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1/go.mod h1:AMK5BjlhXxM2DYnaDEaoKeHL6/aqbB/OU8dgOkMyQlM=
-github.com/altshiftab/gcp_utils/pkg/http/login v0.0.44 h1:YE5/zDXMo1ai/0TZrxXoqb8+CbROPfRiBCFSxh0WN5c=
-github.com/altshiftab/gcp_utils/pkg/http/login v0.0.44/go.mod h1:zDDt1nK1TkVbMxmvFcR8GwzxLKPdR6vTbcYBAgdI+Wo=
+github.com/altshiftab/gcp_utils/pkg/http/login v0.0.45 h1:ryzlji402QQVP4QVZQcgnZm1dragxILfmp2ic5nCGzQ=
+github.com/altshiftab/gcp_utils/pkg/http/login v0.0.45/go.mod h1:zDDt1nK1TkVbMxmvFcR8GwzxLKPdR6vTbcYBAgdI+Wo=
 github.com/altshiftab/jsonschema v0.0.11 h1:msLr+FWrzQe/8fAK+y/fCIJLz7dwPRyeBOo6Hg+sPug=
 github.com/altshiftab/jsonschema v0.0.11/go.mod h1:52I8BaVXY1w2R/sySOTQ7nlSXr4owzAfUB1yhDPPMk8=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
