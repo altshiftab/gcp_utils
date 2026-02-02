@@ -442,6 +442,7 @@ func New(
 	return &Manager{
 		Signer:                    signer,
 		Db:                        db,
+		Issuer:                    issuer,
 		CookieDomain:              cookieDomain,
 		CookieName:                config.CookieName,
 		InitialSessionDuration:    config.InitialSessionDuration,
