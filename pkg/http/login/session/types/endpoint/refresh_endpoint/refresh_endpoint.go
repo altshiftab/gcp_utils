@@ -11,6 +11,8 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader/body_setting"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
@@ -179,8 +181,9 @@ func New(options ...refresh_endpoint_config.Option) *Endpoint {
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
-				Path:   config.Path,
-				Method: http.MethodPost,
+				Path:       config.Path,
+				Method:     http.MethodPost,
+				BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 			},
 		},
 		SessionDuration:             config.SessionDuration,
