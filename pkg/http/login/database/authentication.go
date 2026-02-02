@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
+
 	motmedelSqlErrors "github.com/Motmedel/utils_go/pkg/database/sql/errors"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
@@ -90,7 +92,7 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 	}, nil
 }
 
-func SelectSessionEmailAddressAccount(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error) {
+func SelectEmailAddressAccount(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error) {
 	if emailAddress == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("email address"))
 	}
@@ -120,7 +122,7 @@ func SelectSessionEmailAddressAccount(ctx context.Context, emailAddress string, 
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
-	if err := row.Scan(&accountId, &locked, &customerId, &customerName, &roles); err != nil {
+	if err := row.Scan(&accountId, &locked, &customerId, &customerName, pq.Array(&roles)); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 

@@ -41,15 +41,15 @@ type Manager struct {
 	CookieDomain string
 	Db           *sql.DB
 
-	CookieName                       string
-	InitialSessionDuration           time.Duration
-	AuthenticationDuration           time.Duration
-	DbscChallengeDuration            time.Duration
-	DbscRegisterPath                 string
-	DbscAlgs                         []string
-	selectSessionEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
-	insertAuthentication             func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
-	insertDbscChallenge              func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
+	CookieName                string
+	InitialSessionDuration    time.Duration
+	AuthenticationDuration    time.Duration
+	DbscChallengeDuration     time.Duration
+	DbscRegisterPath          string
+	DbscAlgs                  []string
+	selectEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
+	insertAuthentication      func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
+	insertDbscChallenge       func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
 }
 
 func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*response.Response, *response_error.ResponseError) {
@@ -87,9 +87,9 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 		}
 	}
 
-	selectSessionAccountCtx, selectSessionAccountCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
-	defer selectSessionAccountCtxCancel()
-	account, err := m.selectSessionEmailAddressAccount(selectSessionAccountCtx, emailAddress, m.Db)
+	selectAccountCtx, selectAccountCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
+	defer selectAccountCtxCancel()
+	account, err := m.selectEmailAddressAccount(selectAccountCtx, emailAddress, m.Db)
 	wrappedErr := motmedelErrors.New(fmt.Errorf("select email address account: %w", err), emailAddress)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -440,17 +440,17 @@ func New(
 	config := session_manager_config.New(options...)
 
 	return &Manager{
-		Signer:                           signer,
-		Db:                               db,
-		CookieDomain:                     cookieDomain,
-		CookieName:                       config.CookieName,
-		InitialSessionDuration:           config.InitialSessionDuration,
-		AuthenticationDuration:           config.AuthenticationDuration,
-		DbscChallengeDuration:            config.DbscChallengeDuration,
-		DbscRegisterPath:                 config.DbscRegisterPath,
-		DbscAlgs:                         config.DbscAlgs,
-		selectSessionEmailAddressAccount: config.SelectSessionEmailAddressAccount,
-		insertAuthentication:             config.InsertAuthentication,
-		insertDbscChallenge:              config.InsertDbscChallenge,
+		Signer:                    signer,
+		Db:                        db,
+		CookieDomain:              cookieDomain,
+		CookieName:                config.CookieName,
+		InitialSessionDuration:    config.InitialSessionDuration,
+		AuthenticationDuration:    config.AuthenticationDuration,
+		DbscChallengeDuration:     config.DbscChallengeDuration,
+		DbscRegisterPath:          config.DbscRegisterPath,
+		DbscAlgs:                  config.DbscAlgs,
+		selectEmailAddressAccount: config.SelectEmailAddressAccount,
+		insertAuthentication:      config.InsertAuthentication,
+		insertDbscChallenge:       config.InsertDbscChallenge,
 	}, nil
 }
