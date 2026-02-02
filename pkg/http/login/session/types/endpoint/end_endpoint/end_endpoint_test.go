@@ -16,6 +16,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader/body_setting"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
@@ -47,6 +48,7 @@ func TestEndpoint(t *testing.T) {
 	t.Parallel()
 
 	emptyAuthenticationIdToken := loginTesting.MakeStandardCookie("", method)
+	corsConfigurator := &cors_configurator.Configurator{}
 
 	testCases := []struct {
 		name  string
@@ -95,7 +97,7 @@ func TestEndpoint(t *testing.T) {
 			t.Parallel()
 
 			testEndpoint := New()
-			if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, db); err != nil {
+			if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, corsConfigurator, db); err != nil {
 				t.Fatalf("test endpoint initialize: %v", err)
 			}
 
@@ -119,6 +121,8 @@ func TestEndpoint(t *testing.T) {
 
 func TestEndpoint_Initialize(t *testing.T) {
 	t.Parallel()
+
+	corsConfigurator := &cors_configurator.Configurator{}
 
 	type args struct {
 		authorizerRequestParser *authorizer_request_parser.Parser
@@ -155,7 +159,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := New().Initialize(tt.args.authorizerRequestParser, tt.args.db); (err != nil) != tt.wantErr {
+			if err := New().Initialize(tt.args.authorizerRequestParser, corsConfigurator, tt.args.db); (err != nil) != tt.wantErr {
 				t.Errorf("Initialize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
