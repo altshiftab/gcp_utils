@@ -14,6 +14,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
@@ -36,10 +37,15 @@ type Endpoint struct {
 
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
+	corsConfigurator *cors_configurator.Configurator,
 	sessionManager *session_manager.Manager,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
+	}
+
+	if corsConfigurator == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("cors configurator"))
 	}
 
 	if sessionManager == nil {
@@ -67,6 +73,8 @@ func (e *Endpoint) Initialize(
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
+
+	e.CorsParser = corsConfigurator
 
 	e.Handler = func(request *http.Request, bytes []byte) (*muxResponse.Response, *response_error.ResponseError) {
 		ctx := request.Context()

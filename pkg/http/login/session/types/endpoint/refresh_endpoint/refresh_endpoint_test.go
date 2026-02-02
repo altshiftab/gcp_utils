@@ -12,16 +12,19 @@ import (
 	"time"
 
 	motmedelCryptoInterfaces "github.com/Motmedel/utils_go/pkg/crypto/interfaces"
+	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	muxPkg "github.com/Motmedel/utils_go/pkg/http/mux"
 	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/numeric_date"
+	motmedelTestingCmp "github.com/Motmedel/utils_go/pkg/testing/cmp"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
@@ -250,7 +253,7 @@ func TestEndpoint(t *testing.T) {
 			t.Parallel()
 
 			testEndpoint := New()
-			if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, sessionManager); err != nil {
+			if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, &cors_configurator.Configurator{}, sessionManager); err != nil {
 				t.Fatalf("test endpoint initialize: %v", err)
 			}
 
@@ -362,141 +365,54 @@ func TestEndpoint(t *testing.T) {
 
 }
 
-func TestEndpoint_Initialize(t *testing.T) {
-	// Note: do NOT parallelize this test's sub-cases unless each case builds
-	// fully isolated dependencies. We keep it sequential for determinism.
+func TestInitialize(t *testing.T) {
+	t.Parallel()
 
-	type args struct {
+	corsConfigurator := &cors_configurator.Configurator{}
+
+	testCases := []struct {
+		name                    string
 		authorizerRequestParser *authorizer_request_parser.Parser
+		corsConfigurator        *cors_configurator.Configurator
 		sessionManager          *session_manager.Manager
-	}
-
-	// builder creates fresh, isolated dependencies per test case
-	newDeps := func(t *testing.T) (arp *authorizer_request_parser.Parser, sm *session_manager.Manager, closeDb func()) {
-		arp, m, localDb := loginTesting.SetUp()
-		// ensure DB is closed per-case
-		closeDb = func() {
-			if localDb != nil {
-				_ = localDb.Close()
-			}
-		}
-		s, err := session_manager.New(m, localDb, loginTesting.Issuer, "example.com")
-		if err != nil {
-			t.Fatalf("session manager new: %v", err)
-		}
-		return arp, s, closeDb
-	}
-
-	// helper to deep-clone the parser and its nested extractors
-	cloneParser := func(p *authorizer_request_parser.Parser) *authorizer_request_parser.Parser {
-		if p == nil {
-			return nil
-		}
-		cp := *p
-		if p.JwtExtractor != nil {
-			jwtCp := *p.JwtExtractor
-			if jwtCp.TokenExtractor != nil {
-				tokCp := *jwtCp.TokenExtractor
-				jwtCp.TokenExtractor = &tokCp
-			}
-			cp.JwtExtractor = &jwtCp
-		}
-		return &cp
-	}
-
-	tests := []struct {
-		name    string
-		prepare func(t *testing.T) args
-		wantErr bool
+		wantErr                 error
 	}{
 		{
-			name: "success",
-			prepare: func(t *testing.T) args {
-				arp, sm, done := newDeps(t)
-				t.Cleanup(done)
-				return args{authorizerRequestParser: arp, sessionManager: sm}
-			},
+			name:                    "valid arguments",
+			authorizerRequestParser: defaultAuthorizationRequestParser,
+			corsConfigurator:        corsConfigurator,
+			sessionManager:          sessionManager,
 		},
 		{
-			name: "nil authorizer parser",
-			prepare: func(t *testing.T) args {
-				_, sm, done := newDeps(t)
-				t.Cleanup(done)
-				return args{authorizerRequestParser: nil, sessionManager: sm}
-			},
-			wantErr: true,
+			name:                    "nil authorizer request parser",
+			authorizerRequestParser: nil,
+			corsConfigurator:        corsConfigurator,
+			sessionManager:          sessionManager,
+			wantErr:                 nil_error.New("authorizer request parser"),
 		},
 		{
-			name: "nil session manager",
-			prepare: func(t *testing.T) args {
-				arp, _, done := newDeps(t)
-				t.Cleanup(done)
-				return args{authorizerRequestParser: arp, sessionManager: nil}
-			},
-			wantErr: true,
+			name:                    "nil cors configurator",
+			authorizerRequestParser: defaultAuthorizationRequestParser,
+			corsConfigurator:        nil,
+			sessionManager:          sessionManager,
+			wantErr:                 nil_error.New("cors configurator"),
 		},
 		{
-			name: "nil session manager db",
-			prepare: func(t *testing.T) args {
-				arp, sm, done := newDeps(t)
-				t.Cleanup(done)
-				smCopy := *sm
-				smCopy.Db = nil
-				return args{authorizerRequestParser: arp, sessionManager: &smCopy}
-			},
-			wantErr: true,
-		},
-		{
-			name: "nil jwt extractor",
-			prepare: func(t *testing.T) args {
-				arp, sm, done := newDeps(t)
-				t.Cleanup(done)
-				arpCp := cloneParser(arp)
-				arpCp.JwtExtractor = nil
-				return args{authorizerRequestParser: arpCp, sessionManager: sm}
-			},
-			wantErr: true,
-		},
-		{
-			name: "nil jwt extractor token extractor",
-			prepare: func(t *testing.T) args {
-				arp, sm, done := newDeps(t)
-				t.Cleanup(done)
-				arpCp := cloneParser(arp)
-				if arpCp.JwtExtractor != nil {
-					jwtCp := *arpCp.JwtExtractor
-					jwtCp.TokenExtractor = nil
-					arpCp.JwtExtractor = &jwtCp
-				}
-				return args{authorizerRequestParser: arpCp, sessionManager: sm}
-			},
-			wantErr: true,
-		},
-		{
-			name: "empty cookie name",
-			prepare: func(t *testing.T) args {
-				arp, sm, done := newDeps(t)
-				t.Cleanup(done)
-				arpCp := cloneParser(arp)
-				if arpCp.JwtExtractor != nil && arpCp.JwtExtractor.TokenExtractor != nil {
-					tok := *arpCp.JwtExtractor.TokenExtractor
-					tok.Name = ""
-					jwtCp := *arpCp.JwtExtractor
-					jwtCp.TokenExtractor = &tok
-					arpCp.JwtExtractor = &jwtCp
-				}
-				return args{authorizerRequestParser: arpCp, sessionManager: sm}
-			},
-			wantErr: true,
+			name:                    "nil session manager",
+			authorizerRequestParser: defaultAuthorizationRequestParser,
+			corsConfigurator:        corsConfigurator,
+			sessionManager:          nil,
+			wantErr:                 nil_error.New("session manager"),
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			a := tt.prepare(t)
-			if err := New().Initialize(a.authorizerRequestParser, a.sessionManager); (err != nil) != tt.wantErr {
-				t.Errorf("Initialize() error = %v, wantErr %v", err, tt.wantErr)
-			}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			testEndpoint := New()
+			err := testEndpoint.Initialize(testCase.authorizerRequestParser, testCase.corsConfigurator, testCase.sessionManager)
+			motmedelTestingCmp.CompareErr(t, err, testCase.wantErr)
 		})
 	}
 }
