@@ -15,6 +15,8 @@ import (
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	muxPkg "github.com/Motmedel/utils_go/pkg/http/mux"
 	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader/body_setting"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
@@ -440,8 +442,9 @@ func TestNew(t *testing.T) {
 			want: &Endpoint{
 				Endpoint: &initialization_endpoint.Endpoint{
 					Endpoint: &endpoint.Endpoint{
-						Path:   refresh_endpoint_config.DefaultPath,
-						Method: http.MethodPost,
+						Path:       refresh_endpoint_config.DefaultPath,
+						Method:     http.MethodPost,
+						BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 					},
 				},
 				SessionDuration: refresh_endpoint_config.DefaultSessionDuration,
@@ -453,8 +456,9 @@ func TestNew(t *testing.T) {
 			want: &Endpoint{
 				Endpoint: &initialization_endpoint.Endpoint{
 					Endpoint: &endpoint.Endpoint{
-						Path:   "/test",
-						Method: http.MethodPost,
+						Path:       "/test",
+						Method:     http.MethodPost,
+						BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 					},
 				},
 				SessionDuration: refresh_endpoint_config.DefaultSessionDuration,
