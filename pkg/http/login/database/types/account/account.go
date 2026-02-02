@@ -11,7 +11,7 @@ type Account struct {
 	Name         string             `json:"name" postgres:"name,default:''"`
 	EmailAddress string             `json:"email_address" postgres:"email_address,unique,type:citext,check:(email_address ~* '^[A-Za-z0-9._+%-]+@[A-Za-z0-9.-]+[.][A-Za-z]+$')"`
 	CreatedAt    *time.Time         `json:"created_at" postgres:"created_at,default:now()"`
-	Locked       bool               `json:"locked" postgres:"locked"`
+	Locked       bool               `json:"locked" postgres:"locked,default:false"`
 	Customer     *customer.Customer `json:"customer" postgres:"customer,nullable"`
 	Roles        []string           `json:"roles" postgres:"roles"`
 }
