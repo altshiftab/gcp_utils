@@ -110,7 +110,7 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 		db,
 		loginTesting.Issuer,
 		loginTesting.RegisteredDomain,
-		session_manager_config.WithSelectSessionEmailAddressAccount(
+		session_manager_config.WithSelectEmailAddressAccount(
 			func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error) {
 				return testAccount, nil
 			},
