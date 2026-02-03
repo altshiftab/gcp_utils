@@ -164,8 +164,8 @@ func TestParser_Parse(t *testing.T) {
 				issuer,
 				audience,
 				authorizer_request_parser_config.WithAllowedTenantId(testCase.parserTenantId),
-				authorizer_request_parser_config.WithAllowedRoles(testCase.parserRoles),
-				authorizer_request_parser_config.WithSuperAdminRoles(testCase.parserSuperAdminRoles),
+				authorizer_request_parser_config.WithAllowedRoles(testCase.parserRoles...),
+				authorizer_request_parser_config.WithSuperAdminRoles(testCase.parserSuperAdminRoles...),
 			)
 			if err != nil {
 				t.Fatalf("new parser: %v", err)

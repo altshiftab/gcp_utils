@@ -37,7 +37,7 @@ func WithCookieName(cookieName string) Option {
 	}
 }
 
-func WithAllowedRoles(allowedRoles []string) Option {
+func WithAllowedRoles(allowedRoles ...string) Option {
 	return func(config *Config) {
 		config.AllowedRoles = allowedRoles
 	}
@@ -49,7 +49,7 @@ func WithAllowedTenantId(allowedTenantId string) Option {
 	}
 }
 
-func WithSuperAdminRoles(superAdminRoles []string) Option {
+func WithSuperAdminRoles(superAdminRoles ...string) Option {
 	return func(config *Config) {
 		config.SuperAdminRoles = superAdminRoles
 	}
