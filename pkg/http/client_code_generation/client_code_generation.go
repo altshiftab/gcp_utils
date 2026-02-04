@@ -13,7 +13,6 @@ import (
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
-	"github.com/Motmedel/utils_go/pkg/utils"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
 	typeGenerationTypescriptTypes "github.com/vphpersson/type_generation/pkg/producers/typescript/types"
@@ -112,7 +111,7 @@ func isEmptyInterfaceType(t reflect.Type) bool {
 }
 
 func makeTemplateInput(
-	endpointSpecifications []*endpointPkg.Endpoint,
+	endpoints []*endpointPkg.Endpoint,
 	tsContext *typeGenerationTypescriptTypes.Context,
 	baseUrl *url.URL,
 ) ([]*clientCodeGenerationTypes.TemplateInput, error) {
@@ -120,25 +119,25 @@ func makeTemplateInput(
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("typescript context"))
 	}
 
-	if len(endpointSpecifications) == 0 {
+	if len(endpoints) == 0 {
 		return nil, nil
 	}
 
 	var templateInputs []*clientCodeGenerationTypes.TemplateInput
 
-	for _, endpointSpecification := range endpointSpecifications {
-		if endpointSpecification == nil {
+	for _, endpoint := range endpoints {
+		if endpoint == nil {
 			continue
 		}
 
-		method := endpointSpecification.Method
+		method := endpoint.Method
 		if method == "" {
-			return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrEmptyMethod, endpointSpecification)
+			return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrEmptyMethod, endpoint)
 		}
 
-		path := endpointSpecification.Path
+		path := endpoint.Path
 		if path == "" {
-			return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrEmptyUrl, endpointSpecification)
+			return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrEmptyUrl, endpoint)
 		}
 
 		var outputContentType string
@@ -146,7 +145,7 @@ func makeTemplateInput(
 		var typescriptInputType string
 		var typescriptOutputType string
 
-		if hint := endpointSpecification.Hint; hint != nil {
+		if hint := endpoint.Hint; hint != nil {
 			outputContentType = hint.OutputContentType
 			optionalOutput = hint.OutputOptional
 
@@ -189,15 +188,12 @@ func makeTemplateInput(
 		}
 
 		var contentType string
-		bodyLoader := endpointSpecification.BodyLoader
+		bodyLoader := endpoint.BodyLoader
 		if bodyLoader != nil {
 			contentType = bodyLoader.ContentType
 		}
 
-		var useAuthentication bool
-		if parser := endpointSpecification.AuthenticationParser; !utils.IsNil(parser) {
-			useAuthentication = true
-		}
+		useAuthentication := !endpoint.Public
 
 		var urlString string
 		if baseUrl != nil {
@@ -217,7 +213,7 @@ func makeTemplateInput(
 				InputType:                 typescriptInputType,
 				ReturnType:                typescriptOutputType,
 				URL:                       urlString,
-				Method:                    endpointSpecification.Method,
+				Method:                    endpoint.Method,
 				ContentType:               contentType,
 				ExpectedOutputContentType: outputContentType,
 				UseAuthentication:         useAuthentication,
