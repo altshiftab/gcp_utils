@@ -85,7 +85,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *oauth2.Config, db *sql
 		url_allower.New(
 			query_extractor.New[*UrlInput](),
 			url_allower_config.WithAllowLocalhost(domain == "localhost"),
-			url_allower_config.WithAllowedDomains([]string{domain}),
+			url_allower_config.WithAllowedRegisteredDomains([]string{domain}),
 		),
 	)
 
