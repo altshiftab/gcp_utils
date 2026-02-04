@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/Motmedel/utils_go v0.0.377
 	github.com/Motmedel/utils_go/pkg/http/log v0.0.8
-	github.com/Motmedel/utils_go/pkg/http/mux v0.0.168
+	github.com/Motmedel/utils_go/pkg/http/mux v0.0.169
 	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.17
 	github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.6
 	github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.9
