@@ -6,8 +6,8 @@ github.com/Motmedel/utils_go v0.0.377 h1:Elg+/pKVb/Tp2fJkYvbVw2jpF0pDONN/s5rOoBw
 github.com/Motmedel/utils_go v0.0.377/go.mod h1:st9wrD7tyw4AM64tOD7rs0vO7tMxmXQC1Apm48B+4Q4=
 github.com/Motmedel/utils_go/pkg/http/log v0.0.8 h1:5hRJpdhAlj1FC+Cmc+IoP4RY0IqPMo8jpX3IlkzWQyI=
 github.com/Motmedel/utils_go/pkg/http/log v0.0.8/go.mod h1:bGvAmHXXrk7LNye2mBmy+LyaaYKUT/EeHAaKHl1jIpw=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.166 h1:EU0/6IuJYYFFKSuhtZNfyFqhIPOPOHGbGPofUdjzKfs=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.166/go.mod h1:Tgik6yESzV9MXy0XgTq6IBbj0EjNwVh7HyxeVhcBS+c=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.168 h1:rpEP4cX2mEYCsFHqOa/6pP1c8RgfYtVwzLkHZoSBj18=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.168/go.mod h1:Tgik6yESzV9MXy0XgTq6IBbj0EjNwVh7HyxeVhcBS+c=
 github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.17 h1:fxE+tqgz9QXQjUlrRnY65+iJ/Msb27DEb8lwA6UR990=
 github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.17/go.mod h1:yhpD3admUVEvDqRWVohPmAC/YeZJLcIs6aKEhgjOwCw=
 github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.6 h1:Z5F2VjHIS4HVGb/7BvdVxiMbdD5wtPMseusooHEpYlI=
@@ -20,8 +20,8 @@ github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5 h1:57lx54tX6LbHjMNv
 github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5/go.mod h1:sRPKDiIl1+iQ0eT9amSQKzBdFWDFXtxi32mEvBPm4BU=
 github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1 h1:3zlYWfUCKXSKUalYVcnZcumg36HJZSEzCsWWQxSSq0w=
 github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1/go.mod h1:AMK5BjlhXxM2DYnaDEaoKeHL6/aqbB/OU8dgOkMyQlM=
-github.com/altshiftab/gcp_utils/pkg/http/login v0.0.45 h1:ryzlji402QQVP4QVZQcgnZm1dragxILfmp2ic5nCGzQ=
-github.com/altshiftab/gcp_utils/pkg/http/login v0.0.45/go.mod h1:zDDt1nK1TkVbMxmvFcR8GwzxLKPdR6vTbcYBAgdI+Wo=
+github.com/altshiftab/gcp_utils/pkg/http/login v0.0.48 h1:uHbpAh63KbI86D9bB+UFeQk/w0JZGmd8kKNKWAyFjds=
+github.com/altshiftab/gcp_utils/pkg/http/login v0.0.48/go.mod h1:zDDt1nK1TkVbMxmvFcR8GwzxLKPdR6vTbcYBAgdI+Wo=
 github.com/altshiftab/jsonschema v0.0.11 h1:msLr+FWrzQe/8fAK+y/fCIJLz7dwPRyeBOo6Hg+sPug=
 github.com/altshiftab/jsonschema v0.0.11/go.mod h1:52I8BaVXY1w2R/sySOTQ7nlSXr4owzAfUB1yhDPPMk8=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
