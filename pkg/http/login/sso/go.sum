@@ -6,8 +6,8 @@ github.com/Motmedel/utils_go v0.0.377 h1:Elg+/pKVb/Tp2fJkYvbVw2jpF0pDONN/s5rOoBw
 github.com/Motmedel/utils_go v0.0.377/go.mod h1:st9wrD7tyw4AM64tOD7rs0vO7tMxmXQC1Apm48B+4Q4=
 github.com/Motmedel/utils_go/pkg/http/log v0.0.8 h1:5hRJpdhAlj1FC+Cmc+IoP4RY0IqPMo8jpX3IlkzWQyI=
 github.com/Motmedel/utils_go/pkg/http/log v0.0.8/go.mod h1:bGvAmHXXrk7LNye2mBmy+LyaaYKUT/EeHAaKHl1jIpw=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.168 h1:rpEP4cX2mEYCsFHqOa/6pP1c8RgfYtVwzLkHZoSBj18=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.168/go.mod h1:Tgik6yESzV9MXy0XgTq6IBbj0EjNwVh7HyxeVhcBS+c=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.169 h1:xOrNXWkIRSOYg39F7MV0eQpt3ChIIvyPemwAop/TJok=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.169/go.mod h1:Tgik6yESzV9MXy0XgTq6IBbj0EjNwVh7HyxeVhcBS+c=
 github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.17 h1:fxE+tqgz9QXQjUlrRnY65+iJ/Msb27DEb8lwA6UR990=
 github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.17/go.mod h1:yhpD3admUVEvDqRWVohPmAC/YeZJLcIs6aKEhgjOwCw=
 github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.6 h1:Z5F2VjHIS4HVGb/7BvdVxiMbdD5wtPMseusooHEpYlI=
