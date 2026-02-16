@@ -6,8 +6,8 @@ github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.9 h1:sUqyMUzy7R5
 github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.9/go.mod h1:zH1Ox51uchMVH2Xlg/jM5DhBD+FFnZZ138ypOQdOUl8=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/vphpersson/type_generation v0.0.21 h1:tUm3nhFAyjuxuHQwtoguhxnXKCDg5/gtRn5VB0n+Ef0=
-github.com/vphpersson/type_generation v0.0.21/go.mod h1:GZbqq3ERMi7uKVM/1rHfrv2nSOg51GZPHS5SsnvhZaU=
+github.com/vphpersson/type_generation v0.0.22 h1:/HERXW7F0EvttGF4FL8oFUkqA9SYbTtyHMn6Vwtw8Oc=
+github.com/vphpersson/type_generation v0.0.22/go.mod h1:06Pgo2YKw6r+SzFIepdiiEZ93J2VJDYIC5Ci9Av+cPE=
 golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
 golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
 golang.org/x/text v0.33.0 h1:B3njUFyqtHDUI5jMn1YIr5B0IE2U0qck04r6d4KPAxE=
