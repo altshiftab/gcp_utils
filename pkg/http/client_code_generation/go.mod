@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/Motmedel/utils_go v0.0.381
 	github.com/Motmedel/utils_go/pkg/http/mux v0.0.176
-	github.com/vphpersson/type_generation v0.0.21
+	github.com/vphpersson/type_generation v0.0.22
 	golang.org/x/text v0.33.0
 )
 
