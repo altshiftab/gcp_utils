@@ -45,8 +45,6 @@ var scriptTemplate = template.Must(
 	}).Parse(scriptTemplateData),
 )
 
-var caser = cases.Title(language.English, cases.NoLower)
-
 func makeTypescriptContext(endpoints []*endpointPkg.Endpoint) (*typeGenerationTypescriptTypes.Context, error) {
 	typesSet := make(map[reflect.Type]struct{})
 
@@ -80,9 +78,11 @@ func makeTypescriptContext(endpoints []*endpointPkg.Endpoint) (*typeGenerationTy
 	return &tsContext, nil
 }
 
-var emptyInterfaceType = reflect.TypeOf((*interface{})(nil)).Elem()
+var emptyInterfaceType = reflect.TypeFor[any]()
 
 func makePathPart(path string) string {
+	caser := cases.Title(language.English, cases.NoLower)
+
 	segments := strings.Split(
 		strings.ReplaceAll(
 			strings.TrimPrefix(
