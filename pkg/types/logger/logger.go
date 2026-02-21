@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"io"
 	"log/slog"
 	"runtime/debug"
 
@@ -12,12 +11,12 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/types/logger/logger_config"
 )
 
-func New(writer io.Writer, options ...logger_config.Option) *motmedelErrorLogger.Logger {
+func New(options ...logger_config.Option) *motmedelErrorLogger.Logger {
 	config := logger_config.New(options...)
 
 	slogger := motmedelContextLogger.New(
 		slog.NewJSONHandler(
-			writer,
+			config.Writer,
 			&slog.HandlerOptions{Level: config.LogLevel, ReplaceAttr: gcpLogger.ReplaceAttr},
 		),
 		&motmedelLog.ErrorContextExtractor{
