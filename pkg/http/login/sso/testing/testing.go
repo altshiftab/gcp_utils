@@ -20,11 +20,11 @@ import (
 	motmedelCryptoEddsa "github.com/Motmedel/utils_go/pkg/crypto/eddsa"
 	motmedelSqlTesting "github.com/Motmedel/utils_go/pkg/database/sql/testing"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	motmedelHttpLog "github.com/Motmedel/utils_go/pkg/http/log"
 	muxPkg "github.com/Motmedel/utils_go/pkg/http/mux"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	muxRespnose "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
+	"github.com/Motmedel/utils_go/pkg/http/types/http_context_extractor"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwk/types/key"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwk/types/key/ec"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwk/types/key_handler"
@@ -82,7 +82,7 @@ func (c *ProviderClaims) VerifiedEmailAddress() (string, error) {
 }
 
 func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandler, *oauth2.Config, *motmedelCryptoEcdsa.Method) {
-	httpContextExtractor := motmedelHttpLog.New()
+	httpContextExtractor := http_context_extractor.New()
 	slog.SetDefault(
 		motmedelContextLogger.New(
 			slog.NewJSONHandler(
