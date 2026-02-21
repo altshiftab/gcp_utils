@@ -14,7 +14,7 @@ import (
 	motmedelSqlTesting "github.com/Motmedel/utils_go/pkg/database/sql/testing"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
-	motmedelHttpLog "github.com/Motmedel/utils_go/pkg/http/log"
+	"github.com/Motmedel/utils_go/pkg/http/types/http_context_extractor"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claim_strings"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
@@ -92,7 +92,7 @@ func MakeStandardCookie(authenticationId string, signer motmedelCryptoInterfaces
 }
 
 func SetUp() (*authorizer_request_parser.Parser, *motmedelCryptoEddsa.Method, *sql.DB) {
-	httpContextExtractor := motmedelHttpLog.New()
+	httpContextExtractor := http_context_extractor.New()
 	slog.SetDefault(
 		motmedelContextLogger.New(
 			slog.NewJSONHandler(
