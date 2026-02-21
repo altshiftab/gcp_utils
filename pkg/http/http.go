@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -14,10 +13,11 @@ import (
 	"time"
 
 	motmedelContext "github.com/Motmedel/utils_go/pkg/context"
+	motmedelEnv "github.com/Motmedel/utils_go/pkg/env"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
-	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader"
 	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
@@ -30,17 +30,11 @@ import (
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/content_security_policy"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
-	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
 	cspUtils "github.com/Motmedel/utils_go/pkg/http/utils/content_security_policy"
-	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
-	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
+	"github.com/Motmedel/utils_go/pkg/net/types/domain_parts"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	motmedelGcpUtilsEnv "github.com/altshiftab/gcp_utils/pkg/env"
-	altshiftabGcpUtilsHttpErrors "github.com/altshiftab/gcp_utils/pkg/http/errors"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 const (
@@ -138,7 +132,7 @@ func PatchMux(mux *motmedelMux.Mux) error {
 		return fmt.Errorf("patch chrome xml renderer: %w", err)
 	}
 
-	if motmedelGcpUtilsEnv.GetLogLevelWithDefault() == "DEBUG" {
+	if motmedelEnv.GetEnvWithDefault("LOG_LEVEL", "INFO") == "DEBUG" {
 		mux.DoneCallback = func(ctx context.Context) {
 			slog.DebugContext(ctx, "An HTTP response was served.")
 		}
@@ -156,7 +150,7 @@ func makeSitemapXmlUrl(
 	}
 
 	if location == "" {
-		return nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrEmptyLocation)
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("location"))
 	}
 
 	var lastModified string
@@ -201,7 +195,7 @@ func PatchCrawlable(
 	}
 
 	if baseUrl == nil {
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
+		return motmedelErrors.NewWithTrace(nil_error.New("base url"))
 	}
 
 	nowUtc := time.Now().UTC()
@@ -217,7 +211,7 @@ func PatchCrawlable(
 		path := endpoint.Path
 		pathUrl := baseUrl.JoinPath(path)
 		if pathUrl == nil {
-			return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilPathUrl, path)
+			return motmedelErrors.NewWithTrace(nil_error.New("path url"))
 		}
 
 		staticContentData := staticContent.StaticContentData
@@ -251,7 +245,7 @@ func PatchCrawlable(
 		sitemapXmlLastModified := nowUtc.Format("Mon, 02 Jan 2006 15:04:05") + " GMT"
 		sitemapXmlUrl := baseUrl.JoinPath("/sitemap.xml")
 		if sitemapXmlUrl == nil {
-			return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilSitemapXmlUrl, baseUrl)
+			return motmedelErrors.NewWithTrace(nil_error.New("sitemap xml url"))
 		}
 
 		mux.Add(
@@ -303,7 +297,7 @@ func PatchStrictTransportSecurity(mux *motmedelMux.Mux) error {
 
 	defaultHeaders := mux.DefaultHeaders
 	if defaultHeaders == nil {
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilDefaultHeaders)
+		return motmedelErrors.NewWithTrace(nil_error.New("default headers"))
 	}
 
 	defaultHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -317,17 +311,17 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	}
 
 	if baseUrl == nil {
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
+		return motmedelErrors.NewWithTrace(nil_error.New("base url"))
 	}
 
 	defaultHeaders := mux.DefaultHeaders
 	if defaultHeaders == nil {
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilDefaultHeaders)
+		return motmedelErrors.NewWithTrace(nil_error.New("default headers"))
 	}
 
 	defaultDocumentHeaders := mux.DefaultDocumentHeaders
 	if defaultDocumentHeaders == nil {
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilDefaultDocumentHeaders)
+		return motmedelErrors.NewWithTrace(nil_error.New("default document headers"))
 	}
 
 	defaultHeaders["Report-To"] = fmt.Sprintf(
@@ -676,7 +670,7 @@ func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) 
 	}
 
 	if securityTxtUrl == nil {
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilSecurityTxtUrl)
+		return motmedelErrors.NewWithTrace(nil_error.New("security txt url"))
 	}
 
 	urlString := securityTxtUrl.String()
@@ -707,23 +701,6 @@ func PatchOtherDomainSecurityTxt(mux *motmedelMux.Mux, securityTxtUrl *url.URL) 
 	)
 
 	return nil
-}
-
-func MakeMux(
-	endpoints []*endpointPkg.Endpoint,
-	contextKeyValuePairs [][2]any,
-) (*motmedelMux.Mux, error) {
-	mux := &motmedelMux.Mux{}
-	mux.DefaultHeaders = maps.Clone(response_writer.DefaultHeaders)
-	mux.DefaultDocumentHeaders = maps.Clone(response_writer.DefaultDocumentHeaders)
-	mux.SetContextKeyValuePairs = contextKeyValuePairs
-	mux.Add(endpoints...)
-
-	if err := PatchMux(mux); err != nil {
-		return nil, fmt.Errorf("patch mux: %w", err)
-	}
-
-	return mux, nil
 }
 
 func PatchTrustedTypes(mux *motmedelMux.Mux, policies ...string) error {
@@ -824,8 +801,7 @@ func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	}
 
 	if baseUrl == nil {
-		// TODO: Create error in utils go url errors
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
+		return motmedelErrors.NewWithTrace(nil_error.New("base url"))
 	}
 
 	if err := PatchErrorReporting(mux, baseUrl); err != nil {
@@ -845,7 +821,7 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	}
 
 	if baseUrl == nil {
-		return motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
+		return motmedelErrors.NewWithTrace(nil_error.New("base url"))
 	}
 
 	if err := PatchHttpServiceMux(mux, baseUrl); err != nil {
@@ -862,12 +838,12 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	if strings.EqualFold(baseUrlHostname, "localhost") {
 		registeredDomain = "localhost"
 	} else {
-		domainBreakdown := domain_breakdown.GetDomainBreakdown(baseUrlHostname)
-		if domainBreakdown == nil {
-			return motmedelErrors.NewWithTrace(motmedelNetErrors.ErrNilDomainBreakdown, baseUrlHostname)
+		domainParts := domain_parts.New(baseUrlHostname)
+		if domainParts == nil {
+			return motmedelErrors.NewWithTrace(nil_error.New("domain parts"))
 		}
 
-		registeredDomain = domainBreakdown.RegisteredDomain
+		registeredDomain = domainParts.RegisteredDomain
 	}
 
 	securityTxtUrl := baseUrl.JoinPath("/.well-known/security.txt")
@@ -898,168 +874,4 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	)
 
 	return nil
-}
-
-func makeHttpService(
-	domain string,
-	port string,
-	staticContentEndpoints []*endpointPkg.Endpoint,
-	public bool,
-	redirects ...[2]string,
-) (*http.Server, *motmedelMux.Mux, error) {
-	if domain == "" {
-		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrEmptyDomain)
-	}
-
-	if port == "" {
-		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrEmptyPort)
-	}
-
-	mux, err := MakeMux(staticContentEndpoints, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("make mux: %w", err)
-	}
-	if mux == nil {
-		return nil, nil, motmedelErrors.NewWithTrace(nil_error.New("mux"))
-	}
-
-	baseUrlString := fmt.Sprintf("https://%s", domain)
-	baseUrl, err := url.Parse(baseUrlString)
-	if err != nil {
-		return nil, nil, motmedelErrors.NewWithTrace(fmt.Errorf("url parse (domain): %w", err), baseUrlString)
-	}
-	if baseUrl == nil {
-		return nil, nil, motmedelErrors.NewWithTrace(altshiftabGcpUtilsHttpErrors.ErrNilBaseUrl)
-	}
-
-	if public {
-		if err := PatchPublicHttpServiceMux(mux, baseUrl); err != nil {
-			return nil, nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), baseUrl)
-		}
-	} else {
-		if err := PatchHttpServiceMux(mux, baseUrl); err != nil {
-			return nil, nil, motmedelErrors.New(fmt.Errorf("patch http service mux: %w", err), baseUrl)
-		}
-	}
-
-	hostToSpecification := map[string]*motmedelMux.VhostMuxSpecification{domain: {Mux: mux}}
-
-	for _, redirect := range redirects {
-		hostToSpecification[redirect[0]] = &motmedelMux.VhostMuxSpecification{RedirectTo: redirect[1]}
-	}
-
-	vhostMux := &motmedelMux.VhostMux{HostToSpecification: hostToSpecification}
-	vhostMux.DefaultHeaders = mux.DefaultHeaders
-
-	var handler http.Handler
-	if strings.EqualFold(domain, "localhost") {
-		handler = vhostMux
-	} else {
-		handler = h2c.NewHandler(vhostMux, &http2.Server{})
-	}
-
-	httpServer := &http.Server{
-		Addr:              fmt.Sprintf(":%s", port),
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
-	return httpServer, mux, nil
-}
-
-func MakePublicHttpService(
-	domain string,
-	port string,
-	staticContentEndpoints []*endpointPkg.Endpoint,
-	redirects ...[2]string,
-) (*http.Server, *motmedelMux.Mux, error) {
-	return makeHttpService(domain, port, staticContentEndpoints, true, redirects...)
-}
-
-func MakeHttpService(
-	domain string,
-	port string,
-	staticContentEndpointSpecifications []*endpointPkg.Endpoint,
-	redirects ...[2]string,
-) (*http.Server, *motmedelMux.Mux, error) {
-	return makeHttpService(domain, port, staticContentEndpointSpecifications, false, redirects...)
-}
-
-type CorsConfigurator struct {
-	AllowedOrigins   []string
-	RegisteredDomain string
-
-	Headers       []string
-	Credentials   bool
-	MaxAge        int
-	ExposeHeaders []string
-}
-
-func (configurator *CorsConfigurator) Parse(request *http.Request) (*motmedelHttpTypes.CorsConfiguration, *response_error.ResponseError) {
-	if request == nil {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpRequest),
-		}
-	}
-
-	requestHeader := request.Header
-	if requestHeader == nil {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpRequestHeader),
-		}
-	}
-
-	origin := requestHeader.Get("Origin")
-	if origin == "" {
-		return nil, nil
-	}
-
-	var matchedAllowedOrigin string
-	for _, allowedOrigin := range configurator.AllowedOrigins {
-		if strings.EqualFold(origin, allowedOrigin) {
-			matchedAllowedOrigin = allowedOrigin
-			break
-		}
-	}
-
-	registeredDomain := configurator.RegisteredDomain
-	if matchedAllowedOrigin == "" && registeredDomain != "" {
-		parsedOrigin, err := url.Parse(origin)
-		if err != nil {
-			return nil, &response_error.ResponseError{
-				ClientError: motmedelErrors.NewWithTrace(fmt.Errorf("url parse (origin): %w", err), origin),
-				ProblemDetail: problem_detail.New(
-					http.StatusBadRequest,
-					problem_detail_config.WithDetail("Invalid Origin header."),
-				),
-			}
-		}
-
-		originHostname := parsedOrigin.Hostname()
-		originDomainBreakdown := domain_breakdown.GetDomainBreakdown(originHostname)
-		if originDomainBreakdown == nil {
-			return nil, &response_error.ResponseError{
-				ProblemDetail: problem_detail.New(
-					http.StatusBadRequest,
-					problem_detail_config.WithDetail("Invalid Origin header hostname."),
-				),
-			}
-		}
-
-		if strings.EqualFold(originDomainBreakdown.RegisteredDomain, registeredDomain) {
-			matchedAllowedOrigin = origin
-		}
-	}
-
-	if matchedAllowedOrigin == "" {
-		return nil, nil
-	}
-
-	return &motmedelHttpTypes.CorsConfiguration{
-		Origin:        matchedAllowedOrigin,
-		Headers:       configurator.Headers,
-		Credentials:   configurator.Credentials,
-		MaxAge:        configurator.MaxAge,
-		ExposeHeaders: configurator.ExposeHeaders,
-	}, nil
 }
