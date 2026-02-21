@@ -3,23 +3,19 @@ module github.com/altshiftab/gcp_utils/pkg/http/login/sso
 go 1.25
 
 require (
-	github.com/Motmedel/utils_go v0.0.377
-	github.com/Motmedel/utils_go/pkg/http/log v0.0.8
-	github.com/Motmedel/utils_go/pkg/http/mux v0.0.169
+	github.com/Motmedel/utils_go v0.0.387
+	github.com/Motmedel/utils_go/pkg/http/mux v0.0.178
 	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.17
 	github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.6
-	github.com/Motmedel/utils_go/pkg/http/types/problem_detail v1.0.9
 	github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1
-	github.com/altshiftab/gcp_utils/pkg/http/login v0.0.48
+	github.com/altshiftab/gcp_utils/pkg/http/login v0.0.49
 	github.com/go-jose/go-jose/v4 v4.1.3
 	golang.org/x/oauth2 v0.34.0
 )
 
 require (
-	github.com/Motmedel/ecs_go v0.0.68 // indirect
 	github.com/Motmedel/parsing_utils v0.0.5 // indirect
-	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.33 // indirect
-	github.com/Motmedel/utils_go/pkg/net/domain_breakdown v0.0.5 // indirect
+	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.34 // indirect
 	github.com/altshiftab/jsonschema v0.0.11 // indirect
 	github.com/gammazero/deque v1.2.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
