@@ -47,6 +47,10 @@ func New(domain string, port string, options ...service_config.Option) (*Service
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("mux"))
 	}
 
+	if err := gcpUtilsHttp.PatchMux(mux); err != nil {
+		return nil, motmedelErrors.New(fmt.Errorf("patch mux: %w", err), baseUrl)
+	}
+
 	if config.Public {
 		if err := gcpUtilsHttp.PatchPublicHttpServiceMux(mux, baseUrl); err != nil {
 			return nil, motmedelErrors.New(fmt.Errorf("patch public http service mux: %w", err), baseUrl)
