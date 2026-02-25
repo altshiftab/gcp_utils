@@ -7,6 +7,7 @@ import (
 type TemplateInput struct {
 	Name                      string
 	InputType                 string
+	UrlInputType              string
 	ReturnType                string
 	URL                       string
 	Method                    string

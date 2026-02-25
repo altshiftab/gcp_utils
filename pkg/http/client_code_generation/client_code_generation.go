@@ -59,6 +59,7 @@ func makeTypescriptContext(endpoints []*endpointPkg.Endpoint) (*typeGenerationTy
 		}
 
 		typesSet[hint.InputType] = struct{}{}
+		typesSet[hint.UrlInputType] = struct{}{}
 		typesSet[hint.OutputType] = struct{}{}
 	}
 
@@ -143,6 +144,7 @@ func makeTemplateInput(
 		var outputContentType string
 		var optionalOutput bool
 		var typescriptInputType string
+		var typescriptUrlInputType string
 		var typescriptOutputType string
 
 		if hint := endpoint.Hint; hint != nil {
@@ -162,7 +164,24 @@ func makeTemplateInput(
 				}
 				typescriptInputType, err = typeScriptType.String()
 				if err != nil {
-					return nil, motmedelErrors.New(fmt.Errorf("typescript type string (output): %w", err), typeScriptType)
+					return nil, motmedelErrors.New(fmt.Errorf("typescript type string (input): %w", err), typeScriptType)
+				}
+			}
+
+			urlInputType := hint.UrlInputType
+			if isEmptyInterfaceType(urlInputType) {
+				typescriptUrlInputType = "void"
+			} else {
+				typeScriptType, err := tsContext.GetTypeScriptType(urlInputType)
+				if err != nil {
+					return nil, motmedelErrors.New(
+						fmt.Errorf("typescript context get typescript type (url input): %w", err),
+						urlInputType,
+					)
+				}
+				typescriptUrlInputType, err = typeScriptType.String()
+				if err != nil {
+					return nil, motmedelErrors.New(fmt.Errorf("typescript type string (url input): %w", err), typeScriptType)
 				}
 			}
 
@@ -211,6 +230,7 @@ func makeTemplateInput(
 					makePathPart(path),
 				),
 				InputType:                 typescriptInputType,
+				UrlInputType:              typescriptUrlInputType,
 				ReturnType:                typescriptOutputType,
 				URL:                       urlString,
 				Method:                    endpoint.Method,
