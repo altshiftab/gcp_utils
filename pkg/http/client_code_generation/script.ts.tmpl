@@ -6,13 +6,16 @@ import {compactDecrypt, CompactEncrypt, exportJWK, generateKeyPair, importJWK} f
 import {fetchEx} from "@altshiftab/utils/http/utils";
 {{ define "function" -}}
 {{- $noRequestBody := eq .Endpoint.InputType "void" -}}
+{{- $hasUrlInput := ne .Endpoint.UrlInputType "void" -}}
 {{- $isNoBodyMethod := or (eq .Endpoint.Method "GET") (or (eq .Endpoint.Method "HEAD") (eq .Endpoint.Method "DELETE")) -}}
 {{- $encryptedInput := eq .Endpoint.ContentType "application/jose" -}}
 {{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
 {{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
+{{- $hasAnyParam := or (not $noRequestBody) (or $hasUrlInput (or $encryptedInput $authBearer)) -}}
 export async function {{ .Endpoint.Name }}(
-{{- if .Globals.AcceptBaseUrlArgument -}}baseUrl: string{{- if or (not $noRequestBody) (or $encryptedInput $authBearer) }}, {{ end }}{{- end -}}
-{{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if or $authBearer $encryptedInput }}, {{ end }}{{- end -}}
+{{- if .Globals.AcceptBaseUrlArgument -}}baseUrl: string{{- if $hasAnyParam }}, {{ end }}{{- end -}}
+{{- if not $noRequestBody -}}input: {{ .Endpoint.InputType }}{{- if or $hasUrlInput (or $authBearer $encryptedInput) }}, {{ end }}{{- end -}}
+{{- if $hasUrlInput -}}urlInput: {{ .Endpoint.UrlInputType }}{{- if or $authBearer $encryptedInput }}, {{ end }}{{- end -}}
 {{- if $encryptedInput -}}serverJwk: JWK{{- if $authBearer }}, {{ end }}{{- end -}}
 {{- if $authBearer -}}token: string{{- end -}}
 ): Promise<{{ .Endpoint.ReturnType }}{{ if .Endpoint.OptionalOutput }} | null{{ end }}> {
@@ -36,6 +39,21 @@ export async function {{ .Endpoint.Name }}(
     {{- end }}
     {{- if and (not $noRequestBody) $isNoBodyMethod }}
     for (const [__k, __v] of Object.entries(input as any)) {
+        if (__v === undefined || __v === null)
+            continue;
+        if (Array.isArray(__v)) {
+            for (const __item of __v) {
+                url.searchParams.append(__k, String(__item));
+            }
+        } else if (typeof __v === "object") {
+            url.searchParams.append(__k, JSON.stringify(__v));
+        } else {
+            url.searchParams.append(__k, String(__v));
+        }
+    }
+    {{- end }}
+    {{- if $hasUrlInput }}
+    for (const [__k, __v] of Object.entries(urlInput as any)) {
         if (__v === undefined || __v === null)
             continue;
         if (Array.isArray(__v)) {
