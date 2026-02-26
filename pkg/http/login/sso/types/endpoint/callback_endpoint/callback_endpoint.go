@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
@@ -242,7 +243,7 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
-		response, responseError := sessionManager.CreateSession(ctx, emailAddress)
+		response, responseError := sessionManager.CreateSession(ctx, strings.ToLower(emailAddress))
 		if responseError != nil {
 			return nil, responseError
 		}
