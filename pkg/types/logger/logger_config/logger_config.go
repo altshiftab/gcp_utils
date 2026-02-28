@@ -6,7 +6,7 @@ import (
 	"os"
 
 	gcpHttpContextExtractor "github.com/Motmedel/utils_go/pkg/cloud/gcp/types/http_context_extractor"
-	"github.com/Motmedel/utils_go/pkg/http/types/http_context_extractor"
+	"github.com/altshiftab/gcp_utils/pkg/http/types/http_context_extractor"
 )
 
 const (
