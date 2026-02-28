@@ -24,7 +24,7 @@ import (
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
-	motmedelJwt "github.com/Motmedel/utils_go/pkg/json/jose/jwt"
+	motmedelJws "github.com/Motmedel/utils_go/pkg/json/jose/jws"
 	authenticatorPkg "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
@@ -199,7 +199,7 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
-		_, idTokenPayload, _, err := motmedelJwt.Parse(idToken)
+		_, idTokenPayload, _, err := motmedelJws.Parse(idToken)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("jwt parse: %w", err), idToken),
