@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/Motmedel/utils_go v0.0.394
-	github.com/altshiftab/gcp_utils/pkg/http v0.0.43
+	github.com/altshiftab/gcp_utils/pkg/http v0.0.44
 )
 
 require (
