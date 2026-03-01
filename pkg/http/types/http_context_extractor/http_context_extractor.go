@@ -163,17 +163,17 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 				}
 			}
 
+			if baseMessage := base.Message; baseMessage != "" {
+				base.Message = ""
+				record.Message = baseMessage
+			}
+
 			baseMap, err := motmedelJson.ObjectToMap(base)
 			if err != nil {
 				return motmedelErrors.New(fmt.Errorf("object to map: %w", err), base)
 			}
 
 			record.Add(motmedelLog.AttrsFromMap(baseMap)...)
-
-			if baseMessage := base.Message; baseMessage != "" {
-				base.Message = ""
-				record.Message = baseMessage
-			}
 		}
 	}
 
