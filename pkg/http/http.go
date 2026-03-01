@@ -134,7 +134,15 @@ func PatchMux(mux *motmedelMux.Mux) error {
 
 	if motmedelEnv.GetEnvWithDefault("LOG_LEVEL", "INFO") == "DEBUG" {
 		mux.DoneCallback = func(ctx context.Context) {
-			slog.DebugContext(ctx, "An HTTP response was served.")
+			slog.DebugContext(
+				ctx,
+				"An HTTP response was served.",
+				slog.Group(
+					"event",
+					slog.String("action", "http_response_served"),
+					slog.String("reason", "An HTTP response was served."),
+				),
+			)
 		}
 	}
 
