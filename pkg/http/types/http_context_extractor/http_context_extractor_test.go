@@ -432,6 +432,62 @@ func TestExtractor_Handle_HttpContextRequestNoHeaders(t *testing.T) {
 	}
 }
 
+func TestExtractor_Handle_MessageOverwritten(t *testing.T) {
+	t.Parallel()
+
+	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(
+		"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n",
+	)))
+	if err != nil {
+		t.Fatalf("read request: %v", err)
+	}
+
+	resp := &http.Response{
+		StatusCode: 200,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     http.Header{"Content-Type": {"text/plain"}},
+	}
+
+	httpContext := &motmedelHttpTypes.HttpContext{
+		Request:  req,
+		Response: resp,
+	}
+
+	ctx := context.WithValue(context.Background(), motmedelHttpContext.HttpContextContextKey, httpContext)
+	record := &slog.Record{}
+	record.Message = "original message"
+
+	e := &Extractor{}
+	err = e.Handle(ctx, record)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := "GET /test"
+	if record.Message != want {
+		t.Errorf("record.Message = %q, want %q", record.Message, want)
+	}
+}
+
+func TestExtractor_Handle_MessageNotOverwrittenWithoutRequest(t *testing.T) {
+	t.Parallel()
+
+	e := &Extractor{}
+	record := &slog.Record{}
+	record.Message = "original message"
+
+	err := e.Handle(context.Background(), record)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if record.Message != "original message" {
+		t.Errorf("record.Message = %q, want %q", record.Message, "original message")
+	}
+}
+
 func TestExtractor_Handle_HttpContextResponseNoHeaders(t *testing.T) {
 	t.Parallel()
 
