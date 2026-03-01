@@ -171,6 +171,7 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 			record.Add(motmedelLog.AttrsFromMap(baseMap)...)
 
 			if baseMessage := base.Message; baseMessage != "" {
+				base.Message = ""
 				record.Message = baseMessage
 			}
 		}
