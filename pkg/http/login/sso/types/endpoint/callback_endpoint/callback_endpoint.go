@@ -19,6 +19,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor/query_extractor_config"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
@@ -46,7 +47,7 @@ type UrlInput struct {
 	SessionState string `json:"session_state,omitempty"`
 }
 
-var urlInputParser = query_extractor.New[*UrlInput]()
+var urlInputParser = query_extractor.New[*UrlInput](query_extractor_config.WithAllowAdditionalParameters(true))
 
 type Endpoint[T provider_claims.ProviderClaims] struct {
 	*initialization_endpoint.Endpoint
