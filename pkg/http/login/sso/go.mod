@@ -10,7 +10,6 @@ require (
 	github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1
 	github.com/altshiftab/gcp_utils/pkg/http/login v0.0.50
 	github.com/go-jose/go-jose/v4 v4.1.3
-	golang.org/x/oauth2 v0.34.0
 )
 
 require (
