@@ -27,6 +27,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelJws "github.com/Motmedel/utils_go/pkg/json/jose/jws"
 	authenticatorPkg "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
+	motmedelOauth2 "github.com/Motmedel/utils_go/pkg/oauth2"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
@@ -34,7 +35,6 @@ import (
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/callback_endpoint/callback_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/provider_claims"
-	"golang.org/x/oauth2"
 )
 
 type UrlInput struct {
@@ -57,7 +57,7 @@ type Endpoint[T provider_claims.ProviderClaims] struct {
 }
 
 func (e *Endpoint[T]) Initialize(
-	oauthConfig *oauth2.Config,
+	oauthConfig *motmedelOauth2.Config,
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
 	sessionManager *session_manager.Manager,
 ) error {
@@ -165,7 +165,7 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
-		token, err := oauthConfig.Exchange(ctx, urlInput.Code, oauth2.VerifierOption(oauthFlow.CodeVerifier))
+		token, err := oauthConfig.Exchange(ctx, urlInput.Code, motmedelOauth2.VerifierOption(oauthFlow.CodeVerifier))
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("oauth config exchange: %w", err)),

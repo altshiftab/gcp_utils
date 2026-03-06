@@ -3,7 +3,7 @@ module github.com/altshiftab/gcp_utils/pkg/http/login/sso
 go 1.25
 
 require (
-	github.com/Motmedel/utils_go v0.0.396
+	github.com/Motmedel/utils_go v0.0.400
 	github.com/Motmedel/utils_go/pkg/http/mux v0.0.180
 	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.17
 	github.com/Motmedel/utils_go/pkg/http/mux/utils/client_side_encryption v0.0.6
