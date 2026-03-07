@@ -3,6 +3,7 @@ package http_context_extractor
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	motmedelJson "github.com/Motmedel/utils_go/pkg/json"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jws"
+	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	"github.com/Motmedel/utils_go/pkg/schema"
 	schemaUtils "github.com/Motmedel/utils_go/pkg/schema/utils"
@@ -110,6 +112,144 @@ func extractNormalizedHeaders(header http.Header) string {
 	return strings.Join(headerStrings, "")
 }
 
+func extractJwtStrings(header http.Header) []string {
+	var candidates []string
+
+	if authHeader := header.Get("Authorization"); authHeader != "" {
+		if scheme, token, found := strings.Cut(authHeader, " "); found && strings.EqualFold(scheme, "bearer") && token != "" {
+			candidates = append(candidates, token)
+		}
+	}
+
+	for _, cookie := range (&http.Request{Header: header}).Cookies() {
+		if cookie.Value != "" {
+			candidates = append(candidates, cookie.Value)
+		}
+	}
+
+	return candidates
+}
+
+func decodeJwtPayload(token string) (map[string]any, error) {
+	parts, err := jws.Split(token)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, err
+	}
+
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+func userFromSessionClaims(claims *session_claims.Claims) *schema.User {
+	sub := claims.Subject
+	if sub == "" {
+		return nil
+	}
+
+	subjectId, subjectEmailAddress, found := strings.Cut(sub, ":")
+	if !found {
+		return nil
+	}
+
+	user := &schema.User{
+		Id:         subjectId,
+		Email:      subjectEmailAddress,
+		Unverified: true,
+	}
+
+	if azp := claims.AuthorizedParty; azp != "" {
+		if tenantId, tenantName, found := strings.Cut(azp, ":"); found {
+			if tenantId != "" || tenantName != "" {
+				user.Group = &schema.Group{
+					Id:   tenantId,
+					Name: tenantName,
+				}
+			}
+		}
+	}
+
+	user.Roles = claims.Roles
+
+	return user
+}
+
+func userFromSubClaim(sub string) *schema.User {
+	user := &schema.User{Unverified: true}
+
+	if strings.Contains(sub, "@") {
+		user.Email = sub
+	} else {
+		user.Name = sub
+	}
+
+	return user
+}
+
+func userFromBasicAuth(header http.Header) *schema.User {
+	authHeader := header.Get("Authorization")
+	if authHeader == "" {
+		return nil
+	}
+
+	scheme, credentials, found := strings.Cut(authHeader, " ")
+	if !found || !strings.EqualFold(scheme, "basic") || credentials == "" {
+		return nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(credentials)
+	if err != nil {
+		return nil
+	}
+
+	username, _, found := strings.Cut(string(decoded), ":")
+	if !found || username == "" {
+		return nil
+	}
+
+	user := &schema.User{Unverified: true}
+	if strings.Contains(username, "@") {
+		user.Email = username
+	} else {
+		user.Name = username
+	}
+
+	return user
+}
+
+func extractUnverifiedUser(header http.Header) *schema.User {
+	for _, token := range extractJwtStrings(header) {
+		claims, err := decodeJwtPayload(token)
+		if err != nil {
+			continue
+		}
+
+		if sessionClaims, err := session_claims.New(claims); err == nil && sessionClaims != nil {
+			if user := userFromSessionClaims(sessionClaims); user != nil {
+				return user
+			}
+		}
+
+		if sub, ok := claims["sub"].(string); ok && sub != "" {
+			return userFromSubClaim(sub)
+		}
+	}
+
+	if user := userFromBasicAuth(header); user != nil {
+		return user
+	}
+
+	return nil
+}
+
 type Extractor struct {
 }
 
@@ -123,6 +263,14 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 	}
 
 	if httpContext, ok := ctx.Value(motmedelHttpContext.HttpContextContextKey).(*motmedelHttpTypes.HttpContext); ok && httpContext != nil {
+		if httpContext.User == nil {
+			if request := httpContext.Request; request != nil {
+				if requestHeader := request.Header; requestHeader != nil {
+					httpContext.User = extractUnverifiedUser(requestHeader)
+				}
+			}
+		}
+
 		base, err := schemaUtils.ParseHttpContext(httpContext)
 		if err != nil {
 			return motmedelErrors.New(fmt.Errorf("parse http context: %w", err), httpContext)
