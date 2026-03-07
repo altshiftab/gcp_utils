@@ -11,6 +11,7 @@ import (
 
 	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
+	motmedelSchemaTypes "github.com/Motmedel/utils_go/pkg/schema"
 )
 
 func TestMaskJws(t *testing.T) {
@@ -446,6 +447,170 @@ func TestExtractor_Handle_MessageNotOverwrittenWithoutRequest(t *testing.T) {
 
 	if record.Message != "original message" {
 		t.Errorf("record.Message = %q, want %q", record.Message, "original message")
+	}
+}
+
+func TestExtractUnverifiedUser_AuthorizationBearer_SessionToken(t *testing.T) {
+	t.Parallel()
+
+	// JWT with sub="user123:user@example.com", azp="tenant1:MyTenant", roles=["admin"]
+	token := "eyJhbGciOiAiSFMyNTYifQ.eyJzdWIiOiAidXNlcjEyMzp1c2VyQGV4YW1wbGUuY29tIiwgImF6cCI6ICJ0ZW5hbnQxOk15VGVuYW50IiwgInJvbGVzIjogWyJhZG1pbiJdLCAiaXNzIjogInRlc3QiLCAiYXVkIjogInRlc3QifQ.fakesig"
+	header := http.Header{"Authorization": {"Bearer " + token}}
+
+	user := extractUnverifiedUser(header)
+	if user == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if !user.Unverified {
+		t.Error("expected Unverified to be true")
+	}
+	if user.Id != "user123" {
+		t.Errorf("user.Id = %q, want %q", user.Id, "user123")
+	}
+	if user.Email != "user@example.com" {
+		t.Errorf("user.Email = %q, want %q", user.Email, "user@example.com")
+	}
+	if user.Group == nil || user.Group.Id != "tenant1" || user.Group.Name != "MyTenant" {
+		t.Errorf("user.Group = %+v, want {Id: tenant1, Name: MyTenant}", user.Group)
+	}
+	if len(user.Roles) != 1 || user.Roles[0] != "admin" {
+		t.Errorf("user.Roles = %v, want [admin]", user.Roles)
+	}
+}
+
+func TestExtractUnverifiedUser_Cookie_EmailSub(t *testing.T) {
+	t.Parallel()
+
+	// JWT with sub="user@example.com" (no colon, so falls back to sub claim)
+	token := "eyJhbGciOiAiSFMyNTYifQ.eyJzdWIiOiAidXNlckBleGFtcGxlLmNvbSJ9.fakesig"
+	header := http.Header{"Cookie": {"session=" + token}}
+
+	user := extractUnverifiedUser(header)
+	if user == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if !user.Unverified {
+		t.Error("expected Unverified to be true")
+	}
+	if user.Email != "user@example.com" {
+		t.Errorf("user.Email = %q, want %q", user.Email, "user@example.com")
+	}
+	if user.Name != "" {
+		t.Errorf("user.Name = %q, want empty", user.Name)
+	}
+}
+
+func TestExtractUnverifiedUser_Cookie_NameSub(t *testing.T) {
+	t.Parallel()
+
+	// JWT with sub="johndoe"
+	token := "eyJhbGciOiAiSFMyNTYifQ.eyJzdWIiOiAiam9obmRvZSJ9.fakesig"
+	header := http.Header{"Cookie": {"session=" + token}}
+
+	user := extractUnverifiedUser(header)
+	if user == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if !user.Unverified {
+		t.Error("expected Unverified to be true")
+	}
+	if user.Name != "johndoe" {
+		t.Errorf("user.Name = %q, want %q", user.Name, "johndoe")
+	}
+	if user.Email != "" {
+		t.Errorf("user.Email = %q, want empty", user.Email)
+	}
+}
+
+func TestExtractUnverifiedUser_BasicAuth_Email(t *testing.T) {
+	t.Parallel()
+
+	credentials := base64.StdEncoding.EncodeToString([]byte("user@example.com:password"))
+	header := http.Header{"Authorization": {"Basic " + credentials}}
+
+	user := extractUnverifiedUser(header)
+	if user == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if !user.Unverified {
+		t.Error("expected Unverified to be true")
+	}
+	if user.Email != "user@example.com" {
+		t.Errorf("user.Email = %q, want %q", user.Email, "user@example.com")
+	}
+	if user.Name != "" {
+		t.Errorf("user.Name = %q, want empty", user.Name)
+	}
+}
+
+func TestExtractUnverifiedUser_BasicAuth_Username(t *testing.T) {
+	t.Parallel()
+
+	credentials := base64.StdEncoding.EncodeToString([]byte("johndoe:password"))
+	header := http.Header{"Authorization": {"Basic " + credentials}}
+
+	user := extractUnverifiedUser(header)
+	if user == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if !user.Unverified {
+		t.Error("expected Unverified to be true")
+	}
+	if user.Name != "johndoe" {
+		t.Errorf("user.Name = %q, want %q", user.Name, "johndoe")
+	}
+	if user.Email != "" {
+		t.Errorf("user.Email = %q, want empty", user.Email)
+	}
+}
+
+func TestExtractUnverifiedUser_NoJwt(t *testing.T) {
+	t.Parallel()
+
+	header := http.Header{"X-Custom": {"value"}}
+	user := extractUnverifiedUser(header)
+	if user != nil {
+		t.Errorf("expected nil user, got %+v", user)
+	}
+}
+
+func TestExtractUnverifiedUser_InvalidJwt(t *testing.T) {
+	t.Parallel()
+
+	header := http.Header{"Authorization": {"Bearer not-a-jwt"}}
+	user := extractUnverifiedUser(header)
+	if user != nil {
+		t.Errorf("expected nil user, got %+v", user)
+	}
+}
+
+func TestExtractor_Handle_UserNotOverwritten(t *testing.T) {
+	t.Parallel()
+
+	token := "eyJhbGciOiAiSFMyNTYifQ.eyJzdWIiOiAiam9obmRvZSJ9.fakesig"
+	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(
+		"GET /test HTTP/1.1\r\nHost: example.com\r\nAuthorization: Bearer " + token + "\r\n\r\n",
+	)))
+	if err != nil {
+		t.Fatalf("read request: %v", err)
+	}
+
+	existingUser := &motmedelSchemaTypes.User{Name: "existing"}
+	httpContext := &motmedelHttpTypes.HttpContext{
+		Request: req,
+		User:    existingUser,
+	}
+
+	ctx := context.WithValue(context.Background(), motmedelHttpContext.HttpContextContextKey, httpContext)
+	record := &slog.Record{}
+
+	e := &Extractor{}
+	if err := e.Handle(ctx, record); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if httpContext.User != existingUser {
+		t.Error("expected existing user to not be overwritten")
 	}
 }
 
