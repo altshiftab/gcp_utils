@@ -24,6 +24,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/numeric_date"
 	motmedelTime "github.com/Motmedel/utils_go/pkg/time"
 	"github.com/Motmedel/utils_go/pkg/utils"
+	motmedelUuid "github.com/Motmedel/utils_go/pkg/uuid"
 	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
@@ -32,7 +33,6 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
-	"github.com/google/uuid"
 )
 
 type Manager struct {
@@ -234,7 +234,7 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 
 	sessionClaims := &session_claims.Claims{
 		Claims: registered_claims.Claims{
-			Id:        strings.Join([]string{authenticationId, uuid.New().String()}, ":"),
+			Id:        strings.Join([]string{authenticationId, motmedelUuid.NewString()}, ":"),
 			Issuer:    m.Issuer,
 			Audience:  audienceClaimString,
 			Subject:   strings.Join([]string{accountId, accountEmailAddress}, ":"),

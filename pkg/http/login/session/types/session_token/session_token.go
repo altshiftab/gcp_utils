@@ -11,10 +11,10 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
-	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/numeric_date"
 	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token"
+	"github.com/Motmedel/utils_go/pkg/schema"
 	motmedelTime "github.com/Motmedel/utils_go/pkg/time"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
@@ -32,14 +32,14 @@ type Token struct {
 	Roles               []string
 }
 
-func (t *Token) GetUser() *motmedelHttpTypes.HttpContextUser {
-	user := &motmedelHttpTypes.HttpContextUser{
+func (t *Token) GetUser() *schema.User {
+	user := &schema.User{
 		Id:    t.SubjectId,
 		Email: t.SubjectEmailAddress,
 	}
 
 	if t.TenantId != "" || t.TenantName != "" {
-		user.Group = &motmedelHttpTypes.HttpContextGroup{
+		user.Group = &schema.Group{
 			Id:   t.TenantId,
 			Name: t.TenantName,
 		}
