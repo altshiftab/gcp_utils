@@ -405,7 +405,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		IntegrityEndpointToken,
 	)
 
-	cspReportToBodyParser, err := jsonSchemaBodyParser.New[*reporting_api.Report[*content_security_policy.CSPViolationReportBody]]()
+	cspReportToBodyParser, err := jsonSchemaBodyParser.New[[]*reporting_api.Report[*content_security_policy.CSPViolationReportBody]]()
 	if err != nil {
 		return motmedelErrors.New(
 			fmt.Errorf("json schema body parser new (csp report to): %w", err),
@@ -419,7 +419,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		)
 	}
 
-	integrityPolicyBodyParser, err := jsonSchemaBodyParser.New[*reporting_api.Report[*integrity_policy.IntegrityViolationReportBody]]()
+	integrityPolicyBodyParser, err := jsonSchemaBodyParser.New[[]*reporting_api.Report[*integrity_policy.IntegrityViolationReportBody]]()
 	if err != nil {
 		return motmedelErrors.New(
 			fmt.Errorf("json schema body parser new (integrity policy): %w", err),
@@ -438,15 +438,10 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				report, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*reporting_api.Report[*content_security_policy.CSPViolationReportBody]](ctx)
-				if responseError != nil {
-					return nil, responseError
-				}
-
-				reportBody := report.Body
-				if reportBody == nil {
+				reports, err := muxUtils.GetParsedRequestBody[[]*reporting_api.Report[*content_security_policy.CSPViolationReportBody]](ctx)
+				if err != nil {
 					return nil, &response_error.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(nil_error.New("report body")),
+						ServerError: fmt.Errorf("get parsed request body: %w", err),
 					}
 				}
 
@@ -464,21 +459,37 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 					)
 				}
 
+				var message string
+				if len(reports) == 1 {
+					if report := reports[0]; report != nil {
+						if reportBody := report.Body; reportBody != nil {
+							message = reportBody.Message()
+						}
+					}
+
+					// TODO: Maybe not good.
+					if message == "" {
+						message = "A CSP violation was reported."
+					}
+				} else {
+					message = "Multiple integrity violations were reported."
+				}
+
 				httpReporting := httpContext.Reporting
 				if httpReporting == nil {
 					httpContext.Reporting = &schema.HttpReporting{}
 					httpReporting = httpContext.Reporting
 				}
 
-				httpReporting.CspViolation = report
+				httpReporting.CspViolations = reports
 
 				slog.WarnContext(
 					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
-					reportBody.Message(),
+					message,
 					slog.Group(
 						"event",
-						slog.String("reason", "A CSP violation was reported."),
-						slog.String("action", "log_csp_violation"),
+						slog.String("reason", "CSP violations were reported."),
+						slog.String("action", "log_csp_violations"),
 					),
 				)
 
@@ -580,15 +591,10 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				report, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*reporting_api.Report[*integrity_policy.IntegrityViolationReportBody]](ctx)
-				if responseError != nil {
-					return nil, responseError
-				}
-
-				reportBody := report.Body
-				if reportBody == nil {
+				reports, err := muxUtils.GetParsedRequestBody[[]*reporting_api.Report[*integrity_policy.IntegrityViolationReportBody]](ctx)
+				if err != nil {
 					return nil, &response_error.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(nil_error.New("report body")),
+						ServerError: fmt.Errorf("get parsed request body: %w", err),
 					}
 				}
 
@@ -612,15 +618,31 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 					httpReporting = httpContext.Reporting
 				}
 
-				httpReporting.IntegrityViolation = report
+				httpReporting.IntegrityViolations = reports
+
+				var message string
+				if len(reports) == 1 {
+					if report := reports[0]; report != nil {
+						if reportBody := report.Body; reportBody != nil {
+							message = reportBody.Message()
+						}
+					}
+
+					// TODO: Maybe not good.
+					if message == "" {
+						message = "An integrity violation was reported."
+					}
+				} else {
+					message = "Multiple integrity violations were reported."
+				}
 
 				slog.WarnContext(
 					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
-					reportBody.Message(),
+					message,
 					slog.Group(
 						"event",
-						slog.String("reason", "An integrity violation was reported."),
-						slog.String("action", "log_integrity_violation"),
+						slog.String("reason", "Integrity violations were reported."),
+						slog.String("action", "log_integrity_violations"),
 					),
 				)
 

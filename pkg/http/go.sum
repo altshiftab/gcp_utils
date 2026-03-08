@@ -1,7 +1,7 @@
 github.com/Motmedel/parsing_utils v0.0.5 h1:yBz2mEW6M0K7cD1mdpaXRm1EBT/LRNmzcb9mbHfYpBQ=
 github.com/Motmedel/parsing_utils v0.0.5/go.mod h1:H7i7482IUbHd3duFgTUEG0FtcgsSXCSw11yXnetGUvk=
-github.com/Motmedel/utils_go v0.0.413 h1:t/JOhvrgrsEvVVHncbCOWxKHY9R5dD5qyMZWqnuOTfE=
-github.com/Motmedel/utils_go v0.0.413/go.mod h1:st9wrD7tyw4AM64tOD7rs0vO7tMxmXQC1Apm48B+4Q4=
+github.com/Motmedel/utils_go v0.0.414 h1:v4lkohSY/tZO10cn3QIj5VbXjaJD0kgxDK9XjzWFtwQ=
+github.com/Motmedel/utils_go v0.0.414/go.mod h1:st9wrD7tyw4AM64tOD7rs0vO7tMxmXQC1Apm48B+4Q4=
 github.com/Motmedel/utils_go/pkg/http/mux v0.0.181 h1:ILgQYa+pqRvdlcVKIzm9OxZShdpZCRNE9i2RKt08avE=
 github.com/Motmedel/utils_go/pkg/http/mux v0.0.181/go.mod h1:Nn7D21Oxc/vtIVxoLh41FNtB6nTY3cTOOtphvTKkx1M=
 github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.18 h1:YX7eRc7RuoLEagJTJ8v1CvTUqifeJXRrImnpOvxUa8M=
