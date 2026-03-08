@@ -21,6 +21,7 @@ var (
 			"A client error occurred.",
 			"A server error occurred.",
 			"An HTTP response was served.",
+			"A fetch was performed.",
 		),
 	)
 	DefaultGcpLoggingExtractor = gcpHttpContextExtractor.New()
