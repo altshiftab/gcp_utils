@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/Motmedel/utils_go v0.0.414
 	github.com/Motmedel/utils_go/pkg/http/mux v0.0.181
-	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.19
+	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.20
 	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.36
 	golang.org/x/net v0.51.0
 )
