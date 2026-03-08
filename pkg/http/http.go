@@ -446,6 +446,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 
 	mux.Add(
 		&endpointPkg.Endpoint{
+			Public: true,
 			Path:   CspReportToEndpoint,
 			Method: http.MethodPost,
 			BodyLoader: &body_loader.Loader{
@@ -515,6 +516,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 		},
 		&endpointPkg.Endpoint{
+			Public: true,
 			Path:   CspReportUriEndpoint,
 			Method: http.MethodPost,
 			BodyLoader: &body_loader.Loader{
@@ -566,6 +568,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 		},
 		&endpointPkg.Endpoint{
+			Public: true,
 			Path:   NetworkErrorLoggingEndpoint,
 			Method: http.MethodPost,
 			// TODO: Add body parsing.
@@ -599,6 +602,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 		},
 		&endpointPkg.Endpoint{
+			Public: true,
 			Path:   IntegrityEndpoint,
 			Method: http.MethodPost,
 			BodyLoader: &body_loader.Loader{
@@ -668,6 +672,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 		},
 		&endpointPkg.Endpoint{
+			Public: true,
 			Path:   "/api/report/error",
 			Method: http.MethodPost,
 			BodyLoader: &body_loader.Loader{
@@ -739,6 +744,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			},
 		},
 		&endpointPkg.Endpoint{
+			Public: true,
 			Path:   "/api/report/unhandled-rejection",
 			Method: http.MethodPost,
 			BodyLoader: &body_loader.Loader{
@@ -1046,8 +1052,10 @@ func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return fmt.Errorf("patch error reporting: %w", err)
 	}
 
-	if err := PatchStrictTransportSecurity(mux); err != nil {
-		return fmt.Errorf("patch strict transport security: %w", err)
+	if hostname := baseUrl.Hostname(); hostname != "localhost" {
+		if err := PatchStrictTransportSecurity(mux); err != nil {
+			return fmt.Errorf("patch strict transport security: %w", err)
+		}
 	}
 
 	return nil
