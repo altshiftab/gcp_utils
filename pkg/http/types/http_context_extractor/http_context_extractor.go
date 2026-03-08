@@ -311,14 +311,12 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 				}
 			}
 
-			if baseMessage := base.Message; baseMessage != "" {
-				if e.ReplaceableMessages != nil {
-					if _, ok := e.ReplaceableMessages[record.Message]; ok {
-						base.Message = ""
-						record.Message = baseMessage
-					}
+			if e.ReplaceableMessages != nil {
+				if _, ok := e.ReplaceableMessages[record.Message]; ok {
+					record.Message = base.Message
 				}
 			}
+			base.Message = ""
 
 			baseMap, err := motmedelJson.ObjectToMap(base)
 			if err != nil {

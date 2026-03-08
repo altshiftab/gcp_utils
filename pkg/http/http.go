@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,9 +38,12 @@ import (
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
 	cspUtils "github.com/Motmedel/utils_go/pkg/http/utils/content_security_policy"
+	motmedelJson "github.com/Motmedel/utils_go/pkg/json"
+	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	"github.com/Motmedel/utils_go/pkg/net/types/domain_parts"
 	"github.com/Motmedel/utils_go/pkg/schema"
 	"github.com/Motmedel/utils_go/pkg/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/types/js_error_report"
 )
 
 const (
@@ -426,6 +430,20 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		)
 	}
 
+	errorBodyParser, err := jsonSchemaBodyParser.New[*js_error_report.ErrorBody]()
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("json schema body parser new (error body): %w", err),
+		)
+	}
+
+	unhandledRejectionBodyParser, err := jsonSchemaBodyParser.New[*js_error_report.BaseErrorBody]()
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("json schema body parser new (unhandled rejection body): %w", err),
+		)
+	}
+
 	mux.Add(
 		&endpointPkg.Endpoint{
 			Path:   CspReportToEndpoint,
@@ -652,26 +670,18 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		&endpointPkg.Endpoint{
 			Path:   "/api/report/error",
 			Method: http.MethodPost,
-			// TODO: Add body parsing.
 			BodyLoader: &body_loader.Loader{
 				ContentType: "application/json",
 				MaxBytes:    8192,
-			},
-			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				slog.Default().WarnContext(request.Context(), "A JavaScript error was reported.")
-				return nil, nil
-			},
-		},
-		&endpointPkg.Endpoint{
-			Path:   "/api/report/unhandled-rejection",
-			Method: http.MethodPost,
-			// TODO: Add body parsing.
-			BodyLoader: &body_loader.Loader{
-				ContentType: "application/json",
-				MaxBytes:    8192,
+				Parser:      bodyParserAdapter.New(errorBodyParser),
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
+
+				body, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*js_error_report.ErrorBody](ctx)
+				if responseError != nil {
+					return nil, responseError
+				}
 
 				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
 					ctx,
@@ -683,13 +693,116 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 							request.Context(),
 							fmt.Errorf("get non-zero context value: %w", err),
 						),
-						"An error occurred when retrieving the mux http content.",
+						"An error occurred when retrieving the mux http context.",
+					)
+				}
+
+				schemaError := &schema.Error{
+					Type: body.Type,
+				}
+				if errorDetails := body.Error; errorDetails != nil {
+					schemaError.Message = errorDetails.Message
+					schemaError.StackTrace = errorDetails.Stack
+					if errorDetails.Code != 0 {
+						schemaError.Code = strconv.Itoa(errorDetails.Code)
+					}
+				}
+
+				message := body.Message
+				if message == "" {
+					message = "A JavaScript error was reported."
+				}
+
+				errorMap, err := motmedelJson.ObjectToMap(schemaError)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithError(
+							request.Context(),
+							fmt.Errorf("object to map: %w", err),
+						),
+						"An error occurred when converting the schema error to a map.",
 					)
 				}
 
 				slog.WarnContext(
 					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
-					"An JavaScript unhandled rejection was reported.",
+					message,
+					slog.Group("error", motmedelLog.AttrsFromMap(errorMap)...),
+					slog.Group(
+						"event",
+						slog.String("reason", "A JavaScript error was reported."),
+						slog.String("action", "log_js_error"),
+					),
+				)
+
+				return nil, nil
+			},
+		},
+		&endpointPkg.Endpoint{
+			Path:   "/api/report/unhandled-rejection",
+			Method: http.MethodPost,
+			BodyLoader: &body_loader.Loader{
+				ContentType: "application/json",
+				MaxBytes:    8192,
+				Parser:      bodyParserAdapter.New(unhandledRejectionBodyParser),
+			},
+			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
+				ctx := request.Context()
+
+				body, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*js_error_report.BaseErrorBody](ctx)
+				if responseError != nil {
+					return nil, responseError
+				}
+
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithError(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http context.",
+					)
+				}
+
+				schemaError := &schema.Error{
+					Type: body.Type,
+				}
+				message := "A JavaScript unhandled rejection was reported."
+				if errorDetails := body.Error; errorDetails != nil {
+					schemaError.Message = errorDetails.Message
+					schemaError.StackTrace = errorDetails.Stack
+					if errorDetails.Code != 0 {
+						schemaError.Code = strconv.Itoa(errorDetails.Code)
+					}
+					if errorDetails.Message != "" {
+						message = errorDetails.Message
+					}
+				}
+
+				errorMap, err := motmedelJson.ObjectToMap(schemaError)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithError(
+							request.Context(),
+							fmt.Errorf("object to map: %w", err),
+						),
+						"An error occurred when converting the schema error to a map.",
+					)
+				}
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					message,
+					slog.Group("error", motmedelLog.AttrsFromMap(errorMap)...),
+					slog.Group(
+						"event",
+						slog.String("reason", "A JavaScript unhandled rejection was reported."),
+						slog.String("action", "log_js_unhandled_rejection"),
+					),
 				)
 
 				return nil, nil
