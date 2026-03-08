@@ -20,6 +20,8 @@ import (
 	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader"
+	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/adapter"
+	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser"
 	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/static_content"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response"
@@ -29,11 +31,14 @@ import (
 	contentSecurityPolicyParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_security_policy"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/content_security_policy"
+	"github.com/Motmedel/utils_go/pkg/http/types/integrity_policy"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/reporting_api"
 	motmedelHttpTypesSitemapxml "github.com/Motmedel/utils_go/pkg/http/types/sitemapxml"
 	motmedelHttpUtils "github.com/Motmedel/utils_go/pkg/http/utils"
 	cspUtils "github.com/Motmedel/utils_go/pkg/http/utils/content_security_policy"
 	"github.com/Motmedel/utils_go/pkg/net/types/domain_parts"
+	"github.com/Motmedel/utils_go/pkg/schema"
 	"github.com/Motmedel/utils_go/pkg/utils"
 )
 
@@ -308,6 +313,7 @@ func PatchStrictTransportSecurity(mux *motmedelMux.Mux) error {
 		return motmedelErrors.NewWithTrace(nil_error.New("default headers"))
 	}
 
+	// TODO: Is it okay to include `includeSubdomains` even when the domain is not a top-level domain?
 	defaultHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
 	return nil
@@ -398,18 +404,51 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		"blocked-destinations=(script), endpoints=(%s)",
 		IntegrityEndpointToken,
 	)
+
+	cspReportToBodyParser, err := jsonSchemaBodyParser.New[*reporting_api.Report[*content_security_policy.CSPViolationReportBody]]()
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("json schema body parser new (csp report to): %w", err),
+		)
+	}
+
+	cspReportUriBodyParser, err := jsonSchemaBodyParser.New[*content_security_policy.Report]()
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("json schema body parser new (csp report uri): %w", err),
+		)
+	}
+
+	integrityPolicyBodyParser, err := jsonSchemaBodyParser.New[*reporting_api.Report[*integrity_policy.IntegrityViolationReportBody]]()
+	if err != nil {
+		return motmedelErrors.New(
+			fmt.Errorf("json schema body parser new (integrity policy): %w", err),
+		)
+	}
+
 	mux.Add(
-		// TODO: Not sure about the content type.
 		&endpointPkg.Endpoint{
 			Path:   CspReportToEndpoint,
 			Method: http.MethodPost,
-			// TODO: Add body parsing.
 			BodyLoader: &body_loader.Loader{
 				ContentType: "application/reports+json",
 				MaxBytes:    8192,
+				Parser:      bodyParserAdapter.New(cspReportToBodyParser),
 			},
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
+
+				report, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*reporting_api.Report[*content_security_policy.CSPViolationReportBody]](ctx)
+				if responseError != nil {
+					return nil, responseError
+				}
+
+				reportBody := report.Body
+				if reportBody == nil {
+					return nil, &response_error.ResponseError{
+						ServerError: motmedelErrors.NewWithTrace(nil_error.New("report body")),
+					}
+				}
 
 				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
 					ctx,
@@ -421,13 +460,26 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 							request.Context(),
 							fmt.Errorf("get non-zero context value: %w", err),
 						),
-						"An error occurred when retrieving the mux http content.",
+						"An error occurred when retrieving the mux http context.",
 					)
 				}
 
+				httpReporting := httpContext.Reporting
+				if httpReporting == nil {
+					httpContext.Reporting = &schema.HttpReporting{}
+					httpReporting = httpContext.Reporting
+				}
+
+				httpReporting.CspViolation = report
+
 				slog.WarnContext(
 					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
-					"A content security policy report was received.",
+					reportBody.Message(),
+					slog.Group(
+						"event",
+						slog.String("reason", "A CSP violation was reported."),
+						slog.String("action", "log_csp_violation"),
+					),
 				)
 
 				return nil, nil
@@ -436,6 +488,57 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		&endpointPkg.Endpoint{
 			Path:   CspReportUriEndpoint,
 			Method: http.MethodPost,
+			BodyLoader: &body_loader.Loader{
+				ContentType: "application/csp-report",
+				MaxBytes:    8192,
+				Parser:      bodyParserAdapter.New(cspReportUriBodyParser),
+			},
+			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
+				ctx := request.Context()
+
+				report, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*content_security_policy.Report](ctx)
+				if responseError != nil {
+					return nil, responseError
+				}
+
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithError(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http content.",
+					)
+				}
+
+				httpReporting := httpContext.Reporting
+				if httpReporting == nil {
+					httpContext.Reporting = &schema.HttpReporting{}
+					httpReporting = httpContext.Reporting
+				}
+
+				httpReporting.CspReport = report
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					report.Message(),
+					slog.Group(
+						"event",
+						slog.String("reason", "A CSP violation was reported."),
+						slog.String("action", "log_csp_report"),
+					),
+				)
+
+				return nil, nil
+			},
+		},
+		&endpointPkg.Endpoint{
+			Path:   NetworkErrorLoggingEndpoint,
+			Method: http.MethodPost,
 			// TODO: Add body parsing.
 			BodyLoader: &body_loader.Loader{
 				ContentType: "application/reports+json",
@@ -460,7 +563,65 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 
 				slog.WarnContext(
 					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
-					"A content security policy report was received.",
+					"A network error was reported.",
+				)
+
+				return nil, nil
+			},
+		},
+		&endpointPkg.Endpoint{
+			Path:   IntegrityEndpoint,
+			Method: http.MethodPost,
+			BodyLoader: &body_loader.Loader{
+				ContentType: "application/reports+json",
+				MaxBytes:    8192,
+				Parser:      bodyParserAdapter.New(integrityPolicyBodyParser),
+			},
+			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
+				ctx := request.Context()
+
+				report, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*reporting_api.Report[*integrity_policy.IntegrityViolationReportBody]](ctx)
+				if responseError != nil {
+					return nil, responseError
+				}
+
+				reportBody := report.Body
+				if reportBody == nil {
+					return nil, &response_error.ResponseError{
+						ServerError: motmedelErrors.NewWithTrace(nil_error.New("report body")),
+					}
+				}
+
+				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
+					ctx,
+					motmedelMux.MuxHttpContextContextKey,
+				)
+				if err != nil {
+					slog.ErrorContext(
+						motmedelContext.WithError(
+							request.Context(),
+							fmt.Errorf("get non-zero context value: %w", err),
+						),
+						"An error occurred when retrieving the mux http context.",
+					)
+				}
+
+				httpReporting := httpContext.Reporting
+				if httpReporting == nil {
+					httpContext.Reporting = &schema.HttpReporting{}
+					httpReporting = httpContext.Reporting
+				}
+
+				httpReporting.IntegrityViolation = report
+
+				slog.WarnContext(
+					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
+					reportBody.Message(),
+					slog.Group(
+						"event",
+						slog.String("reason", "An integrity violation was reported."),
+						slog.String("action", "log_integrity_violation"),
+					),
 				)
 
 				return nil, nil
@@ -507,72 +668,6 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 				slog.WarnContext(
 					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
 					"An JavaScript unhandled rejection was reported.",
-				)
-
-				return nil, nil
-			},
-		},
-		&endpointPkg.Endpoint{
-			Path:   NetworkErrorLoggingEndpoint,
-			Method: http.MethodPost,
-			// TODO: Add body parsing.
-			BodyLoader: &body_loader.Loader{
-				ContentType: "application/reports+json",
-				MaxBytes:    8192,
-			},
-			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				ctx := request.Context()
-
-				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
-					ctx,
-					motmedelMux.MuxHttpContextContextKey,
-				)
-				if err != nil {
-					slog.ErrorContext(
-						motmedelContext.WithError(
-							request.Context(),
-							fmt.Errorf("get non-zero context value: %w", err),
-						),
-						"An error occurred when retrieving the mux http content.",
-					)
-				}
-
-				slog.WarnContext(
-					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
-					"A network error was reported.",
-				)
-
-				return nil, nil
-			},
-		},
-		&endpointPkg.Endpoint{
-			Path:   IntegrityEndpoint,
-			Method: http.MethodPost,
-			// TODO: Add body parsing.
-			BodyLoader: &body_loader.Loader{
-				ContentType: "application/reports+json",
-				MaxBytes:    8192,
-			},
-			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
-				ctx := request.Context()
-
-				httpContext, err := utils.GetNonZeroContextValue[*motmedelHttpTypes.HttpContext](
-					ctx,
-					motmedelMux.MuxHttpContextContextKey,
-				)
-				if err != nil {
-					slog.ErrorContext(
-						motmedelContext.WithError(
-							request.Context(),
-							fmt.Errorf("get non-zero context value: %w", err),
-						),
-						"An error occurred when retrieving the mux http content.",
-					)
-				}
-
-				slog.WarnContext(
-					motmedelHttpContext.WithHttpContextValue(ctx, httpContext),
-					"An integrity policy report was received.",
 				)
 
 				return nil, nil

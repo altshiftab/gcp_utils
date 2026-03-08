@@ -19,6 +19,7 @@ import (
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	"github.com/Motmedel/utils_go/pkg/schema"
 	schemaUtils "github.com/Motmedel/utils_go/pkg/schema/utils"
+	"github.com/altshiftab/gcp_utils/pkg/http/types/http_context_extractor/http_context_extractor_config"
 )
 
 const maskedValue = "(MASKED)"
@@ -251,6 +252,7 @@ func extractUnverifiedUser(header http.Header) *schema.User {
 }
 
 type Extractor struct {
+	ReplaceableMessages map[string]struct{}
 }
 
 func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
@@ -287,7 +289,6 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 						base.Http.Request = &schema.HttpRequest{}
 					}
 
-					// NOTE: Potential nil pointer dereference
 					base.Http.Request.HttpHeaders = &schema.HttpHeaders{
 						Normalized: extractNormalizedHeaders(requestHeader),
 					}
@@ -304,7 +305,6 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 						base.Http.Response = &schema.HttpResponse{}
 					}
 
-					// NOTE: Potential nil pointer dereference
 					base.Http.Response.HttpHeaders = &schema.HttpHeaders{
 						Normalized: extractNormalizedHeaders(responseHeader),
 					}
@@ -312,8 +312,12 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 			}
 
 			if baseMessage := base.Message; baseMessage != "" {
-				base.Message = ""
-				record.Message = baseMessage
+				if e.ReplaceableMessages != nil {
+					if _, ok := e.ReplaceableMessages[record.Message]; ok {
+						base.Message = ""
+						record.Message = baseMessage
+					}
+				}
 			}
 
 			baseMap, err := motmedelJson.ObjectToMap(base)
@@ -328,6 +332,15 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 	return nil
 }
 
-func New() *Extractor {
-	return &Extractor{}
+func New(options ...http_context_extractor_config.Option) *Extractor {
+	config := http_context_extractor_config.New(options...)
+
+	var messagesMap map[string]struct{}
+	if len(config.ReplaceableMessages) > 0 {
+		messagesMap = make(map[string]struct{}, len(config.ReplaceableMessages))
+		for _, msg := range config.ReplaceableMessages {
+			messagesMap[msg] = struct{}{}
+		}
+	}
+	return &Extractor{ReplaceableMessages: messagesMap}
 }
