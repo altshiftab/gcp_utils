@@ -4,8 +4,8 @@ github.com/Motmedel/utils_go v0.0.416 h1:B/A7UEbb06YsmRo+uvvkAwDpF/JmRNKDycbiUWf
 github.com/Motmedel/utils_go v0.0.416/go.mod h1:st9wrD7tyw4AM64tOD7rs0vO7tMxmXQC1Apm48B+4Q4=
 github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.36 h1:8hStjel8wR7WFXaTOQqhuIpALtd3/isiY8pB6FgbsC8=
 github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.36/go.mod h1:7Q9Z/adyE3lCrl3o/i14W74qusS/HHNFWrf5IaWQgZA=
-github.com/altshiftab/gcp_utils/pkg/http v0.0.55 h1:9u8vffoSsfYDV5PEg9q4m+InZE4xAXYtmxFiLZCVp/I=
-github.com/altshiftab/gcp_utils/pkg/http v0.0.55/go.mod h1:XiG304cjgorg7GtyLRzO0p0C/bG126ij8OhS60se09o=
+github.com/altshiftab/gcp_utils/pkg/http v0.0.57 h1:k2Oi/KJnmzS2aFgfp77mo+f9xAsNtET/0paMMRkEm70=
+github.com/altshiftab/gcp_utils/pkg/http v0.0.57/go.mod h1:2jzvhI86WQHfsr/wo9RV+Bsok1NbiDHOjpVCyz03Sws=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gammazero/deque v1.2.1 h1:9fnQVFCCZ9/NOc7ccTNqzoKd1tCWOqeI05/lPqFPMGQ=
