@@ -7,6 +7,7 @@ import (
 
 	gcpHttpContextExtractor "github.com/Motmedel/utils_go/pkg/cloud/gcp/types/http_context_extractor"
 	"github.com/altshiftab/gcp_utils/pkg/http/types/http_context_extractor"
+	"github.com/altshiftab/gcp_utils/pkg/http/types/http_context_extractor/http_context_extractor_config"
 )
 
 const (
@@ -15,8 +16,14 @@ const (
 
 var (
 	DefaultWriter               = os.Stdout
-	DefaultHttpContextExtractor = http_context_extractor.New()
-	DefaultGcpLoggingExtractor  = gcpHttpContextExtractor.New()
+	DefaultHttpContextExtractor = http_context_extractor.New(
+		http_context_extractor_config.WithReplaceableMessages(
+			"A client error occurred.",
+			"A server error occurred.",
+			"An HTTP response was served.",
+		),
+	)
+	DefaultGcpLoggingExtractor = gcpHttpContextExtractor.New()
 )
 
 type Config struct {
