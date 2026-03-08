@@ -466,7 +466,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			Method: http.MethodPost,
 			Public: true,
 			BodyLoader: &body_loader.Loader{
-				ContentType: "application/reports+json",
+				ContentType: "application/csp-report",
 				MaxBytes:    8192,
 				Parser: body_parser.BodyParserFunction[any](
 					func(_ *http.Request, data []byte) (any, *response_error.ResponseError) {
@@ -971,8 +971,10 @@ func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return fmt.Errorf("patch error reporting: %w", err)
 	}
 
-	if err := PatchStrictTransportSecurity(mux); err != nil {
-		return fmt.Errorf("patch strict transport security: %w", err)
+	if baseUrl.Hostname() != "localhost" {
+		if err := PatchStrictTransportSecurity(mux); err != nil {
+			return fmt.Errorf("patch strict transport security: %w", err)
+		}
 	}
 
 	return nil
