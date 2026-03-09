@@ -14,7 +14,7 @@ import (
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	motmedelContextLogger "github.com/Motmedel/utils_go/pkg/log/context_logger"
 	errorLogger "github.com/Motmedel/utils_go/pkg/log/error_logger"
-	motmedelMaps "github.com/Motmedel/utils_go/pkg/maps"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	"github.com/vphpersson/code_generation/pkg/code_generation"
 	"github.com/vphpersson/code_generation/pkg/translate"
 )
@@ -79,7 +79,7 @@ func main() {
 		)
 	}
 
-	key, err := motmedelMaps.MapGetConvert[string](m, "key")
+	key, err := utils.MapGetConvert[string](m, "key")
 	if err != nil {
 		logger.FatalWithExitingMessage(
 			"An error occurred when getting the key.",
