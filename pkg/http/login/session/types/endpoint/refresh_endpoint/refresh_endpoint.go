@@ -17,14 +17,12 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
-	"github.com/Motmedel/utils_go/pkg/utils"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
@@ -59,29 +57,6 @@ func (e *Endpoint) Initialize(
 	db := sessionManager.Db
 	if db == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager sql db"))
-	}
-
-	jwtExtractor := authorizerRequestParser.JwtExtractor
-	if jwtExtractor == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("authentication parser jwt extractor"))
-	}
-
-	tokenExtractor := jwtExtractor.TokenExtractor
-	if tokenExtractor == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("authentication parser jwt extractor token extractor"))
-	}
-
-	tokenCookieExtractor, err := utils.Convert[*token_cookie_extractor.Parser](tokenExtractor)
-	if err != nil {
-		return motmedelErrors.New(fmt.Errorf("convert (token cookie extractor): %w", err), tokenExtractor)
-	}
-	if tokenCookieExtractor == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("token cookie extractor"))
-	}
-
-	cookieName := tokenCookieExtractor.Name
-	if cookieName == "" {
-		return motmedelErrors.NewWithTrace(empty_error.New("authentication parser jwt extractor token extractor name"))
 	}
 
 	e.AuthenticationParser = adapter.New(authorizerRequestParser)
