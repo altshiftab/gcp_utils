@@ -20,6 +20,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
@@ -38,14 +39,16 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-var defaultAuthorizationRequestParser *authorizer_request_parser.Parser
+var defaultAuthenticationParser request_parser.RequestParser[any]
 
 var db *sql.DB
 var method motmedelCryptoInterfaces.Method
 var sessionManager *session_manager.Manager
 
 func TestMain(m *testing.M) {
-	defaultAuthorizationRequestParser, method, db = loginTesting.SetUp()
+	var authorizationRequestParser *authorizer_request_parser.Parser
+	authorizationRequestParser, method, db = loginTesting.SetUp()
+	defaultAuthenticationParser = adapter.New(authorizationRequestParser)
 
 	var err error
 	sessionManager, err = session_manager.New(method, db, loginTesting.Issuer, loginTesting.RegisteredDomain)
@@ -255,7 +258,7 @@ func TestEndpoint(t *testing.T) {
 			t.Parallel()
 
 			testEndpoint := New()
-			if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, &cors_configurator.Configurator{}, sessionManager); err != nil {
+			if err := testEndpoint.Initialize(defaultAuthenticationParser, &cors_configurator.Configurator{}, sessionManager); err != nil {
 				t.Fatalf("test endpoint initialize: %v", err)
 			}
 
@@ -373,38 +376,38 @@ func TestInitialize(t *testing.T) {
 	corsConfigurator := &cors_configurator.Configurator{}
 
 	testCases := []struct {
-		name                    string
-		authorizerRequestParser *authorizer_request_parser.Parser
-		corsConfigurator        *cors_configurator.Configurator
-		sessionManager          *session_manager.Manager
-		wantErr                 error
+		name                 string
+		authenticationParser request_parser.RequestParser[any]
+		corsConfigurator     *cors_configurator.Configurator
+		sessionManager       *session_manager.Manager
+		wantErr              error
 	}{
 		{
-			name:                    "valid arguments",
-			authorizerRequestParser: defaultAuthorizationRequestParser,
-			corsConfigurator:        corsConfigurator,
-			sessionManager:          sessionManager,
+			name:                 "valid arguments",
+			authenticationParser: defaultAuthenticationParser,
+			corsConfigurator:     corsConfigurator,
+			sessionManager:       sessionManager,
 		},
 		{
-			name:                    "nil authorizer request parser",
-			authorizerRequestParser: nil,
-			corsConfigurator:        corsConfigurator,
-			sessionManager:          sessionManager,
-			wantErr:                 nil_error.New("authorizer request parser"),
+			name:                 "nil authorizer request parser",
+			authenticationParser: nil,
+			corsConfigurator:     corsConfigurator,
+			sessionManager:       sessionManager,
+			wantErr:              nil_error.New("authorizer request parser"),
 		},
 		{
-			name:                    "nil cors configurator",
-			authorizerRequestParser: defaultAuthorizationRequestParser,
-			corsConfigurator:        nil,
-			sessionManager:          sessionManager,
-			wantErr:                 nil_error.New("cors configurator"),
+			name:                 "nil cors configurator",
+			authenticationParser: defaultAuthenticationParser,
+			corsConfigurator:     nil,
+			sessionManager:       sessionManager,
+			wantErr:              nil_error.New("cors configurator"),
 		},
 		{
-			name:                    "nil session manager",
-			authorizerRequestParser: defaultAuthorizationRequestParser,
-			corsConfigurator:        corsConfigurator,
-			sessionManager:          nil,
-			wantErr:                 nil_error.New("session manager"),
+			name:                 "nil session manager",
+			authenticationParser: defaultAuthenticationParser,
+			corsConfigurator:     corsConfigurator,
+			sessionManager:       nil,
+			wantErr:              nil_error.New("session manager"),
 		},
 	}
 
@@ -413,7 +416,7 @@ func TestInitialize(t *testing.T) {
 			t.Parallel()
 
 			testEndpoint := New()
-			err := testEndpoint.Initialize(testCase.authorizerRequestParser, testCase.corsConfigurator, testCase.sessionManager)
+			err := testEndpoint.Initialize(testCase.authenticationParser, testCase.corsConfigurator, testCase.sessionManager)
 			motmedelTestingCmp.CompareErr(t, err, testCase.wantErr)
 		})
 	}

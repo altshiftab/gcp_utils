@@ -15,7 +15,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader/body_setting"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
@@ -23,9 +23,9 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/refresh_endpoint/refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
@@ -38,11 +38,11 @@ type Endpoint struct {
 }
 
 func (e *Endpoint) Initialize(
-	authorizerRequestParser *authorizer_request_parser.Parser,
+	authenticationParser request_parser.RequestParser[any],
 	corsConfigurator *cors_configurator.Configurator,
 	sessionManager *session_manager.Manager,
 ) error {
-	if authorizerRequestParser == nil {
+	if utils.IsNil(authenticationParser) {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
 	}
 
@@ -59,7 +59,7 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager sql db"))
 	}
 
-	e.AuthenticationParser = adapter.New(authorizerRequestParser)
+	e.AuthenticationParser = authenticationParser
 
 	e.CorsParser = corsConfigurator
 
