@@ -145,9 +145,9 @@ func makeTemplateInput(
 
 		var outputContentType string
 		var optionalOutput bool
-		var typescriptInputType string
-		var typescriptUrlInputType string
-		var typescriptOutputType string
+		typescriptInputType := "void"
+		typescriptUrlInputType := "void"
+		typescriptOutputType := "void"
 
 		if hint := endpoint.Hint; hint != nil {
 			outputContentType = hint.OutputContentType
