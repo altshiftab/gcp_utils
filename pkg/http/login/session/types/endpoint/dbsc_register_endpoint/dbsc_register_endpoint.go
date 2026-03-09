@@ -16,11 +16,13 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/header_extractor"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
@@ -80,7 +82,15 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("jwt token extractor"))
 	}
 
-	cookieName := tokenExtractor.Name
+	tokenCookieExtractor, err := utils.Convert[*token_cookie_extractor.Parser](tokenExtractor)
+	if err != nil {
+		return motmedelErrors.New(fmt.Errorf("convert (token cookie extractor): %w", err), tokenExtractor)
+	}
+	if tokenCookieExtractor == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("token cookie extractor"))
+	}
+
+	cookieName := tokenCookieExtractor.Name
 	if cookieName == "" {
 		return motmedelErrors.NewWithTrace(empty_error.New("cookie name"))
 	}

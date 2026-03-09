@@ -16,6 +16,7 @@ import (
 	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor/token_cookie_extractor_config"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
@@ -73,7 +74,7 @@ func TestEndpoint(t *testing.T) {
 		Credentials: []*Credential{
 			{
 				Type:       "cookie",
-				Name:       defaultAuthorizationRequestParser.JwtExtractor.TokenExtractor.Name,
+				Name:       token_cookie_extractor_config.DefaultName,
 				Attributes: session_cookie.Attributes(loginTesting.RegisteredDomain),
 			},
 		},

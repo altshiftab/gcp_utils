@@ -10,9 +10,8 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/jwt_extractor"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor/token_cookie_extractor_config"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
@@ -29,7 +28,7 @@ import (
 )
 
 type Parser struct {
-	JwtExtractor *jwt_extractor.Parser[*token_cookie_extractor.Parser]
+	JwtExtractor *jwt_extractor.Parser[request_parser.RequestParser[string]]
 
 	AllowedRoles    []string
 	AllowedTenantId string
@@ -156,7 +155,7 @@ func New(
 	}
 
 	jwtExtractor, err := jwt_extractor.New(
-		token_cookie_extractor.New(token_cookie_extractor_config.WithName(config.CookieName)),
+		config.TokenExtractor,
 		jwtAuthenticator.New(
 			authenticator_config.WithSignatureVerifier(verifier),
 			authenticator_config.WithClaimsValidator(

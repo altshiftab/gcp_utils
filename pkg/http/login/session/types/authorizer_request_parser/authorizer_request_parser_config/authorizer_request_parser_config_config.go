@@ -1,12 +1,15 @@
 package authorizer_request_parser_config
 
-var (
-	DefaultCookieName = "session"
+import (
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor"
 )
+
+var DefaultTokenExtractor = token_cookie_extractor.New()
 
 type Config struct {
 	SkipExp         bool
-	CookieName      string
+	TokenExtractor  request_parser.RequestParser[string]
 	AllowedRoles    []string
 	AllowedTenantId string
 	SuperAdminRoles []string
@@ -16,7 +19,7 @@ type Option func(*Config)
 
 func New(options ...Option) *Config {
 	config := &Config{
-		CookieName: DefaultCookieName,
+		TokenExtractor: DefaultTokenExtractor,
 	}
 	for _, option := range options {
 		option(config)
@@ -31,9 +34,9 @@ func WithSkipExp(skipExp bool) Option {
 	}
 }
 
-func WithCookieName(cookieName string) Option {
+func WithTokenExtractor(tokenExtractor request_parser.RequestParser[string]) Option {
 	return func(config *Config) {
-		config.CookieName = cookieName
+		config.TokenExtractor = tokenExtractor
 	}
 }
 

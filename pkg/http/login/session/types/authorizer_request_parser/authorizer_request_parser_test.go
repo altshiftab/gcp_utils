@@ -14,6 +14,7 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor/token_cookie_extractor_config"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claim_strings"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
@@ -75,9 +76,9 @@ func makeCookie(signer motmedelCryptoInterfaces.NamedSigner) string {
 		panic(motmedelErrors.New(fmt.Errorf("new session token encode: %w", err), sessionToken, signer))
 	}
 
-	sessionCookie, err := session_cookie.New(sessionTokenString, exp, authorizer_request_parser_config.DefaultCookieName, "example.com")
+	sessionCookie, err := session_cookie.New(sessionTokenString, exp, token_cookie_extractor_config.DefaultName, "example.com")
 	if err != nil {
-		panic(motmedelErrors.New(fmt.Errorf("new session cookie: %w", err), sessionTokenString, exp, authorizer_request_parser_config.DefaultCookieName, domain))
+		panic(motmedelErrors.New(fmt.Errorf("new session cookie: %w", err), sessionTokenString, exp, token_cookie_extractor_config.DefaultName, domain))
 	}
 
 	return sessionCookie.String()
