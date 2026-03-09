@@ -42,6 +42,8 @@ var scriptTemplate = template.Must(
 		},
 		// hasPrefix exposes strings.HasPrefix to templates
 		"hasPrefix": func(s, prefix string) bool { return strings.HasPrefix(s, prefix) },
+		// hasSuffix exposes strings.HasSuffix to templates
+		"hasSuffix": func(s, suffix string) bool { return strings.HasSuffix(s, suffix) },
 	}).Parse(scriptTemplateData),
 )
 

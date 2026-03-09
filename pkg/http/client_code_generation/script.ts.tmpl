@@ -81,7 +81,7 @@ export async function {{ .Endpoint.Name }}(
         .encrypt(serverPublicKey)
     ;
         {{- else }}
-    const data = {{ if eq .Endpoint.ContentType "application/json" }}JSON.stringify(input){{ else }}(input as any){{ end }};
+    const data = {{ if or (eq .Endpoint.ContentType "application/json") (hasSuffix .Endpoint.ContentType "+json") }}JSON.stringify(input){{ else }}(input as any){{ end }};
         {{- end }}
     {{- end }}
     const {response, responseText} = await fetchEx(

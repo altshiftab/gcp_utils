@@ -162,7 +162,7 @@ func (e *Endpoint) Initialize(
 		if err := e.updateAuthenticationWithDbscPublicKey(dbCtx, authenticationId, publicKey, db); err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.New(
-					fmt.Errorf("set authentication public key: %w", err),
+					fmt.Errorf("update authentication with dbsc public key: %w", err),
 					authenticationId, publicKey,
 				),
 			}
