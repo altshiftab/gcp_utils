@@ -138,7 +138,7 @@ export async function {{ .Endpoint.Name }}(
     {{- end }}
 
     if (contentType == "{{ .Endpoint.ExpectedOutputContentType }}") {
-            {{- if eq .Endpoint.ExpectedOutputContentType "application/json" }}
+            {{- if or (eq .Endpoint.ExpectedOutputContentType "application/json") (hasSuffix .Endpoint.ExpectedOutputContentType "+json") }}
         return JSON.parse(responseText) as {{ .Endpoint.ReturnType }};
             {{- else }}
         return responseText as unknown as {{ .Endpoint.ReturnType }};
