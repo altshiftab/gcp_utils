@@ -101,7 +101,7 @@ func makePathPart(path string) string {
 		casedSegments = append(casedSegments, caser.String(segment))
 	}
 
-	return strings.Join(casedSegments, "")
+	return strings.ReplaceAll(strings.Join(casedSegments, ""), ".", "")
 }
 
 func isEmptyInterfaceType(t reflect.Type) bool {
