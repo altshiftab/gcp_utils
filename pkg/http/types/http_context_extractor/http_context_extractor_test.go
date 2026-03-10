@@ -638,3 +638,284 @@ func TestExtractor_Handle_HttpContextResponseNoHeaders(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestExtractor_MaskUrl(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name            string
+		maskedUrlParams []*motmedelSchemaTypes.Url
+		inputUrl        *motmedelSchemaTypes.Url
+		expectedUrl     *motmedelSchemaTypes.Url
+	}{
+		{
+			name:            "mask single query parameter, query-only pattern",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Query: "apikey"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?apikey=secret123&user=john",
+				Original: "https://example.com/api?apikey=secret123&user=john",
+				Query:    "apikey=secret123&user=john",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?apikey=%28MASKED%29&user=john",
+				Original: "https://example.com/api?apikey=%28MASKED%29&user=john",
+				Query:    "apikey=%28MASKED%29&user=john",
+			},
+		},
+		{
+			name:            "mask multiple query parameters from one pattern",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Query: "apikey&token&password"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?apikey=secret123&token=abc456&user=john&password=pass123",
+				Original: "https://example.com/api?apikey=secret123&token=abc456&user=john&password=pass123",
+				Query:    "apikey=secret123&token=abc456&user=john&password=pass123",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?apikey=%28MASKED%29&password=%28MASKED%29&token=%28MASKED%29&user=john",
+				Original: "https://example.com/api?apikey=%28MASKED%29&password=%28MASKED%29&token=%28MASKED%29&user=john",
+				Query:    "apikey=%28MASKED%29&password=%28MASKED%29&token=%28MASKED%29&user=john",
+			},
+		},
+		{
+			name:            "no parameters to mask, param not in incoming URL",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Query: "notfound"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?user=john&page=1",
+				Original: "https://example.com/api?user=john&page=1",
+				Query:    "user=john&page=1",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?user=john&page=1",
+				Original: "https://example.com/api?user=john&page=1",
+				Query:    "user=john&page=1",
+			},
+		},
+		{
+			name:            "empty URL fields",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Query: "apikey"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Full:     "",
+				Original: "",
+				Query:    "",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Full:     "",
+				Original: "",
+				Query:    "",
+			},
+		},
+		{
+			name:            "nil maskedUrlParams",
+			maskedUrlParams: nil,
+			inputUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?apikey=secret123",
+				Original: "https://example.com/api?apikey=secret123",
+				Query:    "apikey=secret123",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Full:     "https://example.com/api?apikey=secret123",
+				Original: "https://example.com/api?apikey=secret123",
+				Query:    "apikey=secret123",
+			},
+		},
+		{
+			name:            "invalid URL format",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Query: "apikey"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Full:     "not-a-valid-url",
+				Original: "not-a-valid-url",
+				Query:    "apikey=secret123",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Full:     "not-a-valid-url",
+				Original: "not-a-valid-url",
+				Query:    "apikey=%28MASKED%29",
+			},
+		},
+		{
+			name:            "query string only",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Query: "token&auth"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Full:     "",
+				Original: "",
+				Query:    "token=abc123&auth=xyz789&public=data",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Full:     "",
+				Original: "",
+				Query:    "auth=%28MASKED%29&public=data&token=%28MASKED%29",
+			},
+		},
+		{
+			name:            "pattern with path match",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Path: "/api", Query: "apikey"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret123&user=john",
+				Original: "/api?apikey=secret123&user=john",
+				Query:    "apikey=secret123&user=john",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=%28MASKED%29&user=john",
+				Original: "/api?apikey=%28MASKED%29&user=john",
+				Query:    "apikey=%28MASKED%29&user=john",
+			},
+		},
+		{
+			name:            "pattern with path mismatch",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Path: "/other", Query: "apikey"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret123&user=john",
+				Original: "/api?apikey=secret123&user=john",
+				Query:    "apikey=secret123&user=john",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret123&user=john",
+				Original: "/api?apikey=secret123&user=john",
+				Query:    "apikey=secret123&user=john",
+			},
+		},
+		{
+			name:            "pattern with domain match",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Domain: "example.com", Query: "token"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Domain:   "example.com",
+				Full:     "https://example.com/api?token=secret",
+				Original: "/api?token=secret",
+				Query:    "token=secret",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Domain:   "example.com",
+				Full:     "https://example.com/api?token=%28MASKED%29",
+				Original: "/api?token=%28MASKED%29",
+				Query:    "token=%28MASKED%29",
+			},
+		},
+		{
+			name:            "pattern with domain mismatch",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Domain: "other.com", Query: "token"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Domain:   "example.com",
+				Full:     "https://example.com/api?token=secret",
+				Original: "/api?token=secret",
+				Query:    "token=secret",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Domain:   "example.com",
+				Full:     "https://example.com/api?token=secret",
+				Original: "/api?token=secret",
+				Query:    "token=secret",
+			},
+		},
+		{
+			name: "multiple patterns, both matching",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{
+				{Query: "apikey"},
+				{Path: "/api", Query: "token"},
+			},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret&token=abc",
+				Original: "/api?apikey=secret&token=abc",
+				Query:    "apikey=secret&token=abc",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=%28MASKED%29&token=%28MASKED%29",
+				Original: "/api?apikey=%28MASKED%29&token=%28MASKED%29",
+				Query:    "apikey=%28MASKED%29&token=%28MASKED%29",
+			},
+		},
+		{
+			name: "multiple patterns, only one matching",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{
+				{Path: "/other", Query: "apikey"},
+				{Query: "token"},
+			},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret&token=abc",
+				Original: "/api?apikey=secret&token=abc",
+				Query:    "apikey=secret&token=abc",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret&token=%28MASKED%29",
+				Original: "/api?apikey=secret&token=%28MASKED%29",
+				Query:    "apikey=secret&token=%28MASKED%29",
+			},
+		},
+		{
+			name:            "pattern with scheme and port match",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Scheme: "https", Port: 443, Query: "secret"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Scheme:   "https",
+				Port:     443,
+				Full:     "https://example.com:443/api?secret=val",
+				Original: "/api?secret=val",
+				Query:    "secret=val",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Scheme:   "https",
+				Port:     443,
+				Full:     "https://example.com:443/api?secret=%28MASKED%29",
+				Original: "/api?secret=%28MASKED%29",
+				Query:    "secret=%28MASKED%29",
+			},
+		},
+		{
+			name:            "pattern with no query is a no-op",
+			maskedUrlParams: []*motmedelSchemaTypes.Url{{Path: "/api"}},
+			inputUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret",
+				Original: "/api?apikey=secret",
+				Query:    "apikey=secret",
+			},
+			expectedUrl: &motmedelSchemaTypes.Url{
+				Path:     "/api",
+				Full:     "https://example.com/api?apikey=secret",
+				Original: "/api?apikey=secret",
+				Query:    "apikey=secret",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := &Extractor{
+				MaskedUrlParams: tc.maskedUrlParams,
+			}
+
+			urlCopy := *tc.inputUrl
+
+			e.maskUrl(&urlCopy)
+
+			if urlCopy.Full != tc.expectedUrl.Full {
+				t.Errorf("Full URL mismatch:\ngot:  %q\nwant: %q", urlCopy.Full, tc.expectedUrl.Full)
+			}
+			if urlCopy.Original != tc.expectedUrl.Original {
+				t.Errorf("Original URL mismatch:\ngot:  %q\nwant: %q", urlCopy.Original, tc.expectedUrl.Original)
+			}
+			if urlCopy.Query != tc.expectedUrl.Query {
+				t.Errorf("Query string mismatch:\ngot:  %q\nwant: %q", urlCopy.Query, tc.expectedUrl.Query)
+			}
+		})
+	}
+}
+
+func TestExtractor_MaskUrl_NilUrl(t *testing.T) {
+	t.Parallel()
+
+	e := &Extractor{
+		MaskedUrlParams: []*motmedelSchemaTypes.Url{{Query: "apikey"}},
+	}
+
+	// Should not panic with nil URL
+	e.maskUrl(nil)
+}

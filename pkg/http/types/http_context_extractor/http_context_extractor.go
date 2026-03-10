@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
@@ -251,8 +252,119 @@ func extractUnverifiedUser(header http.Header) *schema.User {
 	return nil
 }
 
+func urlMatchesPattern(pattern *schema.Url, incoming *schema.Url) (bool, []string) {
+	if pattern == nil || incoming == nil {
+		return false, nil
+	}
+
+	if pattern.Domain != "" && pattern.Domain != incoming.Domain {
+		return false, nil
+	}
+	if pattern.Path != "" && pattern.Path != incoming.Path {
+		return false, nil
+	}
+	if pattern.RegisteredDomain != "" && pattern.RegisteredDomain != incoming.RegisteredDomain {
+		return false, nil
+	}
+	if pattern.Subdomain != "" && pattern.Subdomain != incoming.Subdomain {
+		return false, nil
+	}
+	if pattern.TopLevelDomain != "" && pattern.TopLevelDomain != incoming.TopLevelDomain {
+		return false, nil
+	}
+
+	if pattern.Query == "" {
+		return true, nil
+	}
+
+	patternQuery, err := url.ParseQuery(pattern.Query)
+	if err != nil {
+		return false, nil
+	}
+
+	incomingQuery, err := url.ParseQuery(incoming.Query)
+	if err != nil {
+		return false, nil
+	}
+
+	var paramsToMask []string
+	for paramName := range patternQuery {
+		if incomingQuery.Has(paramName) {
+			paramsToMask = append(paramsToMask, paramName)
+		}
+	}
+
+	return true, paramsToMask
+}
+
+func (e *Extractor) maskUrl(urlStruct *schema.Url) {
+	if urlStruct == nil || len(e.MaskedUrlParams) == 0 {
+		return
+	}
+
+	paramsToMask := make(map[string]struct{})
+	for _, maskedUrlParam := range e.MaskedUrlParams {
+		if matches, params := urlMatchesPattern(maskedUrlParam, urlStruct); matches {
+			for _, param := range params {
+				paramsToMask[param] = struct{}{}
+			}
+		}
+	}
+
+	if len(paramsToMask) == 0 {
+		return
+	}
+
+	maskQueryParams := func(urlStr string) string {
+		if urlStr == "" {
+			return urlStr
+		}
+
+		parsedUrl, err := url.Parse(urlStr)
+		if err != nil {
+			return urlStr
+		}
+
+		queryValues := parsedUrl.Query()
+		modified := false
+		for param := range paramsToMask {
+			if queryValues.Has(param) {
+				queryValues.Set(param, maskedValue)
+				modified = true
+			}
+		}
+
+		if modified {
+			parsedUrl.RawQuery = queryValues.Encode()
+			return parsedUrl.String()
+		}
+
+		return urlStr
+	}
+
+	urlStruct.Full = maskQueryParams(urlStruct.Full)
+	urlStruct.Original = maskQueryParams(urlStruct.Original)
+
+	if urlStruct.Query != "" {
+		parsedQuery, err := url.ParseQuery(urlStruct.Query)
+		if err == nil {
+			modified := false
+			for param := range paramsToMask {
+				if parsedQuery.Has(param) {
+					parsedQuery.Set(param, maskedValue)
+					modified = true
+				}
+			}
+			if modified {
+				urlStruct.Query = parsedQuery.Encode()
+			}
+		}
+	}
+}
+
 type Extractor struct {
 	ReplaceableMessages map[string]struct{}
+	MaskedUrlParams     []*schema.Url
 }
 
 func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
@@ -279,6 +391,11 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 		}
 
 		if base != nil {
+			// Mask URL query parameters if configured
+			if base.Url != nil {
+				e.maskUrl(base.Url)
+			}
+
 			if request := httpContext.Request; request != nil {
 				if requestHeader := request.Header; requestHeader != nil {
 					if base.Http == nil {
@@ -340,5 +457,8 @@ func New(options ...http_context_extractor_config.Option) *Extractor {
 			messagesMap[msg] = struct{}{}
 		}
 	}
-	return &Extractor{ReplaceableMessages: messagesMap}
+	return &Extractor{
+		ReplaceableMessages: messagesMap,
+		MaskedUrlParams:     config.MaskedUrlParams,
+	}
 }
