@@ -17,7 +17,7 @@ import (
 	muxPkg "github.com/Motmedel/utils_go/pkg/http/mux"
 	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
-	motmedelOauth2 "github.com/Motmedel/utils_go/pkg/oauth2"
+	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
 	motmedelTestingCmp "github.com/Motmedel/utils_go/pkg/testing/cmp"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	testing2 "github.com/altshiftab/gcp_utils/pkg/http/login/sso/testing"
@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	oauthConfig *motmedelOauth2.Config
+	oauthConfig *motmedelOauth2Config.Config
 	db          *sql.DB
 )
 
@@ -210,7 +210,7 @@ func TestInitialize(t *testing.T) {
 	testCases := []struct {
 		name        string
 		domain      string
-		oauthConfig *motmedelOauth2.Config
+		oauthConfig *motmedelOauth2Config.Config
 		db          *sql.DB
 		wantErr     error
 	}{

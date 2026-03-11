@@ -14,7 +14,7 @@ import (
 	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
-	motmedelOauth2 "github.com/Motmedel/utils_go/pkg/oauth2"
+	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	testing2 "github.com/altshiftab/gcp_utils/pkg/http/login/sso/testing"
@@ -26,7 +26,7 @@ const (
 
 var sessionManager *session_manager.Manager
 var idTokenAuthenticator *authenticator.AuthenticatorWithKeyHandler
-var oauthConfig *motmedelOauth2.Config
+var oauthConfig *motmedelOauth2Config.Config
 
 func TestMain(m *testing.M) {
 	sessionManager, idTokenAuthenticator, oauthConfig, _ = testing2.SetUp()

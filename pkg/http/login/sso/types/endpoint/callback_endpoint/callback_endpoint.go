@@ -28,6 +28,7 @@ import (
 	motmedelJws "github.com/Motmedel/utils_go/pkg/json/jose/jws"
 	authenticatorPkg "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/authenticator"
 	motmedelOauth2 "github.com/Motmedel/utils_go/pkg/oauth2"
+	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
@@ -57,7 +58,7 @@ type Endpoint[T provider_claims.ProviderClaims] struct {
 }
 
 func (e *Endpoint[T]) Initialize(
-	oauthConfig *motmedelOauth2.Config,
+	oauthConfig *motmedelOauth2Config.Config,
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
 	sessionManager *session_manager.Manager,
 ) error {

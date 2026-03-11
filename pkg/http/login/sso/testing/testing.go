@@ -33,7 +33,8 @@ import (
 	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token"
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	motmedelContextLogger "github.com/Motmedel/utils_go/pkg/log/context_logger"
-	motmedelOauth2 "github.com/Motmedel/utils_go/pkg/oauth2"
+	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
+	motmedelOauth2Endpoint "github.com/Motmedel/utils_go/pkg/oauth2/types/endpoint"
 	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
@@ -81,7 +82,7 @@ func (c *ProviderClaims) VerifiedEmailAddress() (string, error) {
 	return c.EmailAddress, nil
 }
 
-func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandler, *motmedelOauth2.Config, *motmedelCryptoEcdsa.Method) {
+func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandler, *motmedelOauth2Config.Config, *motmedelCryptoEcdsa.Method) {
 	httpContextExtractor := http_context_extractor.New()
 	slog.SetDefault(
 		motmedelContextLogger.New(
@@ -285,10 +286,10 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 		panic(fmt.Errorf("key handler new: %w", err))
 	}
 
-	oauthConfig := &motmedelOauth2.Config{
+	oauthConfig := &motmedelOauth2Config.Config{
 		ClientID:     "test-client",
 		ClientSecret: "test-secret",
-		Endpoint: motmedelOauth2.Endpoint{
+		Endpoint: motmedelOauth2Endpoint.Endpoint{
 			TokenURL: auxHttpServer.URL + TokenPath,
 		},
 		Scopes: []string{"openid", "email"},

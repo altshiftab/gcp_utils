@@ -26,6 +26,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelOauth2 "github.com/Motmedel/utils_go/pkg/oauth2"
+	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
@@ -68,7 +69,7 @@ type Endpoint struct {
 	insertOauthFlow  func(ctx context.Context, state string, codeVerifier string, redirectUrl string, expirationDuration time.Duration, database *sql.DB) (*oauth_flow.Flow, error)
 }
 
-func (e *Endpoint) Initialize(domain string, oauthConfig *motmedelOauth2.Config, db *sql.DB) error {
+func (e *Endpoint) Initialize(domain string, oauthConfig *motmedelOauth2Config.Config, db *sql.DB) error {
 	if domain == "" {
 		return motmedelErrors.NewWithTrace(empty_error.New("domain"))
 	}
