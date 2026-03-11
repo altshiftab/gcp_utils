@@ -88,7 +88,7 @@ export async function {{ .Endpoint.Name }}(
         url.toString(),
         {
             method: "{{ .Endpoint.Method }}",
-            {{- if .Endpoint.UseAuthentication }}
+            {{- if and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "cookie") }}
             credentials: "include",
             {{- end }}
             {{- $hasContentType := and (and (not $noRequestBody) (not $isNoBodyMethod)) (ne .Endpoint.ContentType "") -}}
