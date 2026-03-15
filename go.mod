@@ -3,8 +3,8 @@ module github.com/altshiftab/gcp_utils
 go 1.25.0
 
 require (
-	github.com/Motmedel/utils_go v0.0.418
-	github.com/altshiftab/gcp_utils/pkg/http v0.0.59
+	github.com/Motmedel/utils_go v0.0.434
+	github.com/altshiftab/gcp_utils/pkg/http v0.0.60
 )
 
 require (
