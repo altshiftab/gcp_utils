@@ -6,7 +6,7 @@ require (
 	github.com/Motmedel/utils_go v0.0.434
 	github.com/Motmedel/utils_go/pkg/http/mux v0.0.183
 	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.21
-	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.37
+	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.38
 	golang.org/x/net v0.51.0
 	golang.org/x/text v0.34.0
 )

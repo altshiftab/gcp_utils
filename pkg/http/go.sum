@@ -6,8 +6,8 @@ github.com/Motmedel/utils_go/pkg/http/mux v0.0.183 h1:mgcSAJDtJ3Zn/eSmLGq0belEDT
 github.com/Motmedel/utils_go/pkg/http/mux v0.0.183/go.mod h1:DH2V1jr/cicQl31A5qkHLd8A/bYPpmWABtyQlnNtmoU=
 github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.21 h1:+3Vm5BFFYo1x+Eo0rlfkD6ie9EmXns06xGuXVpmK3QQ=
 github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.21/go.mod h1:loQGq0ylQFvdQV7JVDClw45JE+W45jZbQKE8PfP7K9M=
-github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.37 h1:K0B7NKZgHN7VKKR4mRJTr5hudqFxHix2/e5fff08928=
-github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.37/go.mod h1:+ULBRVi6f6r+nDasZifhEnTRxKF15zH9dLN0rxuco/I=
+github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.38 h1:AxFF6xrMvVFHybyXioEkTg0YY8nTfDA1he0g4zBx2YY=
+github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.38/go.mod h1:+ULBRVi6f6r+nDasZifhEnTRxKF15zH9dLN0rxuco/I=
 github.com/altshiftab/jsonschema v0.0.15 h1:19JhSF2SpAuJBEl+lhL5RN06Us5vbi1OlPkAUvGvJqU=
 github.com/altshiftab/jsonschema v0.0.15/go.mod h1:iqYu4Yj2ZpzqOJ29pHMUQoP/NiT58IXV03y2TfZ2YKc=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

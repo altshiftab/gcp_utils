@@ -221,10 +221,10 @@ func TestExtractNormalizedHeaders(t *testing.T) {
 		{
 			name: "Authorization Bearer with JWS",
 			header: http.Header{
-				"Authorization": {"Bearer header.payload.signature"},
+				"Authorization": {"Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.Q70dVMtrOQzEFmGOxPAKbNOUSQMISCLhEDfGpMG0WM4"},
 			},
-			wantParts:  []string{"Authorization:"},
-			avoidParts: []string{"signature"},
+			wantParts:  []string{"Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.(MASKED)\r\n"},
+			avoidParts: []string{"Q70dVMtrOQzEFmGOxPAKbNOUSQMISCLhEDfGpMG0WM4"},
 		},
 		{
 			name: "Authorization Basic",
