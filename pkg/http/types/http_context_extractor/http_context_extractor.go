@@ -11,6 +11,9 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/text/language"
+	"golang.org/x/text/language/display"
+
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
 	"github.com/Motmedel/utils_go/pkg/http/parsing/headers/authorization"
@@ -413,14 +416,14 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 					}
 
 					var (
-						clientCityName       string
-						clientCountryIsoCode string
-						clientCityLongLat    string
-						clientRegionIsoCode  string
-						clientPort           string
-						clientTlsJa3         string
-						clientTlsJa4         string
-						serverPort           string
+						clientCityName       = requestHeader.Get("X-Client-Geo-City-Name")
+						clientCountryIsoCode = requestHeader.Get("X-Client-Geo-Country-Iso-Code")
+						clientCityLongLat    = requestHeader.Get("X-Client-Geo-Location")
+						clientRegionIsoCode  = requestHeader.Get("X-Client-Geo-Region-Iso-Code")
+						clientPort           = requestHeader.Get("X-Client-Port")
+						clientTlsJa3         = requestHeader.Get("X-Tls-Ja3-Fingerprint")
+						clientTlsJa4         = requestHeader.Get("X-Tls-Ja4-Fingerprint")
+						serverPort           = requestHeader.Get("X-Server-Port")
 					)
 
 					if clientPort != "" {
@@ -453,6 +456,10 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 
 						if clientCountryIsoCode != "" {
 							ecsClientGeo.CountryIsoCode = clientCountryIsoCode
+
+							if region, err := language.ParseRegion(clientCountryIsoCode); err == nil {
+								ecsClientGeo.CountryName = display.Regions(language.English).Name(region)
+							}
 						}
 
 						if clientRegionIsoCode != "" {
