@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
@@ -20,6 +21,7 @@ import (
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	"github.com/Motmedel/utils_go/pkg/schema"
 	schemaUtils "github.com/Motmedel/utils_go/pkg/schema/utils"
+	"github.com/Motmedel/utils_go/pkg/utils"
 	"github.com/altshiftab/gcp_utils/pkg/http/types/http_context_extractor/http_context_extractor_config"
 )
 
@@ -409,6 +411,94 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 					base.Http.Request.HttpHeaders = &schema.HttpHeaders{
 						Normalized: extractNormalizedHeaders(requestHeader),
 					}
+
+					var (
+						clientCityName       string
+						clientCountryIsoCode string
+						clientCityLongLat    string
+						clientRegionIsoCode  string
+						clientPort           string
+						clientTlsJa3         string
+						clientTlsJa4         string
+						serverPort           string
+					)
+
+					if clientPort != "" {
+						if clientPortInt, err := strconv.Atoi(clientPort); err == nil && clientPortInt > 0 {
+							ecsClient := base.Client
+							if ecsClient == nil {
+								base.Client = &schema.Target{}
+								ecsClient = base.Client
+							}
+							ecsClient.Port = clientPortInt
+						}
+					}
+
+					if utils.AnyNonZero(clientCityName, clientCountryIsoCode, clientCityLongLat, clientRegionIsoCode) {
+						ecsClient := base.Client
+						if ecsClient == nil {
+							base.Client = &schema.Target{}
+							ecsClient = base.Client
+						}
+
+						ecsClientGeo := ecsClient.Geo
+						if ecsClientGeo == nil {
+							ecsClient.Geo = &schema.Geo{}
+							ecsClientGeo = ecsClient.Geo
+						}
+
+						if clientCityName != "" {
+							ecsClientGeo.CityName = clientCityName
+						}
+
+						if clientCountryIsoCode != "" {
+							ecsClientGeo.CountryIsoCode = clientCountryIsoCode
+						}
+
+						if clientRegionIsoCode != "" {
+							ecsClientGeo.RegionIsoCode = clientRegionIsoCode
+						}
+						if clientCityLongLat != "" {
+							if lat, lon, ok := strings.Cut(clientCityLongLat, ","); ok {
+								ecsClientGeo.Location = map[string]string{"lat": lat, "lon": lon}
+							}
+						}
+					}
+
+					if utils.AnyNonZero(clientTlsJa3, clientTlsJa4) {
+						ecsTls := base.Tls
+						if ecsTls == nil {
+							base.Tls = &schema.Tls{}
+							ecsTls = base.Tls
+						}
+
+						ecsTlsClient := ecsTls.Client
+						if ecsTlsClient == nil {
+							ecsTls.Client = &schema.TlsClient{}
+							ecsTlsClient = ecsTls.Client
+						}
+
+						if clientTlsJa3 != "" {
+							ecsTlsClient.Ja3 = clientTlsJa3
+						}
+
+						if clientTlsJa4 != "" {
+							ecsTlsClient.Ja4 = clientTlsJa4
+						}
+					}
+
+					if serverPort != "" {
+						if serverPortInt, err := strconv.Atoi(serverPort); err == nil && serverPortInt > 0 {
+							ecsServer := base.Server
+							if ecsServer == nil {
+								base.Server = &schema.Target{}
+								ecsServer = base.Server
+							}
+							ecsServer.Port = serverPortInt
+						}
+					}
+
+					// TODO: Add community id for client + server; protocol can be inferred based on HTTP version header.
 				}
 			}
 
@@ -426,6 +516,18 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 						Normalized: extractNormalizedHeaders(responseHeader),
 					}
 				}
+			}
+
+			ecsNetwork := base.Network
+			if ecsNetwork == nil {
+				base.Network = &schema.Network{}
+				ecsNetwork = base.Network
+			}
+
+			if utils.IsNil(httpContext.LocalAddr) {
+				ecsNetwork.Direction = "ingress"
+			} else {
+				ecsNetwork.Direction = "egress"
 			}
 
 			if e.ReplaceableMessages != nil {
