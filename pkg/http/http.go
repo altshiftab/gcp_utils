@@ -416,7 +416,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		)
 	}
 
-	cspReportUriBodyParser, err := jsonSchemaBodyParser.New[*content_security_policy.Report]()
+	cspReportUriBodyParser, err := jsonSchemaBodyParser.New[*content_security_policy.ReportEnvelope]()
 	if err != nil {
 		return motmedelErrors.New(
 			fmt.Errorf("json schema body parser new (csp report uri): %w", err),
@@ -527,7 +527,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 			Handler: func(request *http.Request, _ []byte) (*response.Response, *response_error.ResponseError) {
 				ctx := request.Context()
 
-				report, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*content_security_policy.Report](ctx)
+				report, responseError := muxUtils.GetServerNonZeroParsedRequestBody[*content_security_policy.ReportEnvelope](ctx)
 				if responseError != nil {
 					return nil, responseError
 				}
