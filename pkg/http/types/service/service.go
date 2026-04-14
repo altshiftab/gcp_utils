@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -78,9 +79,11 @@ func New(domain string, port string, options ...service_config.Option) (*Service
 	}
 
 	httpServer := &http.Server{
-		Addr:              fmt.Sprintf(":%s", port),
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
+		Addr:                         fmt.Sprintf(":%s", port),
+		Handler:                      handler,
+		ReadHeaderTimeout:            5 * time.Second,
+		DisableGeneralOptionsHandler: true,
+		ErrorLog:                     slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 	}
 
 	return &Service{Server: httpServer, Mux: mux}, nil
