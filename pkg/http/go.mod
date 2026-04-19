@@ -3,7 +3,7 @@ module github.com/altshiftab/gcp_utils/pkg/http
 go 1.25.0
 
 require (
-	github.com/Motmedel/utils_go v0.0.463
+	github.com/Motmedel/utils_go v0.0.466
 	github.com/Motmedel/utils_go/pkg/http/mux v0.0.185
 	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.21
 	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.41

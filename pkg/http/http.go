@@ -819,12 +819,44 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	return nil
 }
 
-func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
+func PatchSecurityTxt(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	if mux == nil {
-		return
+		return nil
+	}
+
+	if baseUrl == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("base url"))
+	}
+
+	hostname := baseUrl.Hostname()
+	var registeredDomain string
+	if strings.EqualFold(hostname, "localhost") {
+		registeredDomain = "localhost"
+	} else {
+		domainParts := domain_parts.New(hostname)
+		if domainParts == nil {
+			return motmedelErrors.NewWithTrace(nil_error.New("domain parts"))
+		}
+		registeredDomain = domainParts.RegisteredDomain
+	}
+
+	if !strings.EqualFold(hostname, registeredDomain) {
+		registeredBaseUrl := &url.URL{Scheme: baseUrl.Scheme, Host: registeredDomain}
+		if err := PatchOtherDomainSecurityTxt(mux, registeredBaseUrl.JoinPath("/.well-known/security.txt")); err != nil {
+			return fmt.Errorf("patch other domain security txt: %w", err)
+		}
+		return nil
 	}
 
 	nowUtc := time.Now().UTC()
+	data := []byte(
+		fmt.Sprintf(
+			"Contact: mailto:security@%s\nPreferred-Languages: sv, en\nCanonical: %s\nExpires: %s\n",
+			registeredDomain,
+			baseUrl.JoinPath("/.well-known/security.txt").String(),
+			nowUtc.AddDate(1, 0, 0).Format("2006-01-02T15:04:05.000Z"),
+		),
+	)
 	etag := motmedelHttpUtils.MakeStrongEtag(data)
 	lastModified := nowUtc.Format("Mon, 02 Jan 2006 15:04:05") + " GMT"
 
@@ -859,6 +891,8 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, data []byte) {
 			Public: true,
 		},
 	)
+
+	return nil
 }
 
 func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*url.URL) error {
@@ -1078,33 +1112,9 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return fmt.Errorf("patch crawlable: %w", err)
 	}
 
-	baseUrlHostname := baseUrl.Hostname()
-	var registeredDomain string
-
-	if strings.EqualFold(baseUrlHostname, "localhost") {
-		registeredDomain = "localhost"
-	} else {
-		domainParts := domain_parts.New(baseUrlHostname)
-		if domainParts == nil {
-			return motmedelErrors.NewWithTrace(nil_error.New("domain parts"))
-		}
-
-		registeredDomain = domainParts.RegisteredDomain
+	if err := PatchSecurityTxt(mux, baseUrl); err != nil {
+		return fmt.Errorf("patch security txt: %w", err)
 	}
-
-	securityTxtUrl := baseUrl.JoinPath("/.well-known/security.txt")
-
-	PatchSecurityTxt(
-		mux,
-		[]byte(
-			fmt.Sprintf(
-				"Contact: mailto:security@%s\nPreferred-Languages: sv, en\nCanonical: %s\nExpires: %s\n",
-				registeredDomain,
-				securityTxtUrl.String(),
-				time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02T15:04:05.000Z"),
-			),
-		),
-	)
 
 	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
 		func(detail *problem_detail.Detail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
