@@ -3,7 +3,7 @@ package callback_endpoint
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -41,11 +41,11 @@ import (
 type UrlInput struct {
 	State        string `json:"state"`
 	Code         string `json:"code"`
-	Scope        string `json:"scope,omitempty"`
-	AuthUser     int    `json:"authuser,omitempty"`
-	HostedDomain string `json:"hd,omitempty"`
-	Prompt       string `json:"prompt,omitempty"`
-	SessionState string `json:"session_state,omitempty"`
+	Scope        string `json:"scope,omitzero"`
+	AuthUser     int    `json:"authuser,omitzero"`
+	HostedDomain string `json:"hd,omitzero"`
+	Prompt       string `json:"prompt,omitzero"`
+	SessionState string `json:"session_state,omitzero"`
 }
 
 var urlInputParser = query_extractor.New[*UrlInput](query_extractor_config.WithAllowAdditionalParameters(true))

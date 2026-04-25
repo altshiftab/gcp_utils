@@ -3,11 +3,12 @@ package dbsc_register_endpoint
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_register_endpoint/dbsc_register_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -163,6 +165,83 @@ func TestEndpoint(t *testing.T) {
 			muxTesting.TestArgs(t, tc.args, httpServer.URL)
 		})
 	}
+}
+
+func TestEndpoint_SessionCookieOptions(t *testing.T) {
+	t.Parallel()
+
+	const validToken = "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRic2Mrand0In0.eyJhdWQiOiJodHRwczovL2V4YW1wbGUuY29tL2FwaS9zZXNzaW9uL2Ric2MvcmVnaXN0ZXIiLCJqdGkiOiJjdiIsImlhdCI6MTcyNTU3OTA1NSwia2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiSy1aSHM3cWo1RmtDZGhIeno4NFFzQ2FkOFFwVnNJdzVIRWdhQkZoeEN3TSIsInkiOiJwanUtWFVCdDN3TXhzRlBRdW9EVHNWcjU4SHREc2ZnOTVkLXVqYXFMRmtNIn0sImF1dGhvcml6YXRpb24iOiJhYyJ9.MEYCIQDZAGTcudcWFHZiUkr8jgF0cbBKT-C5H8jUSwh5fplCrwIhAMRR375Bm0DjmCt9P_85Q79ovtv7o97cvc1NOQaNWdrA"
+
+	sessionCookieOption := session_cookie_config.WithSameSite(http.SameSiteStrictMode)
+
+	expectedResponse := Response{
+		SessionIdentifier: loginTesting.AuthenticationId,
+		RefreshURL:        dbsc_register_endpoint_config.DefaultRefreshPath,
+		Scope: Scope{
+			Origin:      fmt.Sprintf("https://%s", loginTesting.RegisteredDomain),
+			IncludeSite: true,
+		},
+		Credentials: []*Credential{
+			{
+				Type:       "cookie",
+				Name:       token_cookie_extractor_config.DefaultName,
+				Attributes: session_cookie.Attributes(loginTesting.RegisteredDomain, sessionCookieOption),
+			},
+		},
+	}
+
+	expectedBody, err := json.Marshal(expectedResponse)
+	if err != nil {
+		t.Fatalf("json marshal (expected response): %v", err)
+	}
+
+	if !strings.Contains(expectedResponse.Credentials[0].Attributes, "SameSite=Strict") {
+		t.Fatalf("precondition: expected attributes to contain SameSite=Strict, got %q", expectedResponse.Credentials[0].Attributes)
+	}
+
+	testEndpoint := New()
+	testEndpointProcessor, err := dbsc_session_response_processor.New(
+		"https://example.com"+dbsc_register_endpoint_config.DefaultPath,
+		db,
+		dbsc_session_response_processor_config.WithPopDbscChallenge(
+			func(ctx context.Context, challenge string, authenticationId string, db *sql.DB) (*dbsc_challenge.Challenge, error) {
+				if authenticationId != loginTesting.AuthenticationId {
+					return nil, fmt.Errorf("authentication id mismatch: got %s, want %s", authenticationId, loginTesting.AuthenticationId)
+				}
+
+				expiresAt := time.Now().Add(time.Hour)
+				return &dbsc_challenge.Challenge{
+					Authentication: &authenticationPkg.Authentication{Id: authenticationId},
+					Challenge:      []byte(challenge),
+					ExpiresAt:      &expiresAt,
+				}, nil
+			},
+		),
+	)
+	if err != nil {
+		t.Fatalf("dbsc session response processor new: %v", err)
+	}
+
+	if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, testEndpointProcessor, loginTesting.RegisteredDomain, sessionCookieOption); err != nil {
+		t.Fatalf("test endpoint initialize: %v", err)
+	}
+
+	mux := &muxPkg.Mux{}
+	mux.Add(testEndpoint.Endpoint.Endpoint)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	muxTesting.TestArgs(
+		t,
+		&muxTesting.Args{
+			Path:               testEndpoint.Path,
+			Method:             testEndpoint.Method,
+			Headers:            [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, validToken}},
+			ExpectedStatusCode: http.StatusOK,
+			ExpectedBody:       expectedBody,
+		},
+		httpServer.URL,
+	)
 }
 
 func TestEndpoint_Initialize(t *testing.T) {

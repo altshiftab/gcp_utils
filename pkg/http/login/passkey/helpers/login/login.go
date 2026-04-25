@@ -3,7 +3,7 @@ package login
 import (
 	"crypto/ecdsa"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"

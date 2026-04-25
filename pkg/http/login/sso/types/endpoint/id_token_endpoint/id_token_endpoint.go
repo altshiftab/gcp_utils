@@ -1,7 +1,7 @@
 package id_token_endpoint
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"

@@ -8,11 +8,12 @@ import (
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 )
 
 type Cookie = http.Cookie
 
-func makeSessionCookie(value string, expiresAt time.Time, name string, domain string) *http.Cookie {
+func makeSessionCookie(value string, expiresAt time.Time, name string, domain string, sameSite http.SameSite) *http.Cookie {
 	return &http.Cookie{
 		Name:     name,
 		Value:    value,
@@ -21,11 +22,11 @@ func makeSessionCookie(value string, expiresAt time.Time, name string, domain st
 		Expires:  expiresAt,
 		Secure:   true,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: sameSite,
 	}
 }
 
-func New(tokenString string, expiresAt time.Time, name string, domain string) (*http.Cookie, error) {
+func New(tokenString string, expiresAt time.Time, name string, domain string, options ...session_cookie_config.Option) (*http.Cookie, error) {
 	if tokenString == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("jwt token string"))
 	}
@@ -38,10 +39,15 @@ func New(tokenString string, expiresAt time.Time, name string, domain string) (*
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("cookie domain"))
 	}
 
-	return makeSessionCookie(tokenString, expiresAt, name, domain), nil
+	config := session_cookie_config.New(options...)
+
+	return makeSessionCookie(tokenString, expiresAt, name, domain, config.SameSite), nil
 }
-func Attributes(domain string) string {
-	c := makeSessionCookie("", time.Time{}, "", domain)
+
+func Attributes(domain string, options ...session_cookie_config.Option) string {
+	config := session_cookie_config.New(options...)
+
+	c := makeSessionCookie("", time.Time{}, "", domain, config.SameSite)
 	if c == nil {
 		return ""
 	}

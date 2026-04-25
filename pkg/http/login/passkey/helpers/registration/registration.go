@@ -1,7 +1,7 @@
 package registration
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"

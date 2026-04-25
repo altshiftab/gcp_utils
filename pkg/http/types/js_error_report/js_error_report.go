@@ -1,17 +1,17 @@
 package js_error_report
 
 type ErrorDetails struct {
-	Message string `json:"message,omitempty"`
-	Cause   any    `json:"cause,omitempty"`
-	Stack   string `json:"stack,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Code    int    `json:"code,omitempty"`
+	Message string `json:"message,omitzero"`
+	Cause   any    `json:"cause,omitzero"`
+	Stack   string `json:"stack,omitzero"`
+	Name    string `json:"name,omitzero"`
+	Code    int    `json:"code,omitzero"`
 }
 
 type BaseErrorBody struct {
 	Type  string        `json:"type"`
-	Raw   string        `json:"raw,omitempty"`
-	Error *ErrorDetails `json:"error,omitempty"`
+	Raw   string        `json:"raw,omitzero"`
+	Error *ErrorDetails `json:"error,omitzero"`
 }
 
 type ErrorBody struct {

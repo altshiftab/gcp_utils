@@ -3,9 +3,10 @@ package dbsc_register_endpoint
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
@@ -28,6 +29,7 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_register_endpoint/dbsc_register_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
@@ -37,15 +39,15 @@ const (
 )
 
 type Scope struct {
-	Origin        string `json:"origin,omitempty"`
-	IncludeSite   bool   `json:"include_site,omitempty"`
-	DeferRequests bool   `json:"defer_requests,omitempty"`
+	Origin        string `json:"origin,omitzero"`
+	IncludeSite   bool   `json:"include_site,omitzero"`
+	DeferRequests bool   `json:"defer_requests,omitzero"`
 }
 
 type Credential struct {
-	Type       string `json:"type,omitempty"`
-	Name       string `json:"name,omitempty"`
-	Attributes string `json:"attributes,omitempty"`
+	Type       string `json:"type,omitzero"`
+	Name       string `json:"name,omitzero"`
+	Attributes string `json:"attributes,omitzero"`
 }
 
 type Response struct {
@@ -67,6 +69,7 @@ func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
 	registeredDomain string,
+	sessionCookieOptions ...session_cookie_config.Option,
 ) error {
 	if authorizerRequestParser == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
@@ -172,14 +175,14 @@ func (e *Endpoint) Initialize(
 			SessionIdentifier: authenticationId,
 			RefreshURL:        e.RefreshPath,
 			Scope: Scope{
-				Origin:      fmt.Sprintf("https://%s", registeredDomain),
+				Origin:      new(url.URL{Scheme: "https", Host: registeredDomain}).String(),
 				IncludeSite: true,
 			},
 			Credentials: []*Credential{
 				{
 					Type:       "cookie",
 					Name:       cookieName,
-					Attributes: session_cookie.Attributes(registeredDomain),
+					Attributes: session_cookie.Attributes(registeredDomain, sessionCookieOptions...),
 				},
 			},
 		}
