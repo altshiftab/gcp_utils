@@ -31,6 +31,7 @@ import (
 	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
@@ -47,6 +48,7 @@ type Manager struct {
 	DbscChallengeDuration     time.Duration
 	DbscRegisterPath          string
 	DbscAlgs                  []string
+	SessionCookieOptions      []session_cookie_config.Option
 	selectEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
 	insertAuthentication      func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
 	insertDbscChallenge       func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
@@ -274,6 +276,7 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 		*sessionExpiresAt,
 		m.CookieName,
 		m.CookieDomain,
+		m.SessionCookieOptions...,
 	)
 	if err != nil {
 		return nil, &response_error.ResponseError{
@@ -394,6 +397,7 @@ func (m *Manager) RefreshSession(
 		newSessionTokenExpiresAt.Time,
 		m.CookieName,
 		m.CookieDomain,
+		m.SessionCookieOptions...,
 	)
 	if err != nil {
 		return nil, &response_error.ResponseError{
@@ -450,6 +454,7 @@ func New(
 		DbscChallengeDuration:     config.DbscChallengeDuration,
 		DbscRegisterPath:          config.DbscRegisterPath,
 		DbscAlgs:                  config.DbscAlgs,
+		SessionCookieOptions:      config.SessionCookieOptions,
 		selectEmailAddressAccount: config.SelectEmailAddressAccount,
 		insertAuthentication:      config.InsertAuthentication,
 		insertDbscChallenge:       config.InsertDbscChallenge,

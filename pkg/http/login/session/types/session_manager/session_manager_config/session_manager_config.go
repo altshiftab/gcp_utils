@@ -10,6 +10,7 @@ import (
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_register_endpoint/dbsc_register_endpoint_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 )
 
 var (
@@ -36,6 +37,7 @@ type Config struct {
 	SelectEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
 	InsertAuthentication      func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
 	InsertDbscChallenge       func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
+	SessionCookieOptions      []session_cookie_config.Option
 }
 
 type Option func(*Config)
@@ -110,5 +112,11 @@ func WithInsertAuthentication(insertAuthentication func(ctx context.Context, acc
 func WithInsertDbscChallenge(insertDbscChallenge func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error) Option {
 	return func(config *Config) {
 		config.InsertDbscChallenge = insertDbscChallenge
+	}
+}
+
+func WithSessionCookieOptions(sessionCookieOptions ...session_cookie_config.Option) Option {
+	return func(config *Config) {
+		config.SessionCookieOptions = sessionCookieOptions
 	}
 }
