@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	motmedelCryptoErrors "github.com/Motmedel/utils_go/pkg/crypto/errors"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -149,7 +148,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		return nil, &response_error.ResponseError{ServerError: wrappedErr}
 	}
 	if utils.IsNil(namedVerifier) {
-		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(motmedelCryptoErrors.ErrNilVerifier)}
+		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(nil_error.New("named verifier"))}
 	}
 
 	publicKey, err := material.PublicKey()
