@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -12,6 +14,7 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	databaseErrors "github.com/altshiftab/gcp_utils/pkg/http/login/database/errors"
 	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/customer"
@@ -20,7 +23,7 @@ import (
 )
 
 const (
-	authenticationInsertQuery                  = `INSERT INTO authentication (account, created_at, expires_at) VALUES ($1, $2, $3) RETURNING id;`
+	authenticationInsertQuery                  = `INSERT INTO authentication (account, created_at, expires_at, id_token_hash) VALUES ($1, $2, $3, $4) RETURNING id;`
 	authenticationSelectRefreshQuery           = `SELECT ended, expires_at, dbsc_public_key FROM authentication WHERE id = $1;`
 	authenticationUpdateWithDbscPublicKeyQuery = `UPDATE authentication SET dbsc_public_key = $1 WHERE id = $2;`
 	authenticationUpdateWithEndedQuery         = `UPDATE authentication SET ended = true, ended_at = now() WHERE id = $1;`
@@ -29,6 +32,7 @@ const (
 func InsertAuthentication(
 	ctx context.Context,
 	accountId string,
+	idTokenHash []byte,
 	expirationDuration time.Duration,
 	database *sql.DB,
 ) (*authenticationPkg.Authentication, error) {
@@ -47,17 +51,30 @@ func InsertAuthentication(
 	now := time.Now()
 	expiresAt := now.Add(expirationDuration)
 
-	row := database.QueryRowContext(ctx, authenticationInsertQuery, accountId, now, expiresAt)
+	var idTokenHashArg any
+	if len(idTokenHash) > 0 {
+		idTokenHashArg = idTokenHash
+	}
+
+	row := database.QueryRowContext(ctx, authenticationInsertQuery, accountId, now, expiresAt, idTokenHashArg)
 	if row == nil {
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
 	var authenticationId string
 	if err := row.Scan(&authenticationId); err != nil {
+		if pqErr, ok := errors.AsType[*pq.Error](err); ok && pqErr.Code == "23505" && strings.Contains(pqErr.Constraint, "id_token_hash") {
+			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("%w: %w", databaseErrors.ErrIdTokenAlreadyUsed, err))
+		}
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
-	return &authenticationPkg.Authentication{Id: authenticationId, CreatedAt: &now, ExpiresAt: &expiresAt}, nil
+	return &authenticationPkg.Authentication{
+		Id:          authenticationId,
+		CreatedAt:   &now,
+		ExpiresAt:   &expiresAt,
+		IdTokenHash: idTokenHash,
+	}, nil
 }
 
 func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.DB) (*authenticationPkg.Authentication, error) {

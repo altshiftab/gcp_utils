@@ -35,7 +35,7 @@ type Config struct {
 	DbscRegisterPath          string
 	DbscAlgs                  []string
 	SelectEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
-	InsertAuthentication      func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
+	InsertAuthentication      func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
 	InsertDbscChallenge       func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
 	SessionCookieOptions      []session_cookie_config.Option
 }
@@ -103,7 +103,7 @@ func WithSelectEmailAddressAccount(selectEmailAddressAccount func(ctx context.Co
 	}
 }
 
-func WithInsertAuthentication(insertAuthentication func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)) Option {
+func WithInsertAuthentication(insertAuthentication func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)) Option {
 	return func(config *Config) {
 		config.InsertAuthentication = insertAuthentication
 	}

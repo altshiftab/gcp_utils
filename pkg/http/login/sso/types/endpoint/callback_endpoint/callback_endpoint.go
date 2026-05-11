@@ -2,6 +2,7 @@ package callback_endpoint
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
@@ -245,7 +246,9 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
-		response, responseError := sessionManager.CreateSession(ctx, strings.ToLower(emailAddress))
+		idTokenHash := sha256.Sum256([]byte(idToken))
+
+		response, responseError := sessionManager.CreateSession(ctx, strings.ToLower(emailAddress), idTokenHash[:])
 		if responseError != nil {
 			return nil, responseError
 		}

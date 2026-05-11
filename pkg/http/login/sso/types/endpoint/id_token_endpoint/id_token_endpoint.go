@@ -1,6 +1,7 @@
 package id_token_endpoint
 
 import (
+	"crypto/sha256"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -132,7 +133,9 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
-		response, responseError := sessionManager.CreateSession(ctx, strings.ToLower(emailAddress))
+		idTokenHash := sha256.Sum256([]byte(idToken))
+
+		response, responseError := sessionManager.CreateSession(ctx, strings.ToLower(emailAddress), idTokenHash[:])
 		if responseError != nil {
 			return nil, responseError
 		}

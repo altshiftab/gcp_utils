@@ -25,6 +25,7 @@ import (
 	motmedelTime "github.com/Motmedel/utils_go/pkg/time"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	motmedelUuid "github.com/Motmedel/utils_go/pkg/uuid"
+	databaseErrors "github.com/altshiftab/gcp_utils/pkg/http/login/database/errors"
 	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
@@ -50,11 +51,11 @@ type Manager struct {
 	DbscAlgs                  []string
 	SessionCookieOptions      []session_cookie_config.Option
 	selectEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
-	insertAuthentication      func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
+	insertAuthentication      func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
 	insertDbscChallenge       func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
 }
 
-func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*response.Response, *response_error.ResponseError) {
+func (m *Manager) CreateSession(ctx context.Context, emailAddress string, idTokenHash []byte) (*response.Response, *response_error.ResponseError) {
 	signer := m.Signer
 	if utils.IsNil(signer) {
 		return nil, &response_error.ResponseError{
@@ -159,11 +160,19 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string) (*resp
 	insertDbCtx, insertDbCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 	defer insertDbCancel()
 
-	authentication, err := m.insertAuthentication(insertDbCtx, accountId, m.AuthenticationDuration, m.Db)
+	authentication, err := m.insertAuthentication(insertDbCtx, accountId, idTokenHash, m.AuthenticationDuration, m.Db)
 	if err != nil {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.New(fmt.Errorf("insert authentication: %w", err)),
+		wrappedErr := motmedelErrors.New(fmt.Errorf("insert authentication: %w", err))
+		if errors.Is(err, databaseErrors.ErrIdTokenAlreadyUsed) {
+			return nil, &response_error.ResponseError{
+				ClientError: wrappedErr,
+				ProblemDetail: problem_detail.New(
+					http.StatusConflict,
+					problem_detail_config.WithDetail("The id token has already been used."),
+				),
+			}
 		}
+		return nil, &response_error.ResponseError{ServerError: wrappedErr}
 	}
 	if authentication == nil {
 		return nil, &response_error.ResponseError{

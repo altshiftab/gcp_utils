@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	motmedelCryptoEcdsa "github.com/Motmedel/utils_go/pkg/crypto/ecdsa"
@@ -35,6 +36,7 @@ import (
 	motmedelContextLogger "github.com/Motmedel/utils_go/pkg/log/context_logger"
 	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
 	motmedelOauth2Endpoint "github.com/Motmedel/utils_go/pkg/oauth2/types/endpoint"
+	databaseErrors "github.com/altshiftab/gcp_utils/pkg/http/login/database/errors"
 	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
@@ -106,6 +108,7 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 	sessionMethod := &motmedelCryptoEddsa.Method{PrivateKey: privateKey, PublicKey: publicKey}
 
 	db := motmedelSqlTesting.NewDb()
+	var usedIdTokenHashes sync.Map
 	sessionManager, err := session_manager.New(
 		sessionMethod,
 		db,
@@ -117,7 +120,13 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 			},
 		),
 		session_manager_config.WithInsertAuthentication(
-			func(ctx context.Context, accountId string, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error) {
+			func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error) {
+				if len(idTokenHash) > 0 {
+					if _, loaded := usedIdTokenHashes.LoadOrStore(string(idTokenHash), struct{}{}); loaded {
+						return nil, databaseErrors.ErrIdTokenAlreadyUsed
+					}
+				}
+
 				createdAt := time.Now()
 				expiresAt := createdAt.Add(expirationDuration)
 

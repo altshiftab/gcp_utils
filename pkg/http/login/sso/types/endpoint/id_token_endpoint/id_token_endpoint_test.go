@@ -206,6 +206,64 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
+func TestEndpointIdTokenReuse(t *testing.T) {
+	t.Parallel()
+
+	testEndpoint, err := New[*ssoTesting.ProviderClaims](defaultPath)
+	if err != nil {
+		t.Fatalf("new endpoint: %v", err)
+	}
+
+	if err := testEndpoint.Initialize(idTokenAuthenticator, sessionManager); err != nil {
+		t.Fatalf("test endpoint initialize: %v", err)
+	}
+
+	mux := &muxPkg.Mux{}
+	mux.Add(testEndpoint.Endpoint.Endpoint)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	token := motmedelJwtToken.Token{
+		Header: map[string]any{
+			"typ": "JWT",
+			"kid": ssoTesting.KeyId,
+		},
+		Payload: map[string]any{
+			"iss":           "aux",
+			"aud":           "test-client",
+			"iat":           time.Now().Add(-1 * time.Minute).Unix(),
+			"nbf":           time.Now().Add(-1 * time.Minute).Unix(),
+			"exp":           time.Now().Add(10 * time.Minute).Unix(),
+			"verified":      true,
+			"email_address": ssoTesting.EmailAddress,
+		},
+	}
+	tokenString, err := token.Encode(idTokenMethod)
+	if err != nil {
+		t.Fatalf("token encode: %v", err)
+	}
+
+	authorizationHeader := [2]string{"Authorization", fmt.Sprintf("Bearer %s", tokenString)}
+
+	muxTesting.TestArgs(t, &muxTesting.Args{
+		Path:                   testEndpoint.Path,
+		Method:                 testEndpoint.Method,
+		Headers:                [][2]string{authorizationHeader},
+		ExpectedStatusCode:     http.StatusNoContent,
+		ExpectedHeadersPresent: []string{"Set-Cookie"},
+	}, httpServer.URL)
+
+	muxTesting.TestArgs(t, &muxTesting.Args{
+		Path:               testEndpoint.Path,
+		Method:             testEndpoint.Method,
+		Headers:            [][2]string{authorizationHeader},
+		ExpectedStatusCode: http.StatusConflict,
+		ExpectedProblemDetail: &problem_detail.Detail{
+			Detail: "The id token has already been used.",
+		},
+	}, httpServer.URL)
+}
+
 // TODO: Implement tests
 //	- New()
 //	- Provider claims unmarshal
