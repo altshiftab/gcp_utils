@@ -30,7 +30,6 @@ import (
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
@@ -55,7 +54,13 @@ type Manager struct {
 	insertDbscChallenge       func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
 }
 
-func (m *Manager) CreateSession(ctx context.Context, emailAddress string, idTokenHash []byte) (*response.Response, *response_error.ResponseError) {
+func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAddress string, idTokenHash []byte) (*response.Response, *response_error.ResponseError) {
+	if authMethod == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication method")),
+		}
+	}
+
 	signer := m.Signer
 	if utils.IsNil(signer) {
 		return nil, &response_error.ResponseError{
@@ -253,7 +258,7 @@ func (m *Manager) CreateSession(ctx context.Context, emailAddress string, idToke
 			NotBefore: issuedAt,
 			IssuedAt:  issuedAt,
 		},
-		AuthenticationMethods: []string{authentication_method.Sso},
+		AuthenticationMethods: []string{authMethod},
 		AuthenticatedAt:       numeric_date.New(*authenticationCreatedAt),
 		AuthorizedParty:       authorizedParty,
 		Roles:                 account.Roles,

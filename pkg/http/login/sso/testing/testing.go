@@ -185,6 +185,7 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 		&endpoint.Endpoint{
 			Path:   "/.well-known/jwks.json",
 			Method: http.MethodGet,
+			Public: true,
 			Handler: func(request *http.Request, i []byte) (*muxRespnose.Response, *response_error.ResponseError) {
 				return &muxRespnose.Response{
 					Headers: []*muxRespnose.HeaderEntry{
@@ -204,6 +205,7 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 		&endpoint.Endpoint{
 			Path:   TokenPath,
 			Method: http.MethodPost,
+			Public: true,
 			Handler: func(request *http.Request, body []byte) (*muxRespnose.Response, *response_error.ResponseError) {
 				values, err := url.ParseQuery(string(body))
 				if err != nil {

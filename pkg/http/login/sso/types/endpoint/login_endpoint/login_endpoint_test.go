@@ -259,5 +259,49 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
+func TestNew(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		path         string
+		callbackPath string
+		wantErr      bool
+	}{
+		{name: "success", path: defaultPath, callbackPath: defaultCallbackPath},
+		{name: "empty path", path: "", callbackPath: defaultCallbackPath, wantErr: true},
+		{name: "empty callback path", path: defaultPath, callbackPath: "", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := New(tt.path, tt.callbackPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("New() err = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRealRandomHelpers(t *testing.T) {
+	t.Parallel()
+
+	cv, err := makeCodeVerifier()
+	if err != nil {
+		t.Fatalf("makeCodeVerifier: %v", err)
+	}
+	if cv == "" {
+		t.Errorf("makeCodeVerifier returned empty string")
+	}
+
+	state, err := makeState()
+	if err != nil {
+		t.Fatalf("makeState: %v", err)
+	}
+	if state == "" {
+		t.Errorf("makeState returned empty string")
+	}
+}
+
 // TODO: Implement tests
 //	- New()

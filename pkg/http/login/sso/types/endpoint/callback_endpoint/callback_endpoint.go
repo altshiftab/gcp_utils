@@ -33,6 +33,7 @@ import (
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/callback_endpoint/callback_endpoint_config"
@@ -248,7 +249,7 @@ func (e *Endpoint[T]) Initialize(
 
 		idTokenHash := sha256.Sum256([]byte(idToken))
 
-		response, responseError := sessionManager.CreateSession(ctx, strings.ToLower(emailAddress), idTokenHash[:])
+		response, responseError := sessionManager.CreateSession(ctx, authentication_method.Sso, strings.ToLower(emailAddress), idTokenHash[:])
 		if responseError != nil {
 			return nil, responseError
 		}
