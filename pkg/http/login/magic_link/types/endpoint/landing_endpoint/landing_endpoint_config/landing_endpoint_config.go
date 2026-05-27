@@ -63,7 +63,7 @@ func computeCspSha256(s string) string {
 }
 
 func buildDefaultCsp() string {
-	const baseCsp = "default-src 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+	const baseCsp = "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
 	parsed, err := cspParsing.Parse([]byte(baseCsp))
 	if err != nil {
 		panic(fmt.Errorf("landing_endpoint_config: parse base csp: %w", err))

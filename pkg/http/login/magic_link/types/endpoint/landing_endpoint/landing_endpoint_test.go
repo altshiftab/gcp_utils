@@ -156,8 +156,8 @@ func TestEndpoint_ContentSecurityPolicyHeader(t *testing.T) {
 	if !strings.Contains(csp, "'"+landing_endpoint_config.DefaultStyleSrcHash+"'") {
 		t.Errorf("CSP missing style hash %q; got: %s", landing_endpoint_config.DefaultStyleSrcHash, csp)
 	}
-	if !strings.Contains(csp, "form-action 'self'") {
-		t.Errorf("CSP missing form-action 'self'; got: %s", csp)
+	if strings.Contains(csp, "form-action") {
+		t.Errorf("CSP should not include form-action; got: %s", csp)
 	}
 }
 
