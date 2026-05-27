@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	motmedelSqlErrors "github.com/Motmedel/utils_go/pkg/database/sql/errors"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
@@ -21,6 +22,8 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 )
+
+var pgTypeMap = pgtype.NewMap()
 
 const (
 	authenticationInsertQuery                  = `INSERT INTO authentication (account, created_at, expires_at, id_token_hash) VALUES ($1, $2, $3, $4) RETURNING id;`
@@ -139,7 +142,7 @@ func SelectEmailAddressAccount(ctx context.Context, emailAddress string, databas
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
-	if err := row.Scan(&accountId, &locked, &customerId, &customerName, &roles); err != nil {
+	if err := row.Scan(&accountId, &locked, &customerId, &customerName, pgTypeMap.SQLScanner(&roles)); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
