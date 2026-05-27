@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/mail/types/message"
 )
 
@@ -20,8 +21,8 @@ func TestNew_Defaults(t *testing.T) {
 	if c.LinkExpiration != DefaultLinkExpiration {
 		t.Errorf("LinkExpiration: got %v, want %v", c.LinkExpiration, DefaultLinkExpiration)
 	}
-	if c.Subject != DefaultSubject {
-		t.Errorf("Subject: got %q, want %q", c.Subject, DefaultSubject)
+	if c.SubjectBuilder == nil {
+		t.Errorf("SubjectBuilder is nil")
 	}
 	if c.MaxBytes != DefaultMaxBytes {
 		t.Errorf("MaxBytes: got %d, want %d", c.MaxBytes, DefaultMaxBytes)
@@ -37,15 +38,16 @@ func TestNew_Defaults(t *testing.T) {
 func TestNew_Options(t *testing.T) {
 	t.Parallel()
 
-	customBuilder := func(_ *mail.Address, _ *url.URL, _ time.Time) (*message.Body, error) {
+	customBuilder := func(_ *mail.Address, _ *url.URL, _ time.Time, _ *motmedelHttpTypes.AcceptLanguage) (*message.Body, error) {
 		return &message.Body{Content: []byte("custom"), ContentType: "text/plain"}, nil
 	}
+	customSubject := func(_ *motmedelHttpTypes.AcceptLanguage) string { return "Hi" }
 	customNonce := func() string { return "fixed-nonce" }
 
 	c := New(
 		WithPath("/custom"),
 		WithLinkExpiration(5*time.Minute),
-		WithSubject("Hi"),
+		WithSubjectBuilder(customSubject),
 		WithMaxBytes(2048),
 		WithMessageBuilder(customBuilder),
 		WithMakeNonce(customNonce),
@@ -57,8 +59,8 @@ func TestNew_Options(t *testing.T) {
 	if c.LinkExpiration != 5*time.Minute {
 		t.Errorf("LinkExpiration: got %v", c.LinkExpiration)
 	}
-	if c.Subject != "Hi" {
-		t.Errorf("Subject: got %q", c.Subject)
+	if got := c.SubjectBuilder(nil); got != "Hi" {
+		t.Errorf("SubjectBuilder(nil): got %q", got)
 	}
 	if c.MaxBytes != 2048 {
 		t.Errorf("MaxBytes: got %d", c.MaxBytes)
@@ -66,7 +68,7 @@ func TestNew_Options(t *testing.T) {
 	if got := c.MakeNonce(); got != "fixed-nonce" {
 		t.Errorf("MakeNonce(): got %q", got)
 	}
-	body, err := c.MessageBuilder(&mail.Address{Address: "a@b.c"}, &url.URL{}, time.Now())
+	body, err := c.MessageBuilder(&mail.Address{Address: "a@b.c"}, &url.URL{}, time.Now(), nil)
 	if err != nil {
 		t.Fatalf("MessageBuilder: %v", err)
 	}
@@ -81,7 +83,7 @@ func TestDefaultMessageBuilder(t *testing.T) {
 	linkUrl, _ := url.Parse("https://example.com/magic?token=abc")
 	expires := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	body, err := DefaultMessageBuilder(&mail.Address{Address: "x@y.z"}, linkUrl, expires)
+	body, err := DefaultMessageBuilder(&mail.Address{Address: "x@y.z"}, linkUrl, expires, nil)
 	if err != nil {
 		t.Fatalf("DefaultMessageBuilder: %v", err)
 	}

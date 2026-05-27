@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/mail/types/message"
 	motmedelUuid "github.com/Motmedel/utils_go/pkg/uuid"
 )
@@ -13,9 +14,8 @@ import (
 var (
 	DefaultPath           = "/api/login/magic/generate"
 	DefaultLinkExpiration = 15 * time.Minute
-	DefaultSubject        = "Sign in"
 	DefaultMaxBytes int64 = 512
-	DefaultMessageBuilder = func(toAddress *mail.Address, linkUrl *url.URL, expiresAt time.Time) (*message.Body, error) {
+	DefaultMessageBuilder = func(toAddress *mail.Address, linkUrl *url.URL, expiresAt time.Time, acceptLanguage *motmedelHttpTypes.AcceptLanguage) (*message.Body, error) {
 		content := fmt.Sprintf(
 			"Click the link below to sign in. The link expires at %s.\r\n\r\n%s\r\n\r\nIf you did not request this email, you can safely ignore it.\r\n",
 			expiresAt.UTC().Format(time.RFC1123),
@@ -23,15 +23,20 @@ var (
 		)
 		return &message.Body{Content: []byte(content), ContentType: "text/plain; charset=utf-8"}, nil
 	}
+	DefaultSubjectBuilder = func(_ *motmedelHttpTypes.AcceptLanguage) string {
+		return "Sign in"
+	}
 	DefaultMakeNonce = motmedelUuid.NewString
 )
 
-type MessageBuilder func(toAddress *mail.Address, linkUrl *url.URL, expiresAt time.Time) (*message.Body, error)
+type MessageBuilder func(toAddress *mail.Address, linkUrl *url.URL, expiresAt time.Time, acceptLanguage *motmedelHttpTypes.AcceptLanguage) (*message.Body, error)
+
+type SubjectBuilder func(acceptLanguage *motmedelHttpTypes.AcceptLanguage) string
 
 type Config struct {
 	Path             string
 	LinkExpiration   time.Duration
-	Subject          string
+	SubjectBuilder   SubjectBuilder
 	MaxBytes         int64
 	MessageBuilder   MessageBuilder
 	MakeNonce        func() string
@@ -44,7 +49,7 @@ func New(options ...Option) *Config {
 	config := &Config{
 		Path:           DefaultPath,
 		LinkExpiration: DefaultLinkExpiration,
-		Subject:        DefaultSubject,
+		SubjectBuilder: DefaultSubjectBuilder,
 		MaxBytes:       DefaultMaxBytes,
 		MessageBuilder: DefaultMessageBuilder,
 		MakeNonce:      DefaultMakeNonce,
@@ -68,9 +73,9 @@ func WithLinkExpiration(linkExpiration time.Duration) Option {
 	}
 }
 
-func WithSubject(subject string) Option {
+func WithSubjectBuilder(subjectBuilder SubjectBuilder) Option {
 	return func(config *Config) {
-		config.Subject = subject
+		config.SubjectBuilder = subjectBuilder
 	}
 }
 

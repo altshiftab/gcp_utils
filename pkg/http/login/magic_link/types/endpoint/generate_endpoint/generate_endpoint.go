@@ -26,6 +26,8 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
+	"github.com/Motmedel/utils_go/pkg/http/parsing/headers/accept_language"
+	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
@@ -128,7 +130,7 @@ func makeBodyProcessor(domain string) processorPkg.Processor[*ParsedBodyInput, *
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
 	LinkExpiration   time.Duration
-	Subject          string
+	SubjectBuilder   generate_endpoint_config.SubjectBuilder
 	ReplyToAddresses []*mail.Address
 	MessageBuilder   generate_endpoint_config.MessageBuilder
 	makeNonce        func() string
@@ -167,6 +169,10 @@ func (e *Endpoint) Initialize(
 
 	if e.makeNonce == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("make nonce"))
+	}
+
+	if e.SubjectBuilder == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("subject builder"))
 	}
 
 	e.BodyLoader.Parser = bodyParserAdapter.New(
@@ -231,7 +237,15 @@ func (e *Endpoint) Initialize(
 		query.Set("token", tokenString)
 		linkUrl.RawQuery = query.Encode()
 
-		messageBody, err := e.MessageBuilder(toAddress, &linkUrl, expiresAt)
+		var acceptLanguage *motmedelHttpTypes.AcceptLanguage
+		if raw := strings.TrimSpace(request.Header.Get("Accept-Language")); raw != "" {
+			parsed, parseErr := accept_language.Parse([]byte(raw))
+			if parseErr == nil {
+				acceptLanguage = parsed
+			}
+		}
+
+		messageBody, err := e.MessageBuilder(toAddress, &linkUrl, expiresAt, acceptLanguage)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("message builder: %w", err)),
@@ -248,7 +262,9 @@ func (e *Endpoint) Initialize(
 			messageOptions = append(messageOptions, message_config.WithReplyTo(e.ReplyToAddresses))
 		}
 
-		msg, err := message.New(fromAddress, []*mail.Address{toAddress}, e.Subject, messageBody, messageOptions...)
+		subject := e.SubjectBuilder(acceptLanguage)
+
+		msg, err := message.New(fromAddress, []*mail.Address{toAddress}, subject, messageBody, messageOptions...)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("message new: %w", err)),
@@ -288,7 +304,7 @@ func New(options ...generate_endpoint_config.Option) *Endpoint {
 			},
 		},
 		LinkExpiration:   config.LinkExpiration,
-		Subject:          config.Subject,
+		SubjectBuilder:   config.SubjectBuilder,
 		ReplyToAddresses: config.ReplyToAddresses,
 		MessageBuilder:   config.MessageBuilder,
 		makeNonce:        config.MakeNonce,
