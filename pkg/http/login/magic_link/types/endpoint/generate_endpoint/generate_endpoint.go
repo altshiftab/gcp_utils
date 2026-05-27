@@ -33,6 +33,7 @@ import (
 	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token"
 	motmedelMail "github.com/Motmedel/utils_go/pkg/mail"
 	"github.com/Motmedel/utils_go/pkg/mail/types/message"
+	"github.com/Motmedel/utils_go/pkg/mail/types/message/message_config"
 	"github.com/Motmedel/utils_go/pkg/net/types/domain_parts"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
@@ -126,10 +127,11 @@ func makeBodyProcessor(domain string) processorPkg.Processor[*ParsedBodyInput, *
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
-	LinkExpiration time.Duration
-	Subject        string
-	messageBuilder generate_endpoint_config.MessageBuilder
-	makeNonce      func() string
+	LinkExpiration   time.Duration
+	Subject          string
+	ReplyToAddresses []*mail.Address
+	messageBuilder   generate_endpoint_config.MessageBuilder
+	makeNonce        func() string
 }
 
 func (e *Endpoint) Initialize(
@@ -241,7 +243,12 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		msg, err := message.New(fromAddress, []*mail.Address{toAddress}, e.Subject, messageBody)
+		var messageOptions []message_config.Option
+		if len(e.ReplyToAddresses) > 0 {
+			messageOptions = append(messageOptions, message_config.WithReplyTo(e.ReplyToAddresses))
+		}
+
+		msg, err := message.New(fromAddress, []*mail.Address{toAddress}, e.Subject, messageBody, messageOptions...)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("message new: %w", err)),
@@ -280,9 +287,10 @@ func New(options ...generate_endpoint_config.Option) *Endpoint {
 				},
 			},
 		},
-		LinkExpiration: config.LinkExpiration,
-		Subject:        config.Subject,
-		messageBuilder: config.MessageBuilder,
-		makeNonce:      config.MakeNonce,
+		LinkExpiration:   config.LinkExpiration,
+		Subject:          config.Subject,
+		ReplyToAddresses: config.ReplyToAddresses,
+		messageBuilder:   config.MessageBuilder,
+		makeNonce:        config.MakeNonce,
 	}
 }
