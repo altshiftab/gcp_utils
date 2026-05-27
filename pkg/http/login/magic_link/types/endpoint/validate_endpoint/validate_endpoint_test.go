@@ -241,7 +241,7 @@ func TestEndpoint_RedirectClaimOverridesDefault(t *testing.T) {
 	muxTesting.TestArgs(
 		t,
 		&muxTesting.Args{
-			Method:                 http.MethodGet,
+			Method:                 http.MethodPost,
 			Path:                   path,
 			ExpectedStatusCode:     http.StatusSeeOther,
 			ExpectedHeaders:        [][2]string{{"Location", overrideUrl}},
@@ -270,7 +270,7 @@ func TestEndpoint_TokenReuse(t *testing.T) {
 	muxTesting.TestArgs(
 		t,
 		&muxTesting.Args{
-			Method:                 http.MethodGet,
+			Method:                 http.MethodPost,
 			Path:                   path,
 			ExpectedStatusCode:     http.StatusSeeOther,
 			ExpectedHeaders:        [][2]string{{"Location", magicLinkTesting.RedirectUrl}},
@@ -282,7 +282,7 @@ func TestEndpoint_TokenReuse(t *testing.T) {
 	muxTesting.TestArgs(
 		t,
 		&muxTesting.Args{
-			Method:             http.MethodGet,
+			Method:             http.MethodPost,
 			Path:               path,
 			ExpectedStatusCode: http.StatusConflict,
 			ExpectedProblemDetail: &problem_detail.Detail{

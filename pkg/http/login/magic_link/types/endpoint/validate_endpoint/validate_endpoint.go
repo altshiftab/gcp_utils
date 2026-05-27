@@ -47,7 +47,7 @@ type VerifiedToken struct {
 	RedirectUrl  string
 }
 
-func makeVerifyProcessor(authenticator *authenticatorPkg.Authenticator) processorPkg.Processor[*VerifiedToken, *UrlInput] {
+func MakeVerifyProcessor(authenticator *authenticatorPkg.Authenticator) processorPkg.Processor[*VerifiedToken, *UrlInput] {
 	return processorPkg.New(func(ctx context.Context, input *UrlInput) (*VerifiedToken, *response_error.ResponseError) {
 		if input == nil {
 			return nil, &response_error.ResponseError{
@@ -197,7 +197,7 @@ func (e *Endpoint) Initialize(
 	e.UrlParser = adapter.New(
 		request_parser.NewWithProcessor(
 			query_extractor.New[*UrlInput](),
-			makeVerifyProcessor(
+			MakeVerifyProcessor(
 				authenticatorPkg.New(
 					authenticator_config.WithSignatureVerifier(verifier),
 					authenticator_config.WithClaimsValidator(
@@ -259,7 +259,7 @@ func New(options ...validate_endpoint_config.Option) *Endpoint {
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
 				Path:   config.Path,
-				Method: http.MethodGet,
+				Method: http.MethodPost,
 				Public: true,
 				Hint: &endpoint.Hint{
 					UrlInputType: motmedelReflect.TypeOf[UrlInput](),
