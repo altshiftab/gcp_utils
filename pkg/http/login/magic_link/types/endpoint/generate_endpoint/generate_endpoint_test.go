@@ -1,6 +1,7 @@
 package generate_endpoint
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	magicLinkTesting "github.com/altshiftab/gcp_utils/pkg/http/login/magic_link/testing"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/magic_link/types/endpoint/generate_endpoint/generate_endpoint_config"
 )
 
 const defaultPath = "/api/login/magic/generate"
@@ -35,6 +37,8 @@ func TestEndpoint(t *testing.T) {
 		expectSent        bool
 		expectSentAttempt bool
 		expectRecvAddr    string
+		accountExists     *bool
+		accountErr        error
 	}{
 		{
 			name: "success",
@@ -125,6 +129,21 @@ func TestEndpoint(t *testing.T) {
 				Body: []byte(`{"email_address":"` + magicLinkTesting.ValidEmail + `","redirect":":://broken"}`),
 			},
 		},
+		{
+			name: "unregistered account",
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusNoContent,
+			},
+			accountExists: ptrBool(false),
+		},
+		{
+			name: "account checker error",
+			args: &muxTesting.Args{
+				ExpectedStatusCode:    http.StatusInternalServerError,
+				ExpectedProblemDetail: &problem_detail.Detail{},
+			},
+			accountErr: errors.New("db boom"),
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -133,7 +152,17 @@ func TestEndpoint(t *testing.T) {
 
 			fakeSender := &magicLinkTesting.FakeMailSender{Err: testCase.mailSenderErr}
 
-			testEndpoint := New()
+			accountExists := true
+			if testCase.accountExists != nil {
+				accountExists = *testCase.accountExists
+			}
+			accountErr := testCase.accountErr
+
+			testEndpoint := New(
+				generate_endpoint_config.WithAccountChecker(
+					func(_ context.Context, _ string) (bool, error) { return accountExists, accountErr },
+				),
+			)
 			if err := testEndpoint.Initialize(fakeSender, signer, fromAddress, linkBaseUrl, magicLinkTesting.Domain); err != nil {
 				t.Fatalf("initialize: %v", err)
 			}
@@ -293,7 +322,11 @@ func TestEndpoint_Initialize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			endpoint := New()
+			endpoint := New(
+				generate_endpoint_config.WithAccountChecker(
+					func(_ context.Context, _ string) (bool, error) { return true, nil },
+				),
+			)
 			var sender *magicLinkTesting.FakeMailSender = tt.args.mailSender
 			var signerArg = signer
 			if tt.args.signer == nil {
@@ -306,3 +339,5 @@ func TestEndpoint_Initialize(t *testing.T) {
 		})
 	}
 }
+
+func ptrBool(b bool) *bool { return &b }

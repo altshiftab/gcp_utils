@@ -129,11 +129,13 @@ func makeBodyProcessor(domain string) processorPkg.Processor[*ParsedBodyInput, *
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
-	LinkExpiration   time.Duration
-	SubjectBuilder   generate_endpoint_config.SubjectBuilder
-	ReplyToAddresses []*mail.Address
-	MessageBuilder   generate_endpoint_config.MessageBuilder
-	makeNonce        func() string
+	LinkExpiration     time.Duration
+	SubjectBuilder     generate_endpoint_config.SubjectBuilder
+	ReplyToAddresses   []*mail.Address
+	MessageBuilder     generate_endpoint_config.MessageBuilder
+	AccountChecker     generate_endpoint_config.AccountChecker
+	MinResponseLatency time.Duration
+	makeNonce          func() string
 }
 
 func (e *Endpoint) Initialize(
@@ -175,6 +177,10 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("subject builder"))
 	}
 
+	if e.AccountChecker == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("account checker"))
+	}
+
 	e.BodyLoader.Parser = bodyParserAdapter.New(
 		body_parser.NewWithProcessor(
 			json_body_parser.New[*BodyInput](),
@@ -190,7 +196,29 @@ func (e *Endpoint) Initialize(
 			return nil, responseError
 		}
 
+		if e.MinResponseLatency > 0 {
+			startTime := time.Now()
+			defer func() {
+				if remaining := e.MinResponseLatency - time.Since(startTime); remaining > 0 {
+					select {
+					case <-time.After(remaining):
+					case <-ctx.Done():
+					}
+				}
+			}()
+		}
+
 		toAddress := body.EmailAddress
+
+		accountExists, err := e.AccountChecker(ctx, toAddress.Address)
+		if err != nil {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.New(fmt.Errorf("account checker: %w", err), toAddress.Address),
+			}
+		}
+		if !accountExists {
+			return nil, nil
+		}
 
 		nonce := e.makeNonce()
 		if nonce == "" {
@@ -303,10 +331,12 @@ func New(options ...generate_endpoint_config.Option) *Endpoint {
 				},
 			},
 		},
-		LinkExpiration:   config.LinkExpiration,
-		SubjectBuilder:   config.SubjectBuilder,
-		ReplyToAddresses: config.ReplyToAddresses,
-		MessageBuilder:   config.MessageBuilder,
-		makeNonce:        config.MakeNonce,
+		LinkExpiration:     config.LinkExpiration,
+		SubjectBuilder:     config.SubjectBuilder,
+		ReplyToAddresses:   config.ReplyToAddresses,
+		MessageBuilder:     config.MessageBuilder,
+		AccountChecker:     config.AccountChecker,
+		MinResponseLatency: config.MinResponseLatency,
+		makeNonce:          config.MakeNonce,
 	}
 }

@@ -1,6 +1,7 @@
 package generate_endpoint_config
 
 import (
+	"context"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -33,14 +34,18 @@ type MessageBuilder func(toAddress *mail.Address, linkUrl *url.URL, expiresAt ti
 
 type SubjectBuilder func(acceptLanguage *motmedelHttpTypes.AcceptLanguage) string
 
+type AccountChecker func(ctx context.Context, emailAddress string) (bool, error)
+
 type Config struct {
-	Path             string
-	LinkExpiration   time.Duration
-	SubjectBuilder   SubjectBuilder
-	MaxBytes         int64
-	MessageBuilder   MessageBuilder
-	MakeNonce        func() string
-	ReplyToAddresses []*mail.Address
+	Path               string
+	LinkExpiration     time.Duration
+	SubjectBuilder     SubjectBuilder
+	MaxBytes           int64
+	MessageBuilder     MessageBuilder
+	MakeNonce          func() string
+	ReplyToAddresses   []*mail.Address
+	AccountChecker     AccountChecker
+	MinResponseLatency time.Duration
 }
 
 type Option func(*Config)
@@ -100,5 +105,17 @@ func WithMakeNonce(makeNonce func() string) Option {
 func WithReplyToAddresses(replyToAddresses []*mail.Address) Option {
 	return func(config *Config) {
 		config.ReplyToAddresses = replyToAddresses
+	}
+}
+
+func WithAccountChecker(accountChecker AccountChecker) Option {
+	return func(config *Config) {
+		config.AccountChecker = accountChecker
+	}
+}
+
+func WithMinResponseLatency(minResponseLatency time.Duration) Option {
+	return func(config *Config) {
+		config.MinResponseLatency = minResponseLatency
 	}
 }
