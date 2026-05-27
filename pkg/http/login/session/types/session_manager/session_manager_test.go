@@ -307,7 +307,7 @@ func TestManager_CreateSession(t *testing.T) {
 			emailAddress: testEmail,
 			stubs:        &stubs{account: newAccount(), insertAuthErr: databaseErrors.ErrIdTokenAlreadyUsed},
 			wantStatus:   409,
-			wantDetail:   "The id token has already been used.",
+			wantDetail:   "This sign-in link has already been used.",
 		},
 		{
 			name:         "insert authentication error",

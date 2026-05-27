@@ -173,7 +173,7 @@ func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAdd
 				ClientError: wrappedErr,
 				ProblemDetail: problem_detail.New(
 					http.StatusConflict,
-					problem_detail_config.WithDetail("The id token has already been used."),
+					problem_detail_config.WithDetail("This sign-in link has already been used."),
 				),
 			}
 		}

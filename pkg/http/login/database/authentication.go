@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	motmedelSqlErrors "github.com/Motmedel/utils_go/pkg/database/sql/errors"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
@@ -63,7 +63,7 @@ func InsertAuthentication(
 
 	var authenticationId string
 	if err := row.Scan(&authenticationId); err != nil {
-		if pqErr, ok := errors.AsType[*pq.Error](err); ok && pqErr.Code == "23505" && strings.Contains(pqErr.Constraint, "id_token_hash") {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "id_token_hash") {
 			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("%w: %w", databaseErrors.ErrIdTokenAlreadyUsed, err))
 		}
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
@@ -139,7 +139,7 @@ func SelectEmailAddressAccount(ctx context.Context, emailAddress string, databas
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
-	if err := row.Scan(&accountId, &locked, &customerId, &customerName, pq.Array(&roles)); err != nil {
+	if err := row.Scan(&accountId, &locked, &customerId, &customerName, &roles); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 

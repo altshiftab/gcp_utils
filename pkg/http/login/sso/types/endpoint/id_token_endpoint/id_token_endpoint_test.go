@@ -259,7 +259,7 @@ func TestEndpointIdTokenReuse(t *testing.T) {
 		Headers:            [][2]string{authorizationHeader},
 		ExpectedStatusCode: http.StatusConflict,
 		ExpectedProblemDetail: &problem_detail.Detail{
-			Detail: "The id token has already been used.",
+			Detail: "This sign-in link has already been used.",
 		},
 	}, httpServer.URL)
 }
