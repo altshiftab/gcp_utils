@@ -130,7 +130,7 @@ type Endpoint struct {
 	LinkExpiration   time.Duration
 	Subject          string
 	ReplyToAddresses []*mail.Address
-	messageBuilder   generate_endpoint_config.MessageBuilder
+	MessageBuilder   generate_endpoint_config.MessageBuilder
 	makeNonce        func() string
 }
 
@@ -161,7 +161,7 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(empty_error.New("domain"))
 	}
 
-	if e.messageBuilder == nil {
+	if e.MessageBuilder == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("message builder"))
 	}
 
@@ -231,7 +231,7 @@ func (e *Endpoint) Initialize(
 		query.Set("token", tokenString)
 		linkUrl.RawQuery = query.Encode()
 
-		messageBody, err := e.messageBuilder(toAddress, &linkUrl, expiresAt)
+		messageBody, err := e.MessageBuilder(toAddress, &linkUrl, expiresAt)
 		if err != nil {
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("message builder: %w", err)),
@@ -290,7 +290,7 @@ func New(options ...generate_endpoint_config.Option) *Endpoint {
 		LinkExpiration:   config.LinkExpiration,
 		Subject:          config.Subject,
 		ReplyToAddresses: config.ReplyToAddresses,
-		messageBuilder:   config.MessageBuilder,
+		MessageBuilder:   config.MessageBuilder,
 		makeNonce:        config.MakeNonce,
 	}
 }
