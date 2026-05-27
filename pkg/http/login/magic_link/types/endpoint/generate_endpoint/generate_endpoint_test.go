@@ -95,6 +95,36 @@ func TestEndpoint(t *testing.T) {
 			nonce:             magicLinkTesting.DefaultNonce,
 			expectSentAttempt: true,
 		},
+		{
+			name: "allowed redirect",
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusNoContent,
+				Body:               []byte(`{"email_address":"` + magicLinkTesting.ValidEmail + `","redirect":"https://app.example.com/dashboard"}`),
+			},
+			nonce:          magicLinkTesting.DefaultNonce,
+			expectSent:     true,
+			expectRecvAddr: magicLinkTesting.ValidEmail,
+		},
+		{
+			name: "disallowed redirect",
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusUnprocessableEntity,
+				ExpectedProblemDetail: &problem_detail.Detail{
+					Detail: "The redirect URL hostname is not allowed.",
+				},
+				Body: []byte(`{"email_address":"` + magicLinkTesting.ValidEmail + `","redirect":"https://evil.com/phish"}`),
+			},
+		},
+		{
+			name: "malformed redirect",
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusUnprocessableEntity,
+				ExpectedProblemDetail: &problem_detail.Detail{
+					Detail: "The redirect URL is malformed.",
+				},
+				Body: []byte(`{"email_address":"` + magicLinkTesting.ValidEmail + `","redirect":":://broken"}`),
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -104,7 +134,7 @@ func TestEndpoint(t *testing.T) {
 			fakeSender := &magicLinkTesting.FakeMailSender{Err: testCase.mailSenderErr}
 
 			testEndpoint := New()
-			if err := testEndpoint.Initialize(fakeSender, signer, fromAddress, linkBaseUrl); err != nil {
+			if err := testEndpoint.Initialize(fakeSender, signer, fromAddress, linkBaseUrl, magicLinkTesting.Domain); err != nil {
 				t.Fatalf("initialize: %v", err)
 			}
 
@@ -185,6 +215,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 		signer      any
 		fromAddress *mail.Address
 		linkBaseUrl *url.URL
+		domain      string
 	}
 	tests := []struct {
 		name    string
@@ -198,6 +229,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 				signer:      signer,
 				fromAddress: fromAddress,
 				linkBaseUrl: linkBaseUrl,
+				domain:      magicLinkTesting.Domain,
 			},
 		},
 		{
@@ -207,6 +239,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 				signer:      signer,
 				fromAddress: fromAddress,
 				linkBaseUrl: linkBaseUrl,
+				domain:      magicLinkTesting.Domain,
 			},
 			wantErr: true,
 		},
@@ -217,6 +250,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 				signer:      nil,
 				fromAddress: fromAddress,
 				linkBaseUrl: linkBaseUrl,
+				domain:      magicLinkTesting.Domain,
 			},
 			wantErr: true,
 		},
@@ -227,6 +261,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 				signer:      signer,
 				fromAddress: nil,
 				linkBaseUrl: linkBaseUrl,
+				domain:      magicLinkTesting.Domain,
 			},
 			wantErr: true,
 		},
@@ -237,6 +272,18 @@ func TestEndpoint_Initialize(t *testing.T) {
 				signer:      signer,
 				fromAddress: fromAddress,
 				linkBaseUrl: nil,
+				domain:      magicLinkTesting.Domain,
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty domain",
+			args: args{
+				mailSender:  &magicLinkTesting.FakeMailSender{},
+				signer:      signer,
+				fromAddress: fromAddress,
+				linkBaseUrl: linkBaseUrl,
+				domain:      "",
 			},
 			wantErr: true,
 		},
@@ -252,7 +299,7 @@ func TestEndpoint_Initialize(t *testing.T) {
 			if tt.args.signer == nil {
 				signerArg = nil
 			}
-			err := endpoint.Initialize(sender, signerArg, tt.args.fromAddress, tt.args.linkBaseUrl)
+			err := endpoint.Initialize(sender, signerArg, tt.args.fromAddress, tt.args.linkBaseUrl, tt.args.domain)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Initialize() error = %v, wantErr = %v", err, tt.wantErr)
 			}

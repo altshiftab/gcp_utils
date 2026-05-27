@@ -218,6 +218,39 @@ func TestEndpoint(t *testing.T) {
 	}
 }
 
+func TestEndpoint_RedirectClaimOverridesDefault(t *testing.T) {
+	t.Parallel()
+
+	testEndpoint := New()
+	if err := testEndpoint.Initialize(signer, sessionManager, redirectUrl); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	mux := &muxPkg.Mux{}
+	mux.Add(testEndpoint.Endpoint.Endpoint)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	const overrideUrl = "https://example.com/elsewhere"
+	payload := defaultPayload(magicLinkTesting.ValidEmail, "redirect-nonce")
+	payload["redirect"] = overrideUrl
+
+	tokenString := mintToken(t, payload)
+	path := testEndpoint.Path + "?" + url.Values{"token": {tokenString}}.Encode()
+
+	muxTesting.TestArgs(
+		t,
+		&muxTesting.Args{
+			Method:                 http.MethodGet,
+			Path:                   path,
+			ExpectedStatusCode:     http.StatusSeeOther,
+			ExpectedHeaders:        [][2]string{{"Location", overrideUrl}},
+			ExpectedHeadersPresent: []string{"Set-Cookie", "Sec-Session-Registration"},
+		},
+		httpServer.URL,
+	)
+}
+
 func TestEndpoint_TokenReuse(t *testing.T) {
 	t.Parallel()
 

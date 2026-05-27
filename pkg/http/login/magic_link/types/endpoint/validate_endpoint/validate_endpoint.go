@@ -44,6 +44,7 @@ type UrlInput struct {
 type VerifiedToken struct {
 	EmailAddress string
 	NonceHash    [sha256.Size]byte
+	RedirectUrl  string
 }
 
 func makeVerifyProcessor(authenticator *authenticatorPkg.Authenticator) processorPkg.Processor[*VerifiedToken, *UrlInput] {
@@ -144,9 +145,25 @@ func makeVerifyProcessor(authenticator *authenticatorPkg.Authenticator) processo
 			}
 		}
 
+		var redirectUrl string
+		if v, ok := authenticatedToken.Payload["redirect"]; ok && v != nil {
+			converted, err := utils.Convert[string](v)
+			if err != nil {
+				return nil, &response_error.ResponseError{
+					ClientError: motmedelErrors.New(fmt.Errorf("convert (redirect): %w", err), v),
+					ProblemDetail: problem_detail.New(
+						http.StatusBadRequest,
+						problem_detail_config.WithDetail("The token redirect claim is invalid."),
+					),
+				}
+			}
+			redirectUrl = converted
+		}
+
 		return &VerifiedToken{
 			EmailAddress: emailAddress,
 			NonceHash:    sha256.Sum256([]byte(nonce)),
+			RedirectUrl:  redirectUrl,
 		}, nil
 	})
 }
@@ -217,10 +234,15 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
+		location := redirectUrlString
+		if verifiedToken.RedirectUrl != "" {
+			location = verifiedToken.RedirectUrl
+		}
+
 		response.StatusCode = http.StatusSeeOther
 		response.Headers = append(
 			response.Headers,
-			&muxResponse.HeaderEntry{Name: "Location", Value: redirectUrlString},
+			&muxResponse.HeaderEntry{Name: "Location", Value: location},
 		)
 
 		return response, nil

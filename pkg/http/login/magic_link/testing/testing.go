@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	Domain       = "example.com"
 	FromAddress  = "noreply@example.com"
 	LinkBaseUrl  = "https://example.com/login/magic"
 	RedirectUrl  = "https://example.com/account"
