@@ -3,7 +3,7 @@ module github.com/altshiftab/gcp_utils/pkg/http/login
 go 1.26
 
 require (
-	github.com/Motmedel/utils_go v0.0.476
+	github.com/Motmedel/utils_go v0.0.479
 	github.com/Motmedel/utils_go/pkg/http/mux v0.0.186
 	github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1
 	github.com/google/go-cmp v0.7.0
