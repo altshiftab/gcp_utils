@@ -82,8 +82,12 @@ func maskBasicAuth(value string) string {
 	return base64.StdEncoding.EncodeToString([]byte(parts[0]+":")) + maskedValue
 }
 
-func extractNormalizedHeaders(header http.Header) string {
+func extractNormalizedHeaders(host string, header http.Header) string {
 	var headerStrings []string
+
+	if host != "" {
+		headerStrings = append(headerStrings, fmt.Sprintf("Host: %s\r\n", host))
+	}
 
 	for name, values := range header {
 		for _, value := range values {
@@ -397,12 +401,15 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 
 		if base != nil {
 			// Mask URL query parameters if configured
-			if base.Url != nil {
-				e.maskUrl(base.Url)
+			if baseUrl := base.Url; baseUrl != nil {
+				e.maskUrl(baseUrl)
 			}
 
 			if request := httpContext.Request; request != nil {
-				if requestHeader := request.Header; requestHeader != nil {
+				requestHost := request.Host
+				requestHeader := request.Header
+
+				if len(requestHeader) > 0 || requestHost != "" {
 					if base.Http == nil {
 						base.Http = &schema.Http{}
 					}
@@ -412,7 +419,7 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 					}
 
 					base.Http.Request.HttpHeaders = &schema.HttpHeaders{
-						Normalized: extractNormalizedHeaders(requestHeader),
+						Normalized: extractNormalizedHeaders(requestHost, requestHeader),
 					}
 
 					var (
@@ -520,7 +527,7 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 					}
 
 					base.Http.Response.HttpHeaders = &schema.HttpHeaders{
-						Normalized: extractNormalizedHeaders(responseHeader),
+						Normalized: extractNormalizedHeaders("", responseHeader),
 					}
 				}
 			}

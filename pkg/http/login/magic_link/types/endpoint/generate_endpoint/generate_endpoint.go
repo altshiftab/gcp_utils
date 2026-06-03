@@ -301,7 +301,7 @@ func (e *Endpoint) Initialize(
 
 		if err := mailSender.SendMessage(ctx, msg); err != nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("mail sender send message: %w", err)),
+				ServerError: motmedelErrors.New(fmt.Errorf("mail sender send message: %w", err)),
 			}
 		}
 

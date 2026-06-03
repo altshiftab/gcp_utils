@@ -193,6 +193,7 @@ func TestExtractNormalizedHeaders(t *testing.T) {
 
 	testCases := []struct {
 		name       string
+		host       string
 		header     http.Header
 		wantParts  []string // substrings that must appear
 		avoidParts []string // substrings that must NOT appear
@@ -239,12 +240,31 @@ func TestExtractNormalizedHeaders(t *testing.T) {
 			header:    http.Header{},
 			wantParts: nil,
 		},
+		{
+			name:      "host prepended",
+			host:      "example.com",
+			header:    http.Header{"X-Custom": {"value1"}},
+			wantParts: []string{"Host: example.com\r\n", "X-Custom: value1\r\n"},
+		},
+		{
+			name:       "empty host is omitted",
+			host:       "",
+			header:     http.Header{"X-Custom": {"value1"}},
+			wantParts:  []string{"X-Custom: value1\r\n"},
+			avoidParts: []string{"Host:"},
+		},
+		{
+			name:      "host with empty header",
+			host:      "example.com",
+			header:    http.Header{},
+			wantParts: []string{"Host: example.com\r\n"},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := extractNormalizedHeaders(tc.header)
+			got := extractNormalizedHeaders(tc.host, tc.header)
 
 			for _, part := range tc.wantParts {
 				if !strings.Contains(got, part) {
