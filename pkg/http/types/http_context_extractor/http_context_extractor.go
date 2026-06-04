@@ -373,15 +373,10 @@ func (e *Extractor) maskUrl(urlStruct *schema.Url) {
 	}
 }
 
-type maskedHeaderEntry struct {
-	url     *schema.Url
-	headers map[string]struct{}
-}
-
 type Extractor struct {
 	ReplaceableMessages    map[string]struct{}
 	MaskedUrlParams        []*schema.Url
-	MaskedHeaders          []*maskedHeaderEntry
+	MaskedHeaders          []*http_context_extractor_config.MaskedHeader
 	MaskedResponseBodyUrls []*schema.Url
 }
 
@@ -392,22 +387,22 @@ func (e *Extractor) headersToMaskForUrl(u *schema.Url) map[string]struct{} {
 
 	var result map[string]struct{}
 	for _, entry := range e.MaskedHeaders {
-		if entry == nil || len(entry.headers) == 0 {
+		if entry == nil || len(entry.Headers) == 0 {
 			continue
 		}
-		if entry.url != nil {
+		if entry.Url != nil {
 			if u == nil {
 				continue
 			}
-			if matches, _ := urlMatchesPattern(entry.url, u); !matches {
+			if matches, _ := urlMatchesPattern(entry.Url, u); !matches {
 				continue
 			}
 		}
-		for h := range entry.headers {
+		for _, h := range entry.Headers {
 			if result == nil {
 				result = make(map[string]struct{})
 			}
-			result[h] = struct{}{}
+			result[http.CanonicalHeaderKey(h)] = struct{}{}
 		}
 	}
 	return result
@@ -631,25 +626,10 @@ func New(options ...http_context_extractor_config.Option) *Extractor {
 		}
 	}
 
-	var maskedHeaders []*maskedHeaderEntry
-	for _, m := range config.MaskedHeaders {
-		if m == nil || len(m.Headers) == 0 {
-			continue
-		}
-		headerSet := make(map[string]struct{}, len(m.Headers))
-		for _, name := range m.Headers {
-			headerSet[http.CanonicalHeaderKey(name)] = struct{}{}
-		}
-		maskedHeaders = append(maskedHeaders, &maskedHeaderEntry{
-			url:     m.Url,
-			headers: headerSet,
-		})
-	}
-
 	return &Extractor{
 		ReplaceableMessages:    messagesMap,
 		MaskedUrlParams:        config.MaskedUrlParams,
-		MaskedHeaders:          maskedHeaders,
+		MaskedHeaders:          config.MaskedHeaders,
 		MaskedResponseBodyUrls: config.MaskedResponseBodyUrls,
 	}
 }
