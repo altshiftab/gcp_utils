@@ -82,7 +82,7 @@ func maskBasicAuth(value string) string {
 	return base64.StdEncoding.EncodeToString([]byte(parts[0]+":")) + maskedValue
 }
 
-func extractNormalizedHeaders(host string, header http.Header) string {
+func extractNormalizedHeaders(host string, header http.Header, maskedHeaders map[string]struct{}) string {
 	var headerStrings []string
 
 	if host != "" {
@@ -91,7 +91,9 @@ func extractNormalizedHeaders(host string, header http.Header) string {
 
 	for name, values := range header {
 		for _, value := range values {
-			if name == "Set-Cookie" {
+			if _, ok := maskedHeaders[name]; ok {
+				value = maskedValue
+			} else if name == "Set-Cookie" {
 				value = maskSetCookieHeader(value)
 			} else if name == "Authorization" {
 				parsedValue, err := authorization.Parse([]byte(value))
@@ -371,9 +373,44 @@ func (e *Extractor) maskUrl(urlStruct *schema.Url) {
 	}
 }
 
+type maskedHeaderEntry struct {
+	url     *schema.Url
+	headers map[string]struct{}
+}
+
 type Extractor struct {
-	ReplaceableMessages map[string]struct{}
-	MaskedUrlParams     []*schema.Url
+	ReplaceableMessages    map[string]struct{}
+	MaskedUrlParams        []*schema.Url
+	MaskedHeaders          []*maskedHeaderEntry
+	MaskedResponseBodyUrls []*schema.Url
+}
+
+func (e *Extractor) headersToMaskForUrl(u *schema.Url) map[string]struct{} {
+	if len(e.MaskedHeaders) == 0 {
+		return nil
+	}
+
+	var result map[string]struct{}
+	for _, entry := range e.MaskedHeaders {
+		if entry == nil || len(entry.headers) == 0 {
+			continue
+		}
+		if entry.url != nil {
+			if u == nil {
+				continue
+			}
+			if matches, _ := urlMatchesPattern(entry.url, u); !matches {
+				continue
+			}
+		}
+		for h := range entry.headers {
+			if result == nil {
+				result = make(map[string]struct{})
+			}
+			result[h] = struct{}{}
+		}
+	}
+	return result
 }
 
 func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
@@ -400,9 +437,29 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 		}
 
 		if base != nil {
-			// Mask URL query parameters if configured
-			if baseUrl := base.Url; baseUrl != nil {
+			// Mask URL query parameters if configured. Re-render the message
+			// afterwards so the masked URL is reflected there too — ParseHttpContext
+			// builds base.Message from the unmasked URL.
+			if baseUrl := base.Url; baseUrl != nil && len(e.MaskedUrlParams) > 0 {
 				e.maskUrl(baseUrl)
+				base.Message = schemaUtils.MakeHttpMessage(base)
+			}
+
+			maskedHeaders := e.headersToMaskForUrl(base.Url)
+
+			if baseUrl := base.Url; baseUrl != nil && len(e.MaskedResponseBodyUrls) > 0 {
+				if ecsHttp := base.Http; ecsHttp != nil {
+					if response := ecsHttp.Response; response != nil {
+						if body := response.Body; body != nil && body.Content != "" {
+							for _, pattern := range e.MaskedResponseBodyUrls {
+								if matches, _ := urlMatchesPattern(pattern, baseUrl); matches {
+									body.Content = maskedValue
+									break
+								}
+							}
+						}
+					}
+				}
 			}
 
 			if request := httpContext.Request; request != nil {
@@ -419,7 +476,7 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 					}
 
 					base.Http.Request.HttpHeaders = &schema.HttpHeaders{
-						Normalized: extractNormalizedHeaders(requestHost, requestHeader),
+						Normalized: extractNormalizedHeaders(requestHost, requestHeader, maskedHeaders),
 					}
 
 					var (
@@ -527,7 +584,7 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 					}
 
 					base.Http.Response.HttpHeaders = &schema.HttpHeaders{
-						Normalized: extractNormalizedHeaders("", responseHeader),
+						Normalized: extractNormalizedHeaders("", responseHeader, maskedHeaders),
 					}
 				}
 			}
@@ -573,8 +630,26 @@ func New(options ...http_context_extractor_config.Option) *Extractor {
 			messagesMap[msg] = struct{}{}
 		}
 	}
+
+	var maskedHeaders []*maskedHeaderEntry
+	for _, m := range config.MaskedHeaders {
+		if m == nil || len(m.Headers) == 0 {
+			continue
+		}
+		headerSet := make(map[string]struct{}, len(m.Headers))
+		for _, name := range m.Headers {
+			headerSet[http.CanonicalHeaderKey(name)] = struct{}{}
+		}
+		maskedHeaders = append(maskedHeaders, &maskedHeaderEntry{
+			url:     m.Url,
+			headers: headerSet,
+		})
+	}
+
 	return &Extractor{
-		ReplaceableMessages: messagesMap,
-		MaskedUrlParams:     config.MaskedUrlParams,
+		ReplaceableMessages:    messagesMap,
+		MaskedUrlParams:        config.MaskedUrlParams,
+		MaskedHeaders:          maskedHeaders,
+		MaskedResponseBodyUrls: config.MaskedResponseBodyUrls,
 	}
 }

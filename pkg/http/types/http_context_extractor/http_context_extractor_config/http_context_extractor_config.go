@@ -2,9 +2,16 @@ package http_context_extractor_config
 
 import "github.com/Motmedel/utils_go/pkg/schema"
 
+type MaskedHeader struct {
+	Url     *schema.Url
+	Headers []string
+}
+
 type Config struct {
-	ReplaceableMessages []string
-	MaskedUrlParams     []*schema.Url
+	ReplaceableMessages    []string
+	MaskedUrlParams        []*schema.Url
+	MaskedHeaders          []*MaskedHeader
+	MaskedResponseBodyUrls []*schema.Url
 }
 
 type Option func(*Config)
@@ -29,5 +36,17 @@ func WithReplaceableMessages(replaceableMessages ...string) Option {
 func WithMaskedUrlParams(urlPatterns ...*schema.Url) Option {
 	return func(config *Config) {
 		config.MaskedUrlParams = urlPatterns
+	}
+}
+
+func WithMaskedHeaders(maskedHeaders ...*MaskedHeader) Option {
+	return func(config *Config) {
+		config.MaskedHeaders = maskedHeaders
+	}
+}
+
+func WithMaskedResponseBodyUrls(urlPatterns ...*schema.Url) Option {
+	return func(config *Config) {
+		config.MaskedResponseBodyUrls = urlPatterns
 	}
 }

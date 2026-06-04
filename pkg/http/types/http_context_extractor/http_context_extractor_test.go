@@ -264,7 +264,7 @@ func TestExtractNormalizedHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := extractNormalizedHeaders(tc.host, tc.header)
+			got := extractNormalizedHeaders(tc.host, tc.header, nil)
 
 			for _, part := range tc.wantParts {
 				if !strings.Contains(got, part) {
