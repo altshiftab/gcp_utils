@@ -939,3 +939,96 @@ func TestExtractor_MaskUrl_NilUrl(t *testing.T) {
 	// Should not panic with nil URL
 	e.maskUrl(nil)
 }
+
+func TestPathMatches(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		pattern  string
+		incoming string
+		want     bool
+	}{
+		{name: "empty pattern matches anything", pattern: "", incoming: "/a/b", want: true},
+		{name: "exact match", pattern: "/a/b", incoming: "/a/b", want: true},
+		{name: "exact mismatch", pattern: "/a/b", incoming: "/a/c", want: false},
+		{name: "exact pattern rejects child", pattern: "/a/b", incoming: "/a/b/c", want: false},
+		{name: "prefix matches child", pattern: "/a/b/*", incoming: "/a/b/c", want: true},
+		{name: "prefix matches grandchild", pattern: "/a/b/*", incoming: "/a/b/c/d", want: true},
+		{name: "prefix does not match exact prefix without slash", pattern: "/a/b/*", incoming: "/a/b", want: false},
+		{name: "prefix does not match sibling", pattern: "/a/b/*", incoming: "/a/bc/d", want: false},
+		{name: "prefix root /*", pattern: "/*", incoming: "/anything", want: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := pathMatches(tc.pattern, tc.incoming); got != tc.want {
+				t.Errorf("pathMatches(%q, %q) = %v, want %v", tc.pattern, tc.incoming, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestUrlMatchesPattern_PathPrefix(t *testing.T) {
+	t.Parallel()
+
+	// A pattern with /* matches incoming requests under that segment prefix
+	// and surfaces the masked query parameters as usual.
+	pattern := &motmedelSchemaTypes.Url{
+		Domain: "example.com",
+		Path:   "/api/v1/profiles/*",
+		Query:  "secret",
+	}
+
+	cases := []struct {
+		name         string
+		incoming     *motmedelSchemaTypes.Url
+		wantMatch    bool
+		wantParamLen int
+	}{
+		{
+			name: "child path with query",
+			incoming: &motmedelSchemaTypes.Url{
+				Domain: "example.com",
+				Path:   "/api/v1/profiles/123",
+				Query:  "secret=abc&other=ok",
+			},
+			wantMatch:    true,
+			wantParamLen: 1,
+		},
+		{
+			name: "exact prefix without slash does not match",
+			incoming: &motmedelSchemaTypes.Url{
+				Domain: "example.com",
+				Path:   "/api/v1/profiles",
+				Query:  "secret=abc",
+			},
+			wantMatch:    false,
+			wantParamLen: 0,
+		},
+		{
+			name: "sibling path does not match",
+			incoming: &motmedelSchemaTypes.Url{
+				Domain: "example.com",
+				Path:   "/api/v1/profiles-v2/123",
+				Query:  "secret=abc",
+			},
+			wantMatch:    false,
+			wantParamLen: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			gotMatch, gotParams := urlMatchesPattern(pattern, tc.incoming)
+			if gotMatch != tc.wantMatch {
+				t.Errorf("match: got %v, want %v", gotMatch, tc.wantMatch)
+			}
+			if len(gotParams) != tc.wantParamLen {
+				t.Errorf("param count: got %d, want %d (params=%v)", len(gotParams), tc.wantParamLen, gotParams)
+			}
+		})
+	}
+}

@@ -263,6 +263,23 @@ func extractUnverifiedUser(header http.Header) *schema.User {
 	return nil
 }
 
+// pathMatches reports whether the incoming request path matches the pattern.
+// A pattern with a trailing "/*" matches any incoming path under that segment
+// prefix (e.g. "/api/customers/*" matches "/api/customers/123" but not
+// "/api/customers"). An empty pattern matches anything. Otherwise the
+// comparison is an exact equality check.
+func pathMatches(pattern, incoming string) bool {
+	if pattern == "" {
+		return true
+	}
+	if strings.HasSuffix(pattern, "/*") {
+		// Keep the trailing "/" in the prefix so we don't accidentally match
+		// sibling paths like "/api/customers-v2/...".
+		return strings.HasPrefix(incoming, pattern[:len(pattern)-1])
+	}
+	return pattern == incoming
+}
+
 func urlMatchesPattern(pattern *schema.Url, incoming *schema.Url) (bool, []string) {
 	if pattern == nil || incoming == nil {
 		return false, nil
@@ -271,7 +288,7 @@ func urlMatchesPattern(pattern *schema.Url, incoming *schema.Url) (bool, []strin
 	if pattern.Domain != "" && pattern.Domain != incoming.Domain {
 		return false, nil
 	}
-	if pattern.Path != "" && pattern.Path != incoming.Path {
+	if !pathMatches(pattern.Path, incoming.Path) {
 		return false, nil
 	}
 	if pattern.RegisteredDomain != "" && pattern.RegisteredDomain != incoming.RegisteredDomain {
