@@ -111,24 +111,31 @@ func patchStyleSrcWithHashes(mux *motmedelMux.Mux, hashes ...string) error {
 		return fmt.Errorf("patch csp style src with hash: %w", err)
 	}
 
-	// Ensure 'self' is included in style-src as well
+	// CSP hashes only match the body of `<style>` elements, not inline `style` attributes. The Chrome XML and
+	// Edge PDF viewers style their output via `style` attributes, so 'unsafe-hashes' is required for the
+	// hashes above to take effect (it permits only attribute content matching a listed hash, unlike the much
+	// broader 'unsafe-inline'). 'self' is also ensured for the viewers' linked stylesheets.
+	requiredKeywords := []string{"self", "unsafe-hashes"}
+
 	if styleSrc := csp.GetStyleSrc(); styleSrc != nil {
 		sourceMap := make(map[string]struct{})
 		for _, source := range styleSrc.Sources {
 			sourceMap[source.String()] = struct{}{}
 		}
-		selfSource := (&content_security_policy.KeywordSource{Keyword: "self"}).String()
-		if _, found := sourceMap[selfSource]; !found {
-			styleSrc.Sources = append(styleSrc.Sources, &content_security_policy.KeywordSource{Keyword: "self"})
+		for _, keyword := range requiredKeywords {
+			keywordSource := &content_security_policy.KeywordSource{Keyword: keyword}
+			if _, found := sourceMap[keywordSource.String()]; !found {
+				styleSrc.Sources = append(styleSrc.Sources, keywordSource)
+			}
 		}
 	} else {
-		// If style-src did not exist, create it with 'self'
+		// If style-src did not exist, create it with the required keywords.
+		sources := make([]content_security_policy.SourceI, 0, len(requiredKeywords))
+		for _, keyword := range requiredKeywords {
+			sources = append(sources, &content_security_policy.KeywordSource{Keyword: keyword})
+		}
 		csp.Directives = append(csp.Directives, &content_security_policy.StyleSrcDirective{
-			SourceDirective: content_security_policy.SourceDirective{
-				Sources: []content_security_policy.SourceI{
-					&content_security_policy.KeywordSource{Keyword: "self"},
-				},
-			},
+			SourceDirective: content_security_policy.SourceDirective{Sources: sources},
 		})
 	}
 

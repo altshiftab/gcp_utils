@@ -43,8 +43,9 @@ func styleSrcSources(t *testing.T, mux *motmedelMux.Mux) map[string]struct{} {
 	return sources
 }
 
-// assertStyleSrcHasHashesAndSelf asserts that every hash (rendered as a CSP hash source) and 'self' are present.
-func assertStyleSrcHasHashesAndSelf(t *testing.T, sources map[string]struct{}, hashes []string) {
+// assertStyleSrcPatched asserts that style-src contains every hash (rendered as a CSP hash source), 'self',
+// and 'unsafe-hashes' (the latter is required for the hashes to apply to inline style attributes).
+func assertStyleSrcPatched(t *testing.T, sources map[string]struct{}, hashes []string) {
 	t.Helper()
 
 	for _, hash := range hashes {
@@ -54,8 +55,10 @@ func assertStyleSrcHasHashesAndSelf(t *testing.T, sources map[string]struct{}, h
 		}
 	}
 
-	if _, found := sources["'self'"]; !found {
-		t.Errorf("style-src missing 'self'")
+	for _, keyword := range []string{"'self'", "'unsafe-hashes'"} {
+		if _, found := sources[keyword]; !found {
+			t.Errorf("style-src missing %s", keyword)
+		}
 	}
 }
 
@@ -100,7 +103,7 @@ func TestPatchChromeXmlRenderer(t *testing.T) {
 		t.Fatalf("PatchChromeXmlRenderer: %v", err)
 	}
 
-	assertStyleSrcHasHashesAndSelf(t, styleSrcSources(t, mux), chromeXmlHashes)
+	assertStyleSrcPatched(t, styleSrcSources(t, mux), chromeXmlHashes)
 }
 
 func TestPatchEdgePdfViewerRenderer(t *testing.T) {
@@ -111,7 +114,7 @@ func TestPatchEdgePdfViewerRenderer(t *testing.T) {
 		t.Fatalf("PatchEdgePdfViewerRenderer: %v", err)
 	}
 
-	assertStyleSrcHasHashesAndSelf(t, styleSrcSources(t, mux), edgePdfViewerHashes)
+	assertStyleSrcPatched(t, styleSrcSources(t, mux), edgePdfViewerHashes)
 }
 
 // TestPatchStyleSrcWithHashesNoExistingCsp exercises the fallback that parses the default content security
@@ -126,7 +129,7 @@ func TestPatchStyleSrcWithHashesNoExistingCsp(t *testing.T) {
 		t.Fatalf("patchStyleSrcWithHashes: %v", err)
 	}
 
-	assertStyleSrcHasHashesAndSelf(t, styleSrcSources(t, mux), chromeXmlHashes)
+	assertStyleSrcPatched(t, styleSrcSources(t, mux), chromeXmlHashes)
 }
 
 func TestPatchStyleSrcWithHashesNilMux(t *testing.T) {
@@ -216,8 +219,8 @@ func TestPatchMux(t *testing.T) {
 	}
 
 	sources := styleSrcSources(t, mux)
-	assertStyleSrcHasHashesAndSelf(t, sources, chromeXmlHashes)
-	assertStyleSrcHasHashesAndSelf(t, sources, edgePdfViewerHashes)
+	assertStyleSrcPatched(t, sources, chromeXmlHashes)
+	assertStyleSrcPatched(t, sources, edgePdfViewerHashes)
 
 	if mux.ProblemDetailConverter == nil {
 		t.Errorf("PatchMux did not set ProblemDetailConverter")
