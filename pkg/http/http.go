@@ -30,6 +30,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_writer"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	contentSecurityPolicyParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_security_policy"
+	contentTypeParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_type"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/content_security_policy"
 	"github.com/Motmedel/utils_go/pkg/http/types/integrity_policy"
@@ -63,6 +64,11 @@ var chromeXmlHashes = []string{
 	"sha256-p08VBe6m5i8+qtXWjnH/AN3klt1l4uoOLsjNn8BjdQo=",
 }
 
+var edgePdfViewerHashes = []string{
+	"sha256-YBgjA+VjFtAXSIPo7m2n1vE7Z2+4KoNTMJRNxrNV1iE=",
+	"sha256-tbWZ4NP1341cpcrZVDn7B3o9bt/muXgduILAnC0Zbaw=",
+}
+
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	if mux == nil {
 		return
@@ -71,15 +77,18 @@ func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
 		func(detail *problem_detail.Detail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
 			data, contentType, err := response_error.ConvertProblemDetail(detail, negotiation)
+			if err != nil {
+				return nil, "", fmt.Errorf("convert problem detail: %w", err)
+			}
 			if contentType == "application/problem+xml" {
 				contentType = "application/xml"
 			}
-			return data, contentType, err
+			return data, contentType, nil
 		},
 	)
 }
 
-func PatchChromeXmlRenderer(mux *motmedelMux.Mux) error {
+func patchStyleSrcWithHashes(mux *motmedelMux.Mux, hashes ...string) error {
 	if mux == nil {
 		return nil
 	}
@@ -98,7 +107,7 @@ func PatchChromeXmlRenderer(mux *motmedelMux.Mux) error {
 		return motmedelErrors.NewWithTrace(contentSecurityPolicyParsing.ErrNilContentSecurityPolicy)
 	}
 
-	if err := cspUtils.PatchCspStyleSrcWithHash(csp, chromeXmlHashes...); err != nil {
+	if err := cspUtils.PatchCspStyleSrcWithHash(csp, hashes...); err != nil {
 		return fmt.Errorf("patch csp style src with hash: %w", err)
 	}
 
@@ -130,6 +139,22 @@ func PatchChromeXmlRenderer(mux *motmedelMux.Mux) error {
 	return nil
 }
 
+func PatchChromeXmlRenderer(mux *motmedelMux.Mux) error {
+	if err := patchStyleSrcWithHashes(mux, chromeXmlHashes...); err != nil {
+		return fmt.Errorf("patch style src with hashes: %w", err)
+	}
+
+	return nil
+}
+
+func PatchEdgePdfViewerRenderer(mux *motmedelMux.Mux) error {
+	if err := patchStyleSrcWithHashes(mux, edgePdfViewerHashes...); err != nil {
+		return fmt.Errorf("patch style src with hashes: %w", err)
+	}
+
+	return nil
+}
+
 func PatchMux(mux *motmedelMux.Mux) error {
 	if mux == nil {
 		return nil
@@ -139,6 +164,10 @@ func PatchMux(mux *motmedelMux.Mux) error {
 
 	if err := PatchChromeXmlRenderer(mux); err != nil {
 		return fmt.Errorf("patch chrome xml renderer: %w", err)
+	}
+
+	if err := PatchEdgePdfViewerRenderer(mux); err != nil {
+		return fmt.Errorf("patch edge pdf viewer renderer: %w", err)
 	}
 
 	if motmedelEnv.GetEnvWithDefault("LOG_LEVEL", "INFO") == "DEBUG" {
@@ -158,6 +187,14 @@ func PatchMux(mux *motmedelMux.Mux) error {
 	return nil
 }
 
+// sitemapContentTypes are the response content types whose endpoints are eligible for inclusion in the
+// sitemap, i.e. the document types search engines crawl and index.
+var sitemapContentTypes = map[string]struct{}{
+	"text/html":             {},
+	"application/xhtml+xml": {},
+	"application/pdf":       {},
+}
+
 func makeSitemapXmlUrl(
 	staticContentData *static_content.StaticContentData,
 	location string,
@@ -175,7 +212,11 @@ func makeSitemapXmlUrl(
 	for _, header := range staticContentData.Headers {
 		switch strings.ToLower(header.Name) {
 		case "content-type":
-			isDocument = true
+			if contentType, err := contentTypeParsing.Parse([]byte(header.Value)); err == nil && contentType != nil {
+				if _, found := sitemapContentTypes[contentType.GetFullType(true)]; found {
+					isDocument = true
+				}
+			}
 		case "last-modified":
 			lastModified = header.Value
 		}
@@ -491,7 +532,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 						message = "A CSP violation was reported."
 					}
 				} else {
-					message = "Multiple integrity violations were reported."
+					message = "Multiple CSP violations were reported."
 				}
 
 				httpReporting := httpContext.Reporting
@@ -914,6 +955,15 @@ func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*u
 	if err != nil {
 		return fmt.Errorf("mux get content security policy: %w", err)
 	}
+	if csp == nil {
+		csp, err = contentSecurityPolicyParsing.Parse([]byte(response_writer.DefaultContentSecurityPolicyString))
+		if err != nil {
+			return fmt.Errorf("parse content security policy: %w", err)
+		}
+	}
+	if csp == nil {
+		return motmedelErrors.NewWithTrace(contentSecurityPolicyParsing.ErrNilContentSecurityPolicy)
+	}
 
 	cspUtils.PatchCspConnectSrcWithHostSrc(csp, providerUrls...)
 	if err := mux.SetContentSecurityPolicy(csp); err != nil {
@@ -1116,18 +1166,7 @@ func PatchPublicHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return fmt.Errorf("patch security txt: %w", err)
 	}
 
-	mux.ProblemDetailConverter = response_error.ProblemDetailConverterFunction(
-		func(detail *problem_detail.Detail, negotiation *motmedelHttpTypes.ContentNegotiation) ([]byte, string, error) {
-			data, contentType, err := response_error.ConvertProblemDetail(detail, negotiation)
-			if err != nil {
-				return nil, "", fmt.Errorf("convert problem detail: %w", err)
-			}
-			if contentType == "application/problem+xml" {
-				contentType = "application/xml"
-			}
-			return data, contentType, nil
-		},
-	)
+	PatchMuxProblemDetailConverter(mux)
 
 	return nil
 }

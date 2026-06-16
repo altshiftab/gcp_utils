@@ -14,6 +14,7 @@ require (
 require (
 	github.com/Motmedel/parsing_utils v0.0.6 // indirect
 	github.com/altshiftab/jsonschema v0.0.18 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/pandatix/go-abnf v0.4.2 // indirect
 	github.com/vphpersson/type_generation v0.0.30 // indirect
