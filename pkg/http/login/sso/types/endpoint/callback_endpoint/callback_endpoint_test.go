@@ -43,6 +43,7 @@ func TestEndpoint(t *testing.T) {
 	testCases := []struct {
 		name                   string
 		args                   *muxTesting.Args
+		providerError          bool
 		oauthError             bool
 		skipIdToken            bool
 		invalidIdToken         bool
@@ -129,6 +130,15 @@ func TestEndpoint(t *testing.T) {
 				},
 			},
 			stateMismatch: true,
+		},
+		{
+			name: "provider error (user declined)",
+			args: &muxTesting.Args{
+				ExpectedStatusCode:     http.StatusSeeOther,
+				ExpectedHeaders:        [][2]string{{"Location", testing2.RedirectUrl}},
+				ExpectedHeadersPresent: []string{"Set-Cookie"},
+			},
+			providerError: true,
 		},
 		{
 			name: "oauth error",
@@ -255,7 +265,12 @@ func TestEndpoint(t *testing.T) {
 				)
 			}
 
-			testCase.args.Path = testEndpoint.Path + "?state=" + testing2.State + "&code=" + caseCode
+			if testCase.providerError {
+				testCase.args.Path = testEndpoint.Path + "?state=" + testing2.State +
+					"&error=access_denied&error_subcode=cancel"
+			} else {
+				testCase.args.Path = testEndpoint.Path + "?state=" + testing2.State + "&code=" + caseCode
+			}
 			testCase.args.Method = testEndpoint.Method
 
 			muxTesting.TestArgs(t, testCase.args, httpServer.URL)
