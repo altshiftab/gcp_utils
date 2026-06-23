@@ -190,5 +190,6 @@ func New(
 		AllowedRoles:    config.AllowedRoles,
 		AllowedTenantId: config.AllowedTenantId,
 		SuperAdminRoles: config.SuperAdminRoles,
+		verifier:        verifier,
 	}, nil
 }

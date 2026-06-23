@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -200,6 +201,51 @@ func TestParser_Parse(t *testing.T) {
 		})
 	}
 
+}
+
+func TestParser_Verifier(t *testing.T) {
+	t.Parallel()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("ed25519 generate key: %v", err)
+	}
+	method := &motmedelCryptoEddsa.Method{PrivateKey: privateKey, PublicKey: publicKey}
+
+	// The parser is constructed via New (not by setting the field directly) so
+	// this also guards against the constructor dropping the verifier: New is
+	// given a verifier, and Verifier() must return that same verifier.
+	type args struct {
+		verifier motmedelCryptoInterfaces.NamedVerifier
+		issuer   string
+		audience string
+		options  []authorizer_request_parser_config.Option
+	}
+	tests := []struct {
+		name string
+		args args
+		want motmedelCryptoInterfaces.NamedVerifier
+	}{
+		{
+			name: "verifier passed to New is returned by the getter",
+			args: args{verifier: method, issuer: issuer, audience: audience},
+			want: method,
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			parser, err := New(testCase.args.verifier, testCase.args.issuer, testCase.args.audience, testCase.args.options...)
+			if err != nil {
+				t.Fatalf("new parser: %v", err)
+			}
+
+			if got := parser.Verifier(); !reflect.DeepEqual(got, testCase.want) {
+				t.Errorf("Verifier() = %v, want %v", got, testCase.want)
+			}
+		})
+	}
 }
 
 func TestNew(t *testing.T) {

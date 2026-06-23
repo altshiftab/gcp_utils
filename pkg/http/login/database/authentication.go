@@ -146,7 +146,7 @@ func SelectEmailAddressAccount(ctx context.Context, emailAddress string, databas
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
-	account := &accountPkg.Account{Id: accountId, EmailAddress: emailAddress, Roles: roles}
+	account := &accountPkg.Account{Id: accountId, EmailAddress: emailAddress, Locked: locked, Roles: roles}
 	if customerId.Valid {
 		account.Customer = &customer.Customer{Id: customerId.String, Name: customerName.String}
 	}

@@ -150,11 +150,13 @@ func TokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, er
 		requestUrl := request.URL
 		if requestUrl == nil {
 			errCh <- motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrNilHttpRequestUrl)
+			return
 		}
 
 		query := requestUrl.Query()
 		if query == nil {
 			errCh <- motmedelErrors.NewWithTrace(fmt.Errorf("%w (query)", motmedelErrors.ErrNilMap))
+			return
 		}
 
 		if query.Get("state") != state {
