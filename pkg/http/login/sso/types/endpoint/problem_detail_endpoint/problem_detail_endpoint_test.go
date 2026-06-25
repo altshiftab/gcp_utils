@@ -26,13 +26,14 @@ func newTestEndpoint(t *testing.T, options ...problem_detail_endpoint_config.Opt
 	t.Helper()
 
 	base := []problem_detail_endpoint_config.Option{
+		problem_detail_endpoint_config.WithPath(defaultPath),
 		problem_detail_endpoint_config.WithType(testType),
 		problem_detail_endpoint_config.WithTitle(testTitle),
 		problem_detail_endpoint_config.WithDetail(testDetail),
 		problem_detail_endpoint_config.WithStatus(testStatus),
 	}
 
-	testEndpoint, err := New(defaultPath, append(base, options...)...)
+	testEndpoint, err := New(append(base, options...)...)
 	if err != nil {
 		t.Fatalf("new endpoint: %v", err)
 	}
@@ -65,11 +66,12 @@ func get(t *testing.T, serverURL, accept string) *http.Response {
 func TestNewValidation(t *testing.T) {
 	t.Parallel()
 
-	if _, err := New(""); err == nil {
-		t.Error("expected an error for an empty path")
+	// No path (Path == "") must be rejected.
+	if _, err := New(problem_detail_endpoint_config.WithStatus(testStatus)); err == nil {
+		t.Error("expected an error for a missing path")
 	}
 	// Missing status (Status == 0) must be rejected.
-	if _, err := New(defaultPath, problem_detail_endpoint_config.WithType(testType)); err == nil {
+	if _, err := New(problem_detail_endpoint_config.WithPath(defaultPath)); err == nil {
 		t.Error("expected an error for a missing status")
 	}
 }

@@ -21,11 +21,11 @@ const (
 	DefaultStatus = http.StatusServiceUnavailable
 )
 
-func New(path string, options ...problem_detail_endpoint_config.Option) (*endpoint.Endpoint, error) {
+func New(options ...problem_detail_endpoint_config.Option) (*endpoint.Endpoint, error) {
 	return problem_detail_endpoint.New(
-		path,
 		append(
 			[]problem_detail_endpoint_config.Option{
+				problem_detail_endpoint_config.WithPath(DefaultType),
 				problem_detail_endpoint_config.WithType(DefaultType),
 				problem_detail_endpoint_config.WithTitle(DefaultTitle),
 				problem_detail_endpoint_config.WithDetail(DefaultDetail),

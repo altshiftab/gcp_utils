@@ -14,6 +14,7 @@ const DefaultCacheControl = "public, max-age=3600"
 const DefaultBackUrl = "/"
 
 type Config struct {
+	Path         string
 	Type         string
 	Title        string
 	Detail       string
@@ -45,6 +46,15 @@ func New(options ...Option) *Config {
 	}
 
 	return config
+}
+
+// WithPath sets the path the endpoint is mounted at. The named problem
+// endpoints (sign_in_cancelled_endpoint, etc.) default this to their canonical
+// path, so callers do not normally set it.
+func WithPath(path string) Option {
+	return func(config *Config) {
+		config.Path = path
+	}
 }
 
 // WithType sets the RFC 9457 problem type URI. It should be a stable,

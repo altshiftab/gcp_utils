@@ -26,12 +26,12 @@ import (
 // `Cache-Control` and a `Vary: Accept` header; the response writer omits `Vary`
 // (and compresses) only for `no-store` responses, so a cacheable value here is
 // what produces correct caching semantics.
-func New(path string, options ...problem_detail_endpoint_config.Option) (*endpoint.Endpoint, error) {
-	if path == "" {
+func New(options ...problem_detail_endpoint_config.Option) (*endpoint.Endpoint, error) {
+	config := problem_detail_endpoint_config.New(options...)
+
+	if config.Path == "" {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("path"))
 	}
-
-	config := problem_detail_endpoint_config.New(options...)
 
 	if config.Status == 0 {
 		return nil, motmedelErrors.NewWithTrace(empty_error.New("status"))
@@ -87,7 +87,7 @@ func New(path string, options ...problem_detail_endpoint_config.Option) (*endpoi
 	}
 
 	return &endpoint.Endpoint{
-		Path:    path,
+		Path:    config.Path,
 		Method:  http.MethodGet,
 		Public:  true,
 		Handler: handler,

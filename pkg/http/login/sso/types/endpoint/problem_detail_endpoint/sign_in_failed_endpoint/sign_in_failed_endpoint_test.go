@@ -11,12 +11,10 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 )
 
-const testPath = "/problems/sign-in-failed"
-
 func TestEndpoint(t *testing.T) {
 	t.Parallel()
 
-	testEndpoint, err := New(testPath)
+	testEndpoint, err := New()
 	if err != nil {
 		t.Fatalf("new endpoint: %v", err)
 	}
@@ -26,7 +24,7 @@ func TestEndpoint(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	request, err := http.NewRequest(http.MethodGet, server.URL+testPath, nil)
+	request, err := http.NewRequest(http.MethodGet, server.URL+DefaultType, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
