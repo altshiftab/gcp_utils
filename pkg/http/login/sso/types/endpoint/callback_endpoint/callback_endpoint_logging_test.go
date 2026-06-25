@@ -19,6 +19,7 @@ import (
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	motmedelContextLogger "github.com/Motmedel/utils_go/pkg/log/context_logger"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors/oauth_error"
 	testing2 "github.com/altshiftab/gcp_utils/pkg/http/login/sso/testing"
 )
 
@@ -49,7 +50,7 @@ func TestProviderErrorLogging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new endpoint: %v", err)
 	}
-	if err := testEndpoint.Initialize(oauthConfig, idTokenAuthenticator, sessionManager); err != nil {
+	if err := testEndpoint.Initialize(testOrigin, oauthConfig, idTokenAuthenticator, sessionManager); err != nil {
 		t.Fatalf("test endpoint initialize: %v", err)
 	}
 	testEndpoint.popOauthFlow = func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error) {
@@ -88,12 +89,14 @@ func TestProviderErrorLogging(t *testing.T) {
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	// Behavior: redirect back to the flow origin, with the callback cookie cleared.
+	// Behavior: redirect to the cancelled problem page, with the callback cookie
+	// cleared.
+	wantLocation := testOrigin + categoryProblemPaths[oauth_error.CategoryCancelled]
 	if response.StatusCode != http.StatusSeeOther {
 		t.Errorf("status code = %d, want %d", response.StatusCode, http.StatusSeeOther)
 	}
-	if location := response.Header.Get("Location"); location != testing2.RedirectUrl {
-		t.Errorf("Location = %q, want %q", location, testing2.RedirectUrl)
+	if location := response.Header.Get("Location"); location != wantLocation {
+		t.Errorf("Location = %q, want %q", location, wantLocation)
 	}
 
 	var callbackCookie *http.Cookie

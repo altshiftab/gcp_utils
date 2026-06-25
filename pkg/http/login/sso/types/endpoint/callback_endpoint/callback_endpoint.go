@@ -43,8 +43,22 @@ import (
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors/oauth_error"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/callback_endpoint/callback_endpoint_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/problem_detail_endpoint/access_denied_endpoint"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/problem_detail_endpoint/sign_in_cancelled_endpoint"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/problem_detail_endpoint/sign_in_failed_endpoint"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/problem_detail_endpoint/sign_in_unavailable_endpoint"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/provider_claims"
 )
+
+// categoryProblemPaths maps an OAuth error category to the canonical path of its
+// problem page. Redirect targets are these paths resolved against the origin
+// passed to Initialize, so the problem endpoints must be mounted at these paths.
+var categoryProblemPaths = map[oauth_error.Category]string{
+	oauth_error.CategoryCancelled:    sign_in_cancelled_endpoint.DefaultType,
+	oauth_error.CategoryAccessDenied: access_denied_endpoint.DefaultType,
+	oauth_error.CategoryUnavailable:  sign_in_unavailable_endpoint.DefaultType,
+	oauth_error.CategoryFailed:       sign_in_failed_endpoint.DefaultType,
+}
 
 type UrlInput struct {
 	State        string `json:"state"`
@@ -72,9 +86,17 @@ type Endpoint[T provider_claims.ProviderClaims] struct {
 	CallbackCookieName    string
 	DbscChallengeDuration time.Duration
 	popOauthFlow          func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
+	problemRedirectUrls   map[oauth_error.Category]string
+	classifyOauthError    func(*oauth_error.Error) oauth_error.Category
 }
 
+// Initialize wires the endpoint's runtime dependencies. origin is the base URL
+// (scheme and host, e.g. "https://admin.example.com") that the problem page
+// paths are resolved against to form the error redirect targets; an empty origin
+// yields same-origin relative redirects. The problem endpoints must be mounted
+// at the paths in categoryProblemPaths.
 func (e *Endpoint[T]) Initialize(
+	origin string,
 	oauthConfig *motmedelOauth2Config.Config,
 	idTokenAuthenticator *authenticatorPkg.AuthenticatorWithKeyHandler,
 	sessionManager *session_manager.Manager,
@@ -90,6 +112,13 @@ func (e *Endpoint[T]) Initialize(
 	if sessionManager == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
+
+	origin = strings.TrimRight(origin, "/")
+	problemRedirectUrls := make(map[oauth_error.Category]string, len(categoryProblemPaths))
+	for category, path := range categoryProblemPaths {
+		problemRedirectUrls[category] = origin + path
+	}
+	e.problemRedirectUrls = problemRedirectUrls
 
 	db := sessionManager.Db
 	if db == nil {
@@ -195,8 +224,11 @@ func (e *Endpoint[T]) Initialize(
 
 		// If the provider returned an error instead of an authorization code (e.g.
 		// the user declined consent or cancelled: error=access_denied), this is an
-		// expected outcome rather than a server fault. Clear the callback cookie and
-		// send the user back to where the flow originated instead of surfacing a 400.
+		// expected outcome rather than a server fault. Classify it, clear the
+		// callback cookie, and redirect to the matching problem page. Categories
+		// that are not recoverable (denials, misconfiguration) deliberately land on
+		// a terminal page rather than the originating URL, which could otherwise
+		// re-trigger the login flow and loop.
 		if urlInput.Error != "" {
 			oauthError := oauth_error.New(
 				urlInput.Error,
@@ -204,6 +236,11 @@ func (e *Endpoint[T]) Initialize(
 				urlInput.ErrorDescription,
 				urlInput.ErrorUri,
 			)
+
+			category := oauthError.Category()
+			if e.classifyOauthError != nil {
+				category = e.classifyOauthError(oauthError)
+			}
 
 			// Bridge the mux's HTTP context onto the logging context so the
 			// registered http_context_extractor populates the ECS http/url/client/...
@@ -224,10 +261,21 @@ func (e *Endpoint[T]) Initialize(
 				),
 			)
 
+			// Resolve the redirect target: the category-specific problem page, then
+			// the catch-all problem page, then the originating URL as a last resort
+			// (preserving the legacy behavior when no problem pages are configured).
+			redirectUrl := e.problemRedirectUrls[category]
+			if redirectUrl == "" {
+				redirectUrl = e.problemRedirectUrls[oauth_error.CategoryFailed]
+			}
+			if redirectUrl == "" {
+				redirectUrl = oauthFlow.RedirectUrl
+			}
+
 			return &muxResponse.Response{
 				StatusCode: http.StatusSeeOther,
 				Headers: []*muxResponse.HeaderEntry{
-					{Name: "Location", Value: oauthFlow.RedirectUrl},
+					{Name: "Location", Value: redirectUrl},
 					{Name: "Set-Cookie", Value: clearedCallbackCookie.String()},
 				},
 			}, nil
@@ -376,5 +424,6 @@ func New[T provider_claims.ProviderClaims](path string, options ...callback_endp
 		},
 		CallbackCookieName: config.CallbackCookieName,
 		popOauthFlow:       config.PopOauthFlow,
+		classifyOauthError: config.ClassifyOauthError,
 	}, nil
 }

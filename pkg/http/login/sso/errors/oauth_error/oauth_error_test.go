@@ -69,6 +69,52 @@ func TestGetCode(t *testing.T) {
 	}
 }
 
+func TestCategory(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		code        string
+		subcode     string
+		description string
+		want        Category
+	}{
+		{name: "microsoft cancel", code: "access_denied", subcode: "cancel", want: CategoryCancelled},
+		{name: "bare access_denied (google cancel)", code: "access_denied", want: CategoryCancelled},
+		{name: "declined consent", code: "access_denied", description: "AADSTS65004: User declined to consent.", want: CategoryCancelled},
+		{name: "not assigned to app", code: "access_denied", description: "AADSTS50105: not assigned.", want: CategoryAccessDenied},
+		{name: "not in tenant", code: "access_denied", description: "AADSTS90072: account does not exist.", want: CategoryAccessDenied},
+		{name: "google admin policy", code: "admin_policy_enforced", want: CategoryAccessDenied},
+		{name: "google org internal", code: "org_internal", want: CategoryAccessDenied},
+		{name: "consent required", code: "consent_required", want: CategoryAccessDenied},
+		{name: "server error", code: "server_error", want: CategoryUnavailable},
+		{name: "temporarily unavailable", code: "temporarily_unavailable", want: CategoryUnavailable},
+		{name: "misconfig invalid_scope", code: "invalid_scope", want: CategoryFailed},
+		{name: "unauthorized client", code: "unauthorized_client", want: CategoryFailed},
+		{name: "unknown", code: "something_new", want: CategoryFailed},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := New(testCase.code, testCase.subcode, testCase.description, "")
+			if got := err.Category(); got != testCase.want {
+				t.Errorf("Category() = %d, want %d", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestCategoryNil(t *testing.T) {
+	t.Parallel()
+
+	var err *Error
+	if got := err.Category(); got != CategoryFailed {
+		t.Errorf("nil Category() = %d, want %d (CategoryFailed)", got, CategoryFailed)
+	}
+}
+
 func TestNew(t *testing.T) {
 	t.Parallel()
 

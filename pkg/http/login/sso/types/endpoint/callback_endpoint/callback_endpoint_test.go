@@ -17,11 +17,13 @@ import (
 	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors/oauth_error"
 	testing2 "github.com/altshiftab/gcp_utils/pkg/http/login/sso/testing"
 )
 
 const (
 	defaultPath = "/callback"
+	testOrigin  = "https://login.example.test"
 )
 
 var sessionManager *session_manager.Manager
@@ -135,7 +137,7 @@ func TestEndpoint(t *testing.T) {
 			name: "provider error (user declined)",
 			args: &muxTesting.Args{
 				ExpectedStatusCode:     http.StatusSeeOther,
-				ExpectedHeaders:        [][2]string{{"Location", testing2.RedirectUrl}},
+				ExpectedHeaders:        [][2]string{{"Location", testOrigin + categoryProblemPaths[oauth_error.CategoryCancelled]}},
 				ExpectedHeadersPresent: []string{"Set-Cookie"},
 			},
 			providerError: true,
@@ -193,7 +195,7 @@ func TestEndpoint(t *testing.T) {
 				t.Fatalf("new endpoint: %v", err)
 			}
 
-			if err := testEndpoint.Initialize(oauthConfig, idTokenAuthenticator, sessionManager); err != nil {
+			if err := testEndpoint.Initialize(testOrigin, oauthConfig, idTokenAuthenticator, sessionManager); err != nil {
 				t.Fatalf("test endpoint initialize: %v", err)
 			}
 
