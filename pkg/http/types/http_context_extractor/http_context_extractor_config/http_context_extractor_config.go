@@ -11,6 +11,7 @@ type Config struct {
 	ReplaceableMessages    []string
 	MaskedUrlParams        []*schema.Url
 	MaskedHeaders          []*MaskedHeader
+	MaskedRequestBodyUrls  []*schema.Url
 	MaskedResponseBodyUrls []*schema.Url
 }
 
@@ -42,6 +43,12 @@ func WithMaskedUrlParams(urlPatterns ...*schema.Url) Option {
 func WithMaskedHeaders(maskedHeaders ...*MaskedHeader) Option {
 	return func(config *Config) {
 		config.MaskedHeaders = maskedHeaders
+	}
+}
+
+func WithMaskedRequestBodyUrls(urlPatterns ...*schema.Url) Option {
+	return func(config *Config) {
+		config.MaskedRequestBodyUrls = urlPatterns
 	}
 }
 
