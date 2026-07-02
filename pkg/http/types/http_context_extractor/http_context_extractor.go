@@ -394,6 +394,7 @@ type Extractor struct {
 	ReplaceableMessages    map[string]struct{}
 	MaskedUrlParams        []*schema.Url
 	MaskedHeaders          []*http_context_extractor_config.MaskedHeader
+	MaskedRequestBodyUrls  []*schema.Url
 	MaskedResponseBodyUrls []*schema.Url
 }
 
@@ -458,6 +459,21 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 			}
 
 			maskedHeaders := e.headersToMaskForUrl(base.Url)
+
+			if baseUrl := base.Url; baseUrl != nil && len(e.MaskedRequestBodyUrls) > 0 {
+				if ecsHttp := base.Http; ecsHttp != nil {
+					if request := ecsHttp.Request; request != nil {
+						if body := request.Body; body != nil && body.Content != "" {
+							for _, pattern := range e.MaskedRequestBodyUrls {
+								if matches, _ := urlMatchesPattern(pattern, baseUrl); matches {
+									body.Content = maskedValue
+									break
+								}
+							}
+						}
+					}
+				}
+			}
 
 			if baseUrl := base.Url; baseUrl != nil && len(e.MaskedResponseBodyUrls) > 0 {
 				if ecsHttp := base.Http; ecsHttp != nil {
@@ -647,6 +663,7 @@ func New(options ...http_context_extractor_config.Option) *Extractor {
 		ReplaceableMessages:    messagesMap,
 		MaskedUrlParams:        config.MaskedUrlParams,
 		MaskedHeaders:          config.MaskedHeaders,
+		MaskedRequestBodyUrls:  config.MaskedRequestBodyUrls,
 		MaskedResponseBodyUrls: config.MaskedResponseBodyUrls,
 	}
 }

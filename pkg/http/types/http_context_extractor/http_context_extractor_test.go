@@ -1032,3 +1032,102 @@ func TestUrlMatchesPattern_PathPrefix(t *testing.T) {
 		})
 	}
 }
+
+// requestBodyContent walks a record's attributes for http.request.body.content.
+func requestBodyContent(t *testing.T, record *slog.Record) (string, bool) {
+	t.Helper()
+	var (
+		content string
+		found   bool
+	)
+	record.Attrs(func(a slog.Attr) bool {
+		if a.Key != "http" {
+			return true
+		}
+		a.Value.Resolve()
+		for _, request := range a.Value.Group() {
+			if request.Key != "request" {
+				continue
+			}
+			for _, body := range request.Value.Group() {
+				if body.Key != "body" {
+					continue
+				}
+				for _, field := range body.Value.Group() {
+					if field.Key == "content" {
+						content = field.Value.String()
+						found = true
+						return false
+					}
+				}
+			}
+		}
+		return true
+	})
+	return content, found
+}
+
+func TestExtractor_Handle_MaskedRequestBody(t *testing.T) {
+	t.Parallel()
+
+	const secret = "client_secret=GOCSPX-supersecret&grant_type=refresh_token&refresh_token=1//0verysecret"
+
+	newContext := func() context.Context {
+		req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(
+			"POST /token HTTP/1.1\r\nHost: oauth2.example.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\n",
+		)))
+		if err != nil {
+			t.Fatalf("read request: %v", err)
+		}
+		httpContext := &motmedelHttpTypes.HttpContext{
+			Request:     req,
+			RequestBody: []byte(secret),
+		}
+		return context.WithValue(context.Background(), motmedelHttpContext.HttpContextContextKey, httpContext)
+	}
+
+	testCases := []struct {
+		name     string
+		patterns []*motmedelSchemaTypes.Url
+		want     string
+	}{
+		{
+			name:     "masked when path matches",
+			patterns: []*motmedelSchemaTypes.Url{{Path: "/token"}},
+			want:     maskedValue,
+		},
+		{
+			name:     "masked when domain and path match",
+			patterns: []*motmedelSchemaTypes.Url{{Domain: "oauth2.example.com", Path: "/token"}},
+			want:     maskedValue,
+		},
+		{
+			name:     "unmasked when no patterns",
+			patterns: nil,
+			want:     secret,
+		},
+		{
+			name:     "unmasked when path does not match",
+			patterns: []*motmedelSchemaTypes.Url{{Path: "/other"}},
+			want:     secret,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e := &Extractor{MaskedRequestBodyUrls: tc.patterns}
+			record := &slog.Record{}
+			if err := e.Handle(newContext(), record); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got, found := requestBodyContent(t, record)
+			if !found {
+				t.Fatal("http.request.body.content attribute not found in record")
+			}
+			if got != tc.want {
+				t.Errorf("request body content: got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
