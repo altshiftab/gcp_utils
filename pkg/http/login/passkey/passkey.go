@@ -15,6 +15,7 @@ import (
 	motmedelCryptoInterfaces "github.com/Motmedel/utils_go/pkg/crypto/interfaces"
 	motmedelRsa "github.com/Motmedel/utils_go/pkg/crypto/rsa"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	"github.com/Motmedel/utils_go/pkg/http/mux"
 	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
@@ -25,7 +26,6 @@ import (
 	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/utils/body_parser/json/schema"
 	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
-	motmedelNetErrors "github.com/Motmedel/utils_go/pkg/net/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
 	passkeyProviderErrors "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/errors"
@@ -81,7 +81,7 @@ func PatchMux(
 
 	domainBreakdown := domain_breakdown.GetDomainBreakdown(originUrlHostName)
 	if domainBreakdown == nil {
-		return motmedelErrors.New(motmedelNetErrors.ErrNilDomainBreakdown)
+		return motmedelErrors.New(nil_error.New("domain breakdown"))
 	}
 
 	if utils.IsNil(sessionHandler) {

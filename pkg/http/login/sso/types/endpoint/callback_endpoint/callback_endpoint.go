@@ -18,7 +18,6 @@ import (
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
-	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	muxPkg "github.com/Motmedel/utils_go/pkg/http/mux"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
@@ -149,7 +148,7 @@ func (e *Endpoint[T]) Initialize(
 		}
 		if callbackCookie == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("%w (callback)", motmedelHttpErrors.ErrNilCookie)),
+				ServerError: motmedelErrors.NewWithTrace(nil_error.NewWithInstance("cookie", "callback")),
 			}
 		}
 

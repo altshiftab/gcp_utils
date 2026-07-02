@@ -104,7 +104,7 @@ func patchStyleSrcWithHashes(mux *motmedelMux.Mux, hashes ...string) error {
 		}
 	}
 	if csp == nil {
-		return motmedelErrors.NewWithTrace(contentSecurityPolicyParsing.ErrNilContentSecurityPolicy)
+		return motmedelErrors.NewWithTrace(nil_error.New("content security policy"))
 	}
 
 	if err := cspUtils.PatchCspStyleSrcWithHash(csp, hashes...); err != nil {
@@ -969,7 +969,7 @@ func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*u
 		}
 	}
 	if csp == nil {
-		return motmedelErrors.NewWithTrace(contentSecurityPolicyParsing.ErrNilContentSecurityPolicy)
+		return motmedelErrors.NewWithTrace(nil_error.New("content security policy"))
 	}
 
 	cspUtils.PatchCspConnectSrcWithHostSrc(csp, providerUrls...)

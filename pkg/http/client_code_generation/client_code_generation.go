@@ -10,8 +10,8 @@ import (
 	"text/template"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
-	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
@@ -135,12 +135,12 @@ func makeTemplateInput(
 
 		method := endpoint.Method
 		if method == "" {
-			return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrEmptyMethod, endpoint)
+			return nil, motmedelErrors.NewWithTrace(empty_error.New("method"), endpoint)
 		}
 
 		path := endpoint.Path
 		if path == "" {
-			return nil, motmedelErrors.NewWithTrace(motmedelHttpErrors.ErrEmptyUrl, endpoint)
+			return nil, motmedelErrors.NewWithTrace(empty_error.New("url"), endpoint)
 		}
 
 		var outputContentType string

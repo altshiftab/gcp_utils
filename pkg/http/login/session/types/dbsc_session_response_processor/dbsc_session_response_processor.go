@@ -16,7 +16,6 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/interfaces/comparer"
-	motmedelJwkErrors "github.com/Motmedel/utils_go/pkg/json/jose/jwk/errors"
 	motmedelJwkKey "github.com/Motmedel/utils_go/pkg/json/jose/jwk/types/key"
 	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token/authenticated_token"
@@ -136,7 +135,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 	namedVerifier, err := jwkKey.NamedVerifier()
 	if err != nil {
 		wrappedErr := motmedelErrors.New(fmt.Errorf("jwk key named verifier: %w", err), key)
-		if errors.Is(err, motmedelJwkErrors.ErrEmptyAlg) {
+		if emptyError, ok := errors.AsType[*empty_error.Error](err); ok && emptyError.Field == "alg" {
 			return nil, &response_error.ResponseError{
 				ClientError: wrappedErr,
 				ProblemDetail: problem_detail.New(

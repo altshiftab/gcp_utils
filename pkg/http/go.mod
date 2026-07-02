@@ -3,10 +3,10 @@ module github.com/altshiftab/gcp_utils/pkg/http
 go 1.26
 
 require (
-	github.com/Motmedel/utils_go v0.0.479
-	github.com/Motmedel/utils_go/pkg/http/mux v0.0.186
-	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.25
-	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.43
+	github.com/Motmedel/utils_go v0.0.489
+	github.com/Motmedel/utils_go/pkg/http/mux v0.0.189
+	github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser v0.0.26
+	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.45
 	golang.org/x/net v0.53.0
 	golang.org/x/text v0.36.0
 )

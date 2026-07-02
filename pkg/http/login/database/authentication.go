@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	motmedelSqlErrors "github.com/Motmedel/utils_go/pkg/database/sql/errors"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -254,7 +253,7 @@ func InsertOauthFlow(
 	}
 
 	if database == nil {
-		return nil, motmedelErrors.NewWithTrace(motmedelSqlErrors.ErrNilSqlDatabase)
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql database"))
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -264,7 +263,7 @@ func InsertOauthFlow(
 	expiresAt := time.Now().Add(expirationDuration)
 	row := database.QueryRowContext(ctx, oauthFlowInsertQuery, state, codeVerifier, redirectUrl, expiresAt)
 	if row == nil {
-		return nil, motmedelErrors.NewWithTrace(motmedelSqlErrors.ErrNilRow)
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
 	var id string
