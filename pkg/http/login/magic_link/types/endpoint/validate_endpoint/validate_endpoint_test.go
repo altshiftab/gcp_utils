@@ -75,9 +75,9 @@ func TestEndpoint(t *testing.T) {
 	emptySub := defaultPayload("", "empty-sub-nonce")
 
 	testCases := []struct {
-		name     string
-		args     *muxTesting.Args
-		token    string
+		name      string
+		args      *muxTesting.Args
+		token     string
 		skipQuery bool
 	}{
 		{
@@ -297,12 +297,12 @@ func TestEndpoint_Initialize(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		nilVerifier    bool
-		nilSession     bool
-		nilRedirect    bool
-		emptyRedirect  bool
-		wantErr        bool
+		name          string
+		nilVerifier   bool
+		nilSession    bool
+		nilRedirect   bool
+		emptyRedirect bool
+		wantErr       bool
 	}{
 		{name: "success"},
 		{name: "nil verifier", nilVerifier: true, wantErr: true},

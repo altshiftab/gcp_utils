@@ -22,6 +22,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
@@ -430,6 +431,7 @@ func TestNew(t *testing.T) {
 			Endpoint{},
 			"selectRefreshAuthentication",
 		),
+		cmpopts.EquateComparable(adapter.Adapter[struct{}]{}),
 	}
 
 	type args struct {
@@ -447,6 +449,7 @@ func TestNew(t *testing.T) {
 					Endpoint: &endpoint.Endpoint{
 						Path:       refresh_endpoint_config.DefaultPath,
 						Method:     http.MethodPost,
+						UrlParser:  adapter.New(query_extractor.Empty),
 						BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 					},
 				},
@@ -461,6 +464,7 @@ func TestNew(t *testing.T) {
 					Endpoint: &endpoint.Endpoint{
 						Path:       "/test",
 						Method:     http.MethodPost,
+						UrlParser:  adapter.New(query_extractor.Empty),
 						BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 					},
 				},

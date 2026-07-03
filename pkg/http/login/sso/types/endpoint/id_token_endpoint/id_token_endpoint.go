@@ -16,6 +16,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_header_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_header_extractor/token_header_extractor_config"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
@@ -163,6 +164,7 @@ func New[T provider_claims.ProviderClaims](path string, options ...id_token_endp
 			Endpoint: &endpoint.Endpoint{
 				Path:         path,
 				Method:       http.MethodPost,
+				UrlParser:    adapter.New(query_extractor.Empty),
 				HeaderParser: adapter.New(idTokenHeaderExtractor),
 				BodyLoader:   &body_loader.Loader{Setting: body_setting.Forbidden},
 				Public:       true,

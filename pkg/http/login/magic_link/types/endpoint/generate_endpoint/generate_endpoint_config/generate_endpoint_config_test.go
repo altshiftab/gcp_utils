@@ -110,4 +110,3 @@ func TestDefaultMakeNonce(t *testing.T) {
 		t.Errorf("DefaultMakeNonce returned empty string")
 	}
 }
-

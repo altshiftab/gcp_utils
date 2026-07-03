@@ -16,7 +16,9 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader/body_setting"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/cors_configurator"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
@@ -174,6 +176,7 @@ func TestNew(t *testing.T) {
 			Endpoint{},
 			"updateAuthenticationWithEnded",
 		),
+		cmpopts.EquateComparable(adapter.Adapter[struct{}]{}),
 	}
 
 	type args struct {
@@ -191,6 +194,7 @@ func TestNew(t *testing.T) {
 					Endpoint: &endpoint.Endpoint{
 						Path:       end_endpoint_config.DefaultPath,
 						Method:     http.MethodPost,
+						UrlParser:  adapter.New(query_extractor.Empty),
 						BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 					},
 				},
@@ -206,6 +210,7 @@ func TestNew(t *testing.T) {
 					Endpoint: &endpoint.Endpoint{
 						Path:       "/test",
 						Method:     http.MethodPost,
+						UrlParser:  adapter.New(query_extractor.Empty),
 						BodyLoader: &body_loader.Loader{Setting: body_setting.Forbidden},
 					},
 				},

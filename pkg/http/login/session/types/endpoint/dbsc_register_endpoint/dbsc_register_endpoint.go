@@ -17,6 +17,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/header_extractor"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
@@ -213,8 +214,9 @@ func New(options ...dbsc_register_endpoint_config.Option) *Endpoint {
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
-				Path:   config.Path,
-				Method: http.MethodPost,
+				Path:      config.Path,
+				Method:    http.MethodPost,
+				UrlParser: adapter.New(query_extractor.Empty),
 			},
 		},
 		RefreshPath:                           config.RefreshPath,

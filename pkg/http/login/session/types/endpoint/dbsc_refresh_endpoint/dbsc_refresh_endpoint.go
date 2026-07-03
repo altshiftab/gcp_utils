@@ -19,6 +19,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
@@ -233,8 +234,9 @@ func New(options ...dbsc_refresh_endpoint_config.Option) *Endpoint {
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
-				Path:   config.Path,
-				Method: http.MethodPost,
+				Path:      config.Path,
+				Method:    http.MethodPost,
+				UrlParser: adapter.New(query_extractor.Empty),
 			},
 		},
 		SessionDuration:             config.SessionDuration,

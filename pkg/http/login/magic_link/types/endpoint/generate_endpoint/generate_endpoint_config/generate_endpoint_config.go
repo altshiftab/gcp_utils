@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	DefaultPath           = "/api/login/magic/generate"
-	DefaultLinkExpiration = 15 * time.Minute
-	DefaultMaxBytes int64 = 512
-	DefaultMessageBuilder = func(toAddress *mail.Address, linkUrl *url.URL, expiresAt time.Time, acceptLanguage *motmedelHttpTypes.AcceptLanguage) (*message.Body, error) {
+	DefaultPath                 = "/api/login/magic/generate"
+	DefaultLinkExpiration       = 15 * time.Minute
+	DefaultMaxBytes       int64 = 512
+	DefaultMessageBuilder       = func(toAddress *mail.Address, linkUrl *url.URL, expiresAt time.Time, acceptLanguage *motmedelHttpTypes.AcceptLanguage) (*message.Body, error) {
 		content := fmt.Sprintf(
 			"Click the link below to sign in. The link expires at %s.\r\n\r\n%s\r\n\r\nIf you did not request this email, you can safely ignore it.\r\n",
 			expiresAt.UTC().Format(time.RFC1123),

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"html/template"
 
-	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	cspParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_security_policy"
+	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	cspUtils "github.com/Motmedel/utils_go/pkg/http/utils/content_security_policy"
 )
 

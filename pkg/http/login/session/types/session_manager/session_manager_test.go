@@ -42,13 +42,13 @@ func newTestSigner(t *testing.T) *motmedelCryptoEddsa.Method {
 }
 
 type stubs struct {
-	account         *accountPkg.Account
-	selectErr       error
-	authentication  *authenticationPkg.Authentication
-	insertAuthErr   error
-	insertDbscErr   error
-	dbscChallenges  []string
-	insertedAuth    int
+	account        *accountPkg.Account
+	selectErr      error
+	authentication *authenticationPkg.Authentication
+	insertAuthErr  error
+	insertDbscErr  error
+	dbscChallenges []string
+	insertedAuth   int
 }
 
 func newManager(t *testing.T, signer motmedelCryptoInterfaces.NamedSigner, s *stubs) *Manager {
@@ -193,30 +193,30 @@ func TestManager_CreateSession(t *testing.T) {
 			stubs:        &stubs{account: newAccount(), authentication: newAuthentication()},
 		},
 		{
-			name:         "nil signer",
-			authMethod:   authentication_method.Sso,
-			emailAddress: testEmail,
+			name:          "nil signer",
+			authMethod:    authentication_method.Sso,
+			emailAddress:  testEmail,
 			mutateManager: func(m *Manager) { m.Signer = nil },
 			stubs:         &stubs{account: newAccount(), authentication: newAuthentication()},
 		},
 		{
-			name:         "empty dbsc algs",
-			authMethod:   authentication_method.Sso,
-			emailAddress: testEmail,
+			name:          "empty dbsc algs",
+			authMethod:    authentication_method.Sso,
+			emailAddress:  testEmail,
 			mutateManager: func(m *Manager) { m.DbscAlgs = nil },
 			stubs:         &stubs{account: newAccount(), authentication: newAuthentication()},
 		},
 		{
-			name:         "empty dbsc register path",
-			authMethod:   authentication_method.Sso,
-			emailAddress: testEmail,
+			name:          "empty dbsc register path",
+			authMethod:    authentication_method.Sso,
+			emailAddress:  testEmail,
 			mutateManager: func(m *Manager) { m.DbscRegisterPath = "" },
 			stubs:         &stubs{account: newAccount(), authentication: newAuthentication()},
 		},
 		{
-			name:         "empty cookie domain",
-			authMethod:   authentication_method.Sso,
-			emailAddress: testEmail,
+			name:          "empty cookie domain",
+			authMethod:    authentication_method.Sso,
+			emailAddress:  testEmail,
 			mutateManager: func(m *Manager) { m.CookieDomain = "" },
 			stubs:         &stubs{account: newAccount(), authentication: newAuthentication()},
 		},
@@ -462,7 +462,7 @@ func TestManager_RefreshSession(t *testing.T) {
 	tokenNoClaims := &session_token.Token{}
 
 	tests := []struct {
-		name          string
+		name           string
 		authentication *authenticationPkg.Authentication
 		sessionToken   *session_token.Token
 		authMethod     string

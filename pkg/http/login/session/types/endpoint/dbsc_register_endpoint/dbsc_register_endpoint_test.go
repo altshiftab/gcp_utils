@@ -17,6 +17,8 @@ import (
 	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor/token_cookie_extractor_config"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
@@ -284,6 +286,7 @@ func TestNew(t *testing.T) {
 			Endpoint{},
 			"updateAuthenticationWithDbscPublicKey",
 		),
+		cmpopts.EquateComparable(adapter.Adapter[struct{}]{}),
 	}
 
 	type args struct {
@@ -299,8 +302,9 @@ func TestNew(t *testing.T) {
 			want: &Endpoint{
 				Endpoint: &initialization_endpoint.Endpoint{
 					Endpoint: &endpoint.Endpoint{
-						Path:   dbsc_register_endpoint_config.DefaultPath,
-						Method: http.MethodPost,
+						Path:      dbsc_register_endpoint_config.DefaultPath,
+						Method:    http.MethodPost,
+						UrlParser: adapter.New(query_extractor.Empty),
 					},
 				},
 				RefreshPath: dbsc_refresh_endpoint_config.DefaultPath,
@@ -312,8 +316,9 @@ func TestNew(t *testing.T) {
 			want: &Endpoint{
 				Endpoint: &initialization_endpoint.Endpoint{
 					Endpoint: &endpoint.Endpoint{
-						Path:   "/test",
-						Method: http.MethodPost,
+						Path:      "/test",
+						Method:    http.MethodPost,
+						UrlParser: adapter.New(query_extractor.Empty),
 					},
 				},
 				RefreshPath: dbsc_refresh_endpoint_config.DefaultPath,
@@ -325,8 +330,9 @@ func TestNew(t *testing.T) {
 			want: &Endpoint{
 				Endpoint: &initialization_endpoint.Endpoint{
 					Endpoint: &endpoint.Endpoint{
-						Path:   dbsc_register_endpoint_config.DefaultPath,
-						Method: http.MethodPost,
+						Path:      dbsc_register_endpoint_config.DefaultPath,
+						Method:    http.MethodPost,
+						UrlParser: adapter.New(query_extractor.Empty),
 					},
 				},
 				RefreshPath: "/refresh-test",

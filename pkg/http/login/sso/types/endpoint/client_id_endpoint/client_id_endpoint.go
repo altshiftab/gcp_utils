@@ -7,6 +7,8 @@ import (
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
@@ -49,9 +51,10 @@ func New(path string) (*Endpoint, error) {
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
-				Path:   path,
-				Method: http.MethodGet,
-				Public: true,
+				Path:      path,
+				Method:    http.MethodGet,
+				UrlParser: adapter.New(query_extractor.Empty),
+				Public:    true,
 				Hint: &endpoint.Hint{
 					OutputType:        motmedelReflect.TypeOf[string](),
 					OutputContentType: "text/plain",

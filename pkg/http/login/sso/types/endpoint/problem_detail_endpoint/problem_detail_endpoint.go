@@ -8,6 +8,8 @@ import (
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	muxContext "github.com/Motmedel/utils_go/pkg/http/mux/context"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
@@ -87,10 +89,11 @@ func New(options ...problem_detail_endpoint_config.Option) (*endpoint.Endpoint, 
 	}
 
 	return &endpoint.Endpoint{
-		Path:    config.Path,
-		Method:  http.MethodGet,
-		Public:  true,
-		Handler: handler,
+		Path:      config.Path,
+		Method:    http.MethodGet,
+		UrlParser: adapter.New(query_extractor.Empty),
+		Public:    true,
+		Handler:   handler,
 		Hint: &endpoint.Hint{
 			OutputType:        motmedelReflect.TypeOf[problem_detail.Detail](),
 			OutputContentType: "application/problem+json",
