@@ -1,6 +1,8 @@
 package id_token_endpoint
 
 import (
+	"encoding/base64"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -261,6 +263,69 @@ func TestEndpointIdTokenReuse(t *testing.T) {
 		ExpectedProblemDetail: &problem_detail.Detail{
 			Detail: "This sign-in link has already been used.",
 		},
+	}, httpServer.URL)
+}
+
+// TestEndpointAlgNoneWithValidKid guards against a JWT "alg:none" / algorithm-confusion bypass:
+// a token that carries a *valid* key id (so a signing key is actually resolved) but declares
+// "alg":"none" and ships no signature. Its claims are otherwise valid and verified, so if the
+// signature step were ever skipped the endpoint would mint a session (204 + Set-Cookie, cf. the
+// "success" case). It must not. The resolved verifier is bound to the key's algorithm (ES256),
+// and authenticated_token.New rejects "none" != "ES256" as a verification error before any
+// signature check runs, so the endpoint returns 400 "Invalid id token." and issues no session.
+func TestEndpointAlgNoneWithValidKid(t *testing.T) {
+	t.Parallel()
+
+	testEndpoint, err := New[*ssoTesting.ProviderClaims](defaultPath)
+	if err != nil {
+		t.Fatalf("new endpoint: %v", err)
+	}
+
+	if err := testEndpoint.Initialize(idTokenAuthenticator, sessionManager); err != nil {
+		t.Fatalf("test endpoint initialize: %v", err)
+	}
+
+	mux := &muxPkg.Mux{}
+	mux.Add(testEndpoint.Endpoint.Endpoint)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	// Forge an unsigned token: a valid kid (so a verifier is resolved) with otherwise-valid,
+	// verified claims for the test account, but with "alg":"none".
+	headerBytes, err := json.Marshal(map[string]any{
+		"typ": "JWT",
+		"alg": "none",
+		"kid": ssoTesting.KeyId,
+	})
+	if err != nil {
+		t.Fatalf("json marshal (header): %v", err)
+	}
+	payloadBytes, err := json.Marshal(map[string]any{
+		"iss":           "aux",
+		"aud":           "test-client",
+		"iat":           time.Now().Add(-1 * time.Minute).Unix(),
+		"nbf":           time.Now().Add(-1 * time.Minute).Unix(),
+		"exp":           time.Now().Add(10 * time.Minute).Unix(),
+		"verified":      true,
+		"email_address": ssoTesting.EmailAddress,
+	})
+	if err != nil {
+		t.Fatalf("json marshal (payload): %v", err)
+	}
+
+	// Unsigned JWS compact serialization: header.payload with an empty signature segment.
+	tokenString := base64.RawURLEncoding.EncodeToString(headerBytes) + "." +
+		base64.RawURLEncoding.EncodeToString(payloadBytes) + "."
+
+	muxTesting.TestArgs(t, &muxTesting.Args{
+		Path:               testEndpoint.Path,
+		Method:             testEndpoint.Method,
+		Headers:            [][2]string{{"Authorization", fmt.Sprintf("Bearer %s", tokenString)}},
+		ExpectedStatusCode: http.StatusBadRequest,
+		ExpectedProblemDetail: &problem_detail.Detail{
+			Detail: "Invalid id token.",
+		},
+		ExpectedHeadersNotPresent: []string{"Set-Cookie"},
 	}, httpServer.URL)
 }
 

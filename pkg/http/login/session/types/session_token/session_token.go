@@ -135,8 +135,7 @@ func (t *Token) Refresh(
 		return nil, errors.ErrExpiredAuthentication
 	}
 
-	sessionExpiresAtCandidate := time.Now().Add(sessionDuration)
-	newSessionExpiresAtTime := motmedelTime.Min(authenticationExpiresAt, &sessionExpiresAtCandidate)
+	newSessionExpiresAtTime := motmedelTime.Min(authenticationExpiresAt, new(time.Now().Add(sessionDuration)))
 	if newSessionExpiresAtTime == nil {
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("new session expires at"))
 	}
