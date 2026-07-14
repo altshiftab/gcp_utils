@@ -9,6 +9,7 @@ import {fetchEx} from "@altshiftab/utils/http/utils";
 {{- $hasUrlInput := ne .Endpoint.UrlInputType "void" -}}
 {{- $isNoBodyMethod := or (eq .Endpoint.Method "GET") (or (eq .Endpoint.Method "HEAD") (eq .Endpoint.Method "DELETE")) -}}
 {{- $encryptedInput := eq .Endpoint.ContentType "application/jose" -}}
+{{- $formInput := or (hasPrefix .Endpoint.ContentType "multipart/form-data") (hasPrefix .Endpoint.ContentType "application/x-www-form-urlencoded") -}}
 {{- $encryptedOutput := eq .Endpoint.ExpectedOutputContentType "application/jose" -}}
 {{- $authBearer := and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "bearer") -}}
 {{- $hasAnyParam := or (not $noRequestBody) (or $hasUrlInput (or $encryptedInput $authBearer)) -}}
@@ -81,7 +82,7 @@ export async function {{ .Endpoint.Name }}(
         .encrypt(serverPublicKey)
     ;
         {{- else }}
-    const data = {{ if or (eq .Endpoint.ContentType "application/json") (hasSuffix .Endpoint.ContentType "+json") }}JSON.stringify(input){{ else }}(input as any){{ end }};
+    const data = {{ if or (eq .Endpoint.ContentType "application/json") (hasSuffix .Endpoint.ContentType "+json") }}JSON.stringify(input){{ else if $formInput }}input{{ else }}(input as any){{ end }};
         {{- end }}
     {{- end }}
     const {response, responseText} = await fetchEx(
@@ -91,7 +92,8 @@ export async function {{ .Endpoint.Name }}(
             {{- if and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "cookie") }}
             credentials: "include",
             {{- end }}
-            {{- $hasContentType := and (and (not $noRequestBody) (not $isNoBodyMethod)) (ne .Endpoint.ContentType "") -}}
+            {{- /* Form bodies get their Content-Type from the browser (multipart needs the boundary parameter) */ -}}
+            {{- $hasContentType := and (and (not $noRequestBody) (not $isNoBodyMethod)) (and (ne .Endpoint.ContentType "") (not $formInput)) -}}
             {{- $hasAuth := $authBearer -}}
             {{- $hasCse := $encryptedOutput -}}
             {{- $hasHeaders := or $hasContentType (or $hasAuth $hasCse) -}}

@@ -1,5 +1,5 @@
-github.com/Motmedel/utils_go v0.0.489 h1:VrmlTLU1XsSvrRObqov864M8kiwHrc/ykmWpjFtG+Ys=
-github.com/Motmedel/utils_go v0.0.489/go.mod h1:OW6mJSOYgP8XP7NEqsAlfKP5U6OyR6oTI/Z/SZsxmpw=
+github.com/Motmedel/utils_go v0.0.490 h1:u/YbRhSZcQDrgZjVLvAWvTSScMTPr1S14Tb7YLGzlQM=
+github.com/Motmedel/utils_go v0.0.490/go.mod h1:OW6mJSOYgP8XP7NEqsAlfKP5U6OyR6oTI/Z/SZsxmpw=
 github.com/Motmedel/utils_go/pkg/http/mux v0.0.189 h1:Jqj/FwpdmSAIRxJT0oTM2fuSMfOoHkvfNLSiKt1x+b8=
 github.com/Motmedel/utils_go/pkg/http/mux v0.0.189/go.mod h1:GaiVp6LBw+HynL5EhbiJYZMb0OVn1x7EKj0Q3J3UVzA=
 github.com/vphpersson/type_generation v0.0.32 h1:7Gbqx+s5kzePbjP6u8QBkkUYBswfyoSHgMgJdXrtwzY=

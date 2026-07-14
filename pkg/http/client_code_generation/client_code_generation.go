@@ -24,6 +24,28 @@ import (
 //go:embed script.ts.tmpl
 var scriptTemplateData string
 
+func endpointContentType(endpoint *endpointPkg.Endpoint) string {
+	if endpoint == nil {
+		return ""
+	}
+	if bodyLoader := endpoint.BodyLoader; bodyLoader != nil {
+		return bodyLoader.ContentType
+	}
+	return ""
+}
+
+// formInputType returns the TypeScript input type for form content types, for which the Go input
+// type has no TypeScript counterpart, or an empty string for other content types.
+func formInputType(contentType string) string {
+	switch {
+	case strings.HasPrefix(contentType, "multipart/form-data"):
+		return "FormData"
+	case strings.HasPrefix(contentType, "application/x-www-form-urlencoded"):
+		return "URLSearchParams"
+	}
+	return ""
+}
+
 var scriptTemplate = template.Must(
 	template.New("script").Funcs(template.FuncMap{
 		"dict": func(values ...any) (map[string]any, error) {
@@ -60,7 +82,9 @@ func makeTypescriptContext(endpoints []*endpointPkg.Endpoint) (*typeGenerationTy
 			continue
 		}
 
-		typesSet[hint.InputType] = struct{}{}
+		if formInputType(endpointContentType(endpoint)) == "" {
+			typesSet[hint.InputType] = struct{}{}
+		}
 		typesSet[hint.UrlInputType] = struct{}{}
 		typesSet[hint.OutputType] = struct{}{}
 	}
@@ -143,20 +167,34 @@ func makeTemplateInput(
 			return nil, motmedelErrors.NewWithTrace(empty_error.New("url"), endpoint)
 		}
 
+		contentType := endpointContentType(endpoint)
+		typescriptFormInputType := formInputType(contentType)
+		if typescriptFormInputType != "" {
+			switch method {
+			case "GET", "HEAD", "DELETE":
+				return nil, motmedelErrors.NewWithTrace(
+					fmt.Errorf("form content type %q is not supported for body-less method %q", contentType, method),
+					endpoint,
+				)
+			}
+		}
+
 		var outputContentType string
 		var optionalOutput bool
 		typescriptInputType := "void"
 		typescriptUrlInputType := "void"
 		typescriptOutputType := "void"
 
+		if typescriptFormInputType != "" {
+			typescriptInputType = typescriptFormInputType
+		}
+
 		if hint := endpoint.Hint; hint != nil {
 			outputContentType = hint.OutputContentType
 			optionalOutput = hint.OutputOptional
 
 			inputType := hint.InputType
-			if isEmptyInterfaceType(inputType) {
-				typescriptInputType = "void"
-			} else {
+			if typescriptFormInputType == "" && !isEmptyInterfaceType(inputType) {
 				typeScriptType, err := tsContext.GetTypeScriptType(inputType)
 				if err != nil {
 					return nil, motmedelErrors.New(
@@ -206,12 +244,6 @@ func makeTemplateInput(
 					)
 				}
 			}
-		}
-
-		var contentType string
-		bodyLoader := endpoint.BodyLoader
-		if bodyLoader != nil {
-			contentType = bodyLoader.ContentType
 		}
 
 		useAuthentication := !endpoint.Public
