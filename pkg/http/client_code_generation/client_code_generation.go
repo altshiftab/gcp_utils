@@ -34,6 +34,8 @@ func endpointContentType(endpoint *endpointPkg.Endpoint) string {
 	return ""
 }
 
+const contentTypeCose = "application/cose"
+
 // formInputType returns the TypeScript input type for form content types, for which the Go input
 // type has no TypeScript counterpart, or an empty string for other content types.
 func formInputType(contentType string) string {
@@ -169,11 +171,11 @@ func makeTemplateInput(
 
 		contentType := endpointContentType(endpoint)
 		typescriptFormInputType := formInputType(contentType)
-		if typescriptFormInputType != "" {
+		if typescriptFormInputType != "" || contentType == contentTypeCose {
 			switch method {
 			case "GET", "HEAD", "DELETE":
 				return nil, motmedelErrors.NewWithTrace(
-					fmt.Errorf("form content type %q is not supported for body-less method %q", contentType, method),
+					fmt.Errorf("content type %q is not supported for body-less method %q", contentType, method),
 					endpoint,
 				)
 			}
@@ -192,6 +194,14 @@ func makeTemplateInput(
 		if hint := endpoint.Hint; hint != nil {
 			outputContentType = hint.OutputContentType
 			optionalOutput = hint.OutputOptional
+
+			// TODO: Support COSE-encrypted responses.
+			if outputContentType == contentTypeCose {
+				return nil, motmedelErrors.NewWithTrace(
+					fmt.Errorf("output content type %q is not supported", outputContentType),
+					endpoint,
+				)
+			}
 
 			inputType := hint.InputType
 			if typescriptFormInputType == "" && !isEmptyInterfaceType(inputType) {
@@ -299,10 +309,14 @@ func Render(
 	}
 
 	var useEncryption bool
+	var useCose bool
 	for _, templateInput := range templateInputs {
 		// Determine if any endpoint requires encryption (either request or response)
 		if templateInput.ContentType == "application/jose" || templateInput.ExpectedOutputContentType == "application/jose" {
 			useEncryption = true
+		}
+		if templateInput.ContentType == contentTypeCose {
+			useCose = true
 		}
 	}
 
@@ -322,6 +336,7 @@ func Render(
 			CseKeyAlgorithm:          templateOptions.CseKeyAlgorithm,
 			CseKeyAlgorithmCurve:     templateOptions.CseKeyAlgorithmCurve,
 			UseEncryption:            useEncryption,
+			UseCose:                  useCose,
 			AuthenticationMode:       templateOptions.AuthenticationMode,
 			AcceptBaseUrlArgument:    templateOptions.AcceptBaseUrlArgument,
 		},

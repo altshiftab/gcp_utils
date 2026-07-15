@@ -1,9 +1,9 @@
-github.com/Motmedel/utils_go v0.0.490 h1:u/YbRhSZcQDrgZjVLvAWvTSScMTPr1S14Tb7YLGzlQM=
-github.com/Motmedel/utils_go v0.0.490/go.mod h1:OW6mJSOYgP8XP7NEqsAlfKP5U6OyR6oTI/Z/SZsxmpw=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.189 h1:Jqj/FwpdmSAIRxJT0oTM2fuSMfOoHkvfNLSiKt1x+b8=
-github.com/Motmedel/utils_go/pkg/http/mux v0.0.189/go.mod h1:GaiVp6LBw+HynL5EhbiJYZMb0OVn1x7EKj0Q3J3UVzA=
-github.com/vphpersson/type_generation v0.0.32 h1:7Gbqx+s5kzePbjP6u8QBkkUYBswfyoSHgMgJdXrtwzY=
-github.com/vphpersson/type_generation v0.0.32/go.mod h1:RDfQgNTY6Y4oPPwVGav5fdmfuODHpa7wvbN+vienuH8=
+github.com/Motmedel/utils_go v0.0.493 h1:aRE+IuJKvy32h61uGyyZ3FkPsf1xtHZD677/RkO1+mQ=
+github.com/Motmedel/utils_go v0.0.493/go.mod h1:OW6mJSOYgP8XP7NEqsAlfKP5U6OyR6oTI/Z/SZsxmpw=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.190 h1:f3AKAgvQj6jcXXUJFrULPNpzcoRu1tKDf8t9I0uBjH4=
+github.com/Motmedel/utils_go/pkg/http/mux v0.0.190/go.mod h1:gXtvma066WUvsFx3d7xWvNvivz31iF2Ln9H/Xm+D+HU=
+github.com/vphpersson/type_generation v0.0.33 h1:xJ57JsFv/4YLxxrhxjmh2nHHIqx/AqIKEPDFsqju0Fg=
+github.com/vphpersson/type_generation v0.0.33/go.mod h1:dOwq8RliOzQnLZfDNhH0xDU4MTlU1YnToE1KpSuki1s=
 golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
 golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
 golang.org/x/text v0.34.0 h1:oL/Qq0Kdaqxa1KbNeMKwQq0reLCCaFtqu2eNuSeNHbk=
