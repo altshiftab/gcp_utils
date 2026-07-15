@@ -7,7 +7,12 @@ import {compactDecrypt, CompactEncrypt, exportJWK, generateKeyPair, importJWK} f
 import {encode as cborEncode} from "@altshiftab/utils/cbor";
 import {encrypt as coseEncrypt} from "@altshiftab/utils/cose";
 {{- end }}
+{{- if .Globals.HasBinaryOutput }}
+import {BadStatusCodeError} from "@altshiftab/utils/http/errors";
+import {fetchEx, fetchWithRequest} from "@altshiftab/utils/http/utils";
+{{- else }}
 import {fetchEx} from "@altshiftab/utils/http/utils";
+{{- end }}
 {{ define "function" -}}
 {{- $noRequestBody := eq .Endpoint.InputType "void" -}}
 {{- $hasUrlInput := ne .Endpoint.UrlInputType "void" -}}
@@ -105,6 +110,49 @@ export async function {{ .Endpoint.Name }}(
     const data = {{ if or (eq .Endpoint.ContentType "application/json") (hasSuffix .Endpoint.ContentType "+json") }}JSON.stringify(input){{ else if $formInput }}input{{ else }}(input as any){{ end }};
         {{- end }}
     {{- end }}
+    {{- if .Endpoint.BinaryOutput }}
+    const request = new Request(
+        url.toString(),
+        {
+            method: "{{ .Endpoint.Method }}",
+            {{- if and .Endpoint.UseAuthentication (eq .Globals.AuthenticationMode "cookie") }}
+            credentials: "include",
+            {{- end }}
+            {{- $binaryHasContentType := and (and (not $noRequestBody) (not $isNoBodyMethod)) (and (ne .Endpoint.ContentType "") (not $formInput)) -}}
+            {{- $binaryHasHeaders := or $binaryHasContentType $authBearer -}}
+            {{- if $binaryHasHeaders }}
+            headers: {
+                {{- if $binaryHasContentType }}
+                "Content-Type": "{{ .Endpoint.ContentType }}",
+                {{- end }}
+                {{- if $authBearer }}
+                "Authorization": `Bearer ${token}`,
+                {{- end }}
+            },
+            {{- end }}
+            {{- if and (not $noRequestBody) (not $isNoBodyMethod) }}
+            body: data,
+            {{- end }}
+        }
+    );
+    const {response} = await fetchWithRequest(request, {skipReadResponseBody: true, skipErrorOnStatusCode: true});
+    if (!response.ok) {
+        let responseBody = "";
+        try {
+            responseBody = await response.text();
+        } catch {
+        }
+        throw new BadStatusCodeError(response.status, {request, requestBody: "", response, responseBody});
+    }
+
+    const contentType = response.headers.get("Content-Type") || "";
+
+    if (contentType != "{{ .Endpoint.ExpectedOutputContentType }}") {
+        throw new Error(`Unexpected content type: ${contentType}`);
+    }
+
+    return await response.blob();
+    {{- else }}
     const {response, responseText} = await fetchEx(
         url.toString(),
         {
@@ -169,6 +217,7 @@ export async function {{ .Endpoint.Name }}(
         throw new Error(`Unexpected content type: ${contentType}`);
     }
         {{- end }}
+    {{- end }}
     {{- end }}
 }
 {{ end }}

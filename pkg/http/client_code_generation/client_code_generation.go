@@ -183,6 +183,7 @@ func makeTemplateInput(
 
 		var outputContentType string
 		var optionalOutput bool
+		var binaryOutput bool
 		typescriptInputType := "void"
 		typescriptUrlInputType := "void"
 		typescriptOutputType := "void"
@@ -201,6 +202,29 @@ func makeTemplateInput(
 					fmt.Errorf("output content type %q is not supported", outputContentType),
 					endpoint,
 				)
+			}
+
+			// An output content type that is neither JSON-ish, textual, nor JOSE
+			// denotes a binary response (e.g. application/pdf); the generated
+			// function returns it as a Blob.
+			binaryOutput = outputContentType != "" &&
+				outputContentType != "application/json" &&
+				!strings.HasSuffix(outputContentType, "+json") &&
+				!strings.HasPrefix(outputContentType, "text/") &&
+				outputContentType != "application/jose"
+			if binaryOutput {
+				if !isEmptyInterfaceType(hint.OutputType) {
+					return nil, motmedelErrors.NewWithTrace(
+						fmt.Errorf("an output type cannot be combined with the binary output content type %q", outputContentType),
+						endpoint,
+					)
+				}
+				if optionalOutput {
+					return nil, motmedelErrors.NewWithTrace(
+						fmt.Errorf("optional output is not supported for the binary output content type %q", outputContentType),
+						endpoint,
+					)
+				}
 			}
 
 			inputType := hint.InputType
@@ -236,7 +260,9 @@ func makeTemplateInput(
 			}
 
 			outputTpe := hint.OutputType
-			if isEmptyInterfaceType(outputTpe) {
+			if binaryOutput {
+				typescriptOutputType = "Blob"
+			} else if isEmptyInterfaceType(outputTpe) {
 				typescriptOutputType = "void"
 			} else {
 				typeScriptType, err := tsContext.GetTypeScriptType(outputTpe)
@@ -282,6 +308,7 @@ func makeTemplateInput(
 				ExpectedOutputContentType: outputContentType,
 				UseAuthentication:         useAuthentication,
 				OptionalOutput:            optionalOutput,
+				BinaryOutput:              binaryOutput,
 			},
 		)
 	}
@@ -310,6 +337,7 @@ func Render(
 
 	var useEncryption bool
 	var useCose bool
+	var hasBinaryOutput bool
 	for _, templateInput := range templateInputs {
 		// Determine if any endpoint requires encryption (either request or response)
 		if templateInput.ContentType == "application/jose" || templateInput.ExpectedOutputContentType == "application/jose" {
@@ -317,6 +345,9 @@ func Render(
 		}
 		if templateInput.ContentType == contentTypeCose {
 			useCose = true
+		}
+		if templateInput.BinaryOutput {
+			hasBinaryOutput = true
 		}
 	}
 
@@ -337,6 +368,7 @@ func Render(
 			CseKeyAlgorithmCurve:     templateOptions.CseKeyAlgorithmCurve,
 			UseEncryption:            useEncryption,
 			UseCose:                  useCose,
+			HasBinaryOutput:          hasBinaryOutput,
 			AuthenticationMode:       templateOptions.AuthenticationMode,
 			AcceptBaseUrlArgument:    templateOptions.AcceptBaseUrlArgument,
 		},

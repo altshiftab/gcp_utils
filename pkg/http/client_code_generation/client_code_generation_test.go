@@ -255,6 +255,113 @@ func TestRenderCoseOutputUnsupported(t *testing.T) {
 	}
 }
 
+type documentInput struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func TestRenderBinaryOutput(t *testing.T) {
+	endpoints := []*endpointPkg.Endpoint{
+		{
+			Method: "GET",
+			Path:   "/api/document",
+			Hint: &endpointPkg.Hint{
+				InputType:         reflect.TypeFor[documentInput](),
+				OutputContentType: "application/pdf",
+			},
+		},
+	}
+
+	output, err := Render(endpoints, nil)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	for _, expected := range []string{
+		`import {BadStatusCodeError} from "@altshiftab/utils/http/errors";`,
+		`import {fetchEx, fetchWithRequest} from "@altshiftab/utils/http/utils";`,
+		"input: DocumentInput",
+		"): Promise<Blob> {",
+		"const {response} = await fetchWithRequest(request, {skipReadResponseBody: true, skipErrorOnStatusCode: true});",
+		`throw new BadStatusCodeError(response.status, {request, requestBody: "", response, responseBody});`,
+		`if (contentType != "application/pdf") {`,
+		"return await response.blob();",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("expected output to contain %q, got:\n%s", expected, output)
+		}
+	}
+
+	// The body must never be read as text for a binary endpoint.
+	if strings.Contains(output, "responseText") {
+		t.Errorf("expected no text body handling for a binary endpoint, got:\n%s", output)
+	}
+}
+
+func TestRenderNoBinaryImportsWithoutBinaryOutput(t *testing.T) {
+	endpoints := []*endpointPkg.Endpoint{
+		{
+			Method: "POST",
+			Path:   "/api/upload",
+			BodyLoader: &body_loader.Loader{
+				ContentType: "application/json",
+			},
+			Hint: &endpointPkg.Hint{
+				InputType:         reflect.TypeFor[uploadInput](),
+				OutputType:        reflect.TypeFor[uploadOutput](),
+				OutputContentType: "application/json",
+			},
+		},
+	}
+
+	output, err := Render(endpoints, nil)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	for _, unexpected := range []string{"fetchWithRequest", "BadStatusCodeError"} {
+		if strings.Contains(output, unexpected) {
+			t.Errorf("expected output to not contain %q, got:\n%s", unexpected, output)
+		}
+	}
+}
+
+func TestRenderBinaryOutputWithOutputType(t *testing.T) {
+	endpoints := []*endpointPkg.Endpoint{
+		{
+			Method: "GET",
+			Path:   "/api/document",
+			Hint: &endpointPkg.Hint{
+				InputType:         reflect.TypeFor[documentInput](),
+				OutputType:        reflect.TypeFor[uploadOutput](),
+				OutputContentType: "application/pdf",
+			},
+		},
+	}
+
+	if _, err := Render(endpoints, nil); err == nil {
+		t.Error("expected an error for an output type combined with a binary output content type")
+	}
+}
+
+func TestRenderBinaryOutputOptional(t *testing.T) {
+	endpoints := []*endpointPkg.Endpoint{
+		{
+			Method: "GET",
+			Path:   "/api/document",
+			Hint: &endpointPkg.Hint{
+				InputType:         reflect.TypeFor[documentInput](),
+				OutputContentType: "application/pdf",
+				OutputOptional:    true,
+			},
+		},
+	}
+
+	if _, err := Render(endpoints, nil); err == nil {
+		t.Error("expected an error for optional output combined with a binary output content type")
+	}
+}
+
 func TestRenderMultipartFormDataBodylessMethod(t *testing.T) {
 	endpoints := []*endpointPkg.Endpoint{
 		{
