@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -25,8 +26,8 @@ import (
 var pgTypeMap = pgtype.NewMap()
 
 const (
-	authenticationInsertQuery                  = `INSERT INTO authentication (account, created_at, expires_at, id_token_hash) VALUES ($1, $2, $3, $4) RETURNING id;`
-	authenticationSelectRefreshQuery           = `SELECT ended, expires_at, dbsc_public_key FROM authentication WHERE id = $1;`
+	authenticationInsertQuery                  = `INSERT INTO authentication (account, created_at, expires_at, id_token_hash, ip_address, ip_address_country, ip_address_city, user_agent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id;`
+	authenticationSelectRefreshQuery           = `SELECT au.ended, au.expires_at, au.dbsc_public_key, a.locked, COALESCE(a.roles, '{}'::text[]) AS roles FROM authentication au JOIN account a ON a.id = au.account WHERE au.id = $1;`
 	authenticationUpdateWithDbscPublicKeyQuery = `UPDATE authentication SET dbsc_public_key = $1 WHERE id = $2;`
 	authenticationUpdateWithEndedQuery         = `UPDATE authentication SET ended = true, ended_at = now() WHERE id = $1;`
 )
@@ -36,6 +37,7 @@ func InsertAuthentication(
 	accountId string,
 	idTokenHash []byte,
 	expirationDuration time.Duration,
+	metadata *authenticationPkg.ClientMetadata,
 	database *sql.DB,
 ) (*authenticationPkg.Authentication, error) {
 	if accountId == "" {
@@ -58,7 +60,40 @@ func InsertAuthentication(
 		idTokenHashArg = idTokenHash
 	}
 
-	row := database.QueryRowContext(ctx, authenticationInsertQuery, accountId, now, expiresAt, idTokenHashArg)
+	// The columns are nullable and ip_address is an inet, which rejects the empty
+	// string; store NULL when a value is absent (or, for the IP, not a valid
+	// address) rather than failing the insert.
+	var ipAddressArg any
+	var ipAddressCountryArg any
+	var ipAddressCityArg any
+	var userAgentArg any
+	if metadata != nil {
+		if metadata.IpAddress != "" && net.ParseIP(metadata.IpAddress) != nil {
+			ipAddressArg = metadata.IpAddress
+		}
+		if metadata.IpAddressCountry != "" {
+			ipAddressCountryArg = metadata.IpAddressCountry
+		}
+		if metadata.IpAddressCity != "" {
+			ipAddressCityArg = metadata.IpAddressCity
+		}
+		if metadata.UserAgent != "" {
+			userAgentArg = metadata.UserAgent
+		}
+	}
+
+	row := database.QueryRowContext(
+		ctx,
+		authenticationInsertQuery,
+		accountId,
+		now,
+		expiresAt,
+		idTokenHashArg,
+		ipAddressArg,
+		ipAddressCountryArg,
+		ipAddressCityArg,
+		userAgentArg,
+	)
 	if row == nil {
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
@@ -71,12 +106,22 @@ func InsertAuthentication(
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
-	return &authenticationPkg.Authentication{
+	authentication := &authenticationPkg.Authentication{
 		Id:          authenticationId,
 		CreatedAt:   &now,
 		ExpiresAt:   &expiresAt,
 		IdTokenHash: idTokenHash,
-	}, nil
+	}
+	if metadata != nil {
+		if ipAddressArg != nil {
+			authentication.IpAddress = metadata.IpAddress
+		}
+		authentication.IpAddressCountry = metadata.IpAddressCountry
+		authentication.IpAddressCity = metadata.IpAddressCity
+		authentication.UserAgent = metadata.UserAgent
+	}
+
+	return authentication, nil
 }
 
 func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.DB) (*authenticationPkg.Authentication, error) {
@@ -100,7 +145,9 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 	var ended bool
 	var expiresAt time.Time
 	var dbscPublicKey []byte
-	if err := row.Scan(&ended, &expiresAt, &dbscPublicKey); err != nil {
+	var locked bool
+	var roles []string
+	if err := row.Scan(&ended, &expiresAt, &dbscPublicKey, &locked, pgTypeMap.SQLScanner(&roles)); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
@@ -108,6 +155,7 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 		Id: id, Ended: ended,
 		ExpiresAt:     &expiresAt,
 		DbscPublicKey: dbscPublicKey,
+		Account:       &accountPkg.Account{Locked: locked, Roles: roles},
 	}, nil
 }
 

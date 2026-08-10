@@ -18,6 +18,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
@@ -226,6 +227,7 @@ func TestEndpoint(t *testing.T) {
 				expiresAt := time.Now().Add(time.Hour)
 				return &authenticationPkg.Authentication{
 					Id:            id,
+					Account:       &accountPkg.Account{Roles: []string{"test-role"}},
 					Ended:         false,
 					DbscPublicKey: publicKey,
 					ExpiresAt:     &expiresAt,

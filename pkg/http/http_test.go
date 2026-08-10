@@ -95,6 +95,37 @@ func getBody(t *testing.T, serverUrl, path string) (int, string) {
 	return httpResponse.StatusCode, string(body)
 }
 
+func TestIsLocalhost(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		hostname string
+		expected bool
+	}{
+		{name: "localhost", hostname: localhost, expected: true},
+		{name: "localhost mixed case", hostname: "LocalHost", expected: true},
+		{name: "subdomain", hostname: "app.localhost", expected: true},
+		{name: "subdomain mixed case", hostname: "App.LocalHost", expected: true},
+		{name: "nested subdomain", hostname: "a.b.localhost", expected: true},
+		{name: "empty", hostname: "", expected: false},
+		{name: "other domain", hostname: "example.com", expected: false},
+		{name: "localhost as subdomain", hostname: "localhost.example.com", expected: false},
+		{name: "prefixed without dot", hostname: "notlocalhost", expected: false},
+		{name: "dot only", hostname: ".localhost", expected: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			if result := IsLocalhost(testCase.hostname); result != testCase.expected {
+				t.Errorf("IsLocalhost(%q) = %v, expected %v", testCase.hostname, result, testCase.expected)
+			}
+		})
+	}
+}
+
 func TestPatchChromeXmlRenderer(t *testing.T) {
 	t.Parallel()
 
@@ -564,7 +595,7 @@ func TestPatchSecurityTxt(t *testing.T) {
 		t.Parallel()
 
 		mux := motmedelMux.New()
-		baseUrl := &url.URL{Scheme: "https", Host: "localhost"}
+		baseUrl := &url.URL{Scheme: "https", Host: localhost}
 		if err := PatchSecurityTxt(mux, baseUrl); err != nil {
 			t.Fatalf("PatchSecurityTxt: %v", err)
 		}
@@ -773,7 +804,7 @@ func TestPatchHttpServiceMux(t *testing.T) {
 		t.Parallel()
 
 		mux := motmedelMux.New()
-		baseUrl := &url.URL{Scheme: "http", Host: "localhost"}
+		baseUrl := &url.URL{Scheme: "http", Host: localhost}
 		if err := PatchHttpServiceMux(mux, baseUrl); err != nil {
 			t.Fatalf("PatchHttpServiceMux: %v", err)
 		}

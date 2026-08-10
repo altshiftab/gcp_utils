@@ -45,6 +45,10 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/magic_link/types/mail_sender"
 )
 
+func isLocalhost(hostname string) bool {
+	return strings.EqualFold(hostname, "localhost") || strings.HasSuffix(strings.ToLower(hostname), ".localhost")
+}
+
 type BodyInput struct {
 	EmailAddress string `json:"email_address" jsonschema:"email_address,format:email"`
 	RedirectUrl  string `json:"redirect,omitzero" jsonschema:"redirect,optional,format:uri"`
@@ -109,7 +113,7 @@ func makeBodyProcessor(domain string) processorPkg.Processor[*ParsedBodyInput, *
 			}
 
 			hostname := parsedRedirect.Hostname()
-			if !(domain == "localhost" && hostname == "localhost") {
+			if !isLocalhost(domain) || !isLocalhost(hostname) {
 				parts := domain_parts.New(hostname)
 				if parts == nil || parts.RegisteredDomain != domain {
 					return nil, &response_error.ResponseError{

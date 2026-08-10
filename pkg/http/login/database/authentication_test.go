@@ -37,7 +37,7 @@ func TestInsertAuthentication(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := InsertAuthentication(tt.ctx, tt.accountId, []byte("hash"), time.Hour, tt.db)
+			_, err := InsertAuthentication(tt.ctx, tt.accountId, []byte("hash"), time.Hour, nil, tt.db)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}

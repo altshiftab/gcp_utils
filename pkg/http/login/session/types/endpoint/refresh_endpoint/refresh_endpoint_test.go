@@ -29,6 +29,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/numeric_date"
 	motmedelTestingCmp "github.com/Motmedel/utils_go/pkg/testing/cmp"
+	accountPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/account"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
@@ -280,11 +281,11 @@ func TestEndpoint(t *testing.T) {
 					return nil, nil
 				}
 
-				expiresAt := time.Now().Add(time.Hour)
 				authentication := &authenticationPkg.Authentication{
 					Id:        id,
+					Account:   &accountPkg.Account{Roles: []string{"test-role"}},
 					Ended:     false,
-					ExpiresAt: &expiresAt,
+					ExpiresAt: new(time.Now().Add(time.Hour)),
 				}
 
 				if testCase.hasPublicKey {

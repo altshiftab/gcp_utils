@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -14,8 +15,10 @@ import (
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	muxPkg "github.com/Motmedel/utils_go/pkg/http/mux"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
+	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claim_strings"
@@ -34,6 +37,8 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
+	"golang.org/x/text/language"
+	"golang.org/x/text/language/display"
 )
 
 type Manager struct {
@@ -50,8 +55,55 @@ type Manager struct {
 	DbscAlgs                  []string
 	SessionCookieOptions      []session_cookie_config.Option
 	selectEmailAddressAccount func(ctx context.Context, emailAddress string, database *sql.DB) (*accountPkg.Account, error)
-	insertAuthentication      func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error)
+	insertAuthentication      func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, metadata *authenticationPkg.ClientMetadata, database *sql.DB) (*authenticationPkg.Authentication, error)
 	insertDbscChallenge       func(ctx context.Context, challenge string, authenticationId string, expirationDuration time.Duration, db *sql.DB) error
+}
+
+// clientMetadataFromContext derives the client information persisted with an
+// authentication from the HTTP context carried on ctx. The client IP is taken
+// from the first X-Forwarded-For entry (the real client behind the GCP load
+// balancer), falling back to RemoteAddr; geo fields come from the load
+// balancer's X-Client-Geo-* headers. It returns nil when no HTTP context is
+// present (e.g. non-HTTP callers), which InsertAuthentication stores as NULLs.
+func clientMetadataFromContext(ctx context.Context) *authenticationPkg.ClientMetadata {
+	httpContext, ok := ctx.Value(muxPkg.MuxHttpContextContextKey).(*motmedelHttpTypes.HttpContext)
+	if !ok || httpContext == nil {
+		return nil
+	}
+
+	request := httpContext.Request
+	if request == nil {
+		return nil
+	}
+
+	metadata := &authenticationPkg.ClientMetadata{UserAgent: request.UserAgent()}
+
+	if header := request.Header; header != nil {
+		if xForwardedFor := header.Get("X-Forwarded-For"); xForwardedFor != "" {
+			client := strings.TrimSpace(strings.Split(xForwardedFor, ",")[0])
+			if net.ParseIP(client) != nil {
+				metadata.IpAddress = client
+			}
+		}
+
+		metadata.IpAddressCity = header.Get("X-Client-Geo-City-Name")
+
+		if countryIsoCode := header.Get("X-Client-Geo-Country-Iso-Code"); countryIsoCode != "" {
+			if region, err := language.ParseRegion(countryIsoCode); err == nil {
+				metadata.IpAddressCountry = display.Regions(language.English).Name(region)
+			}
+		}
+	}
+
+	if metadata.IpAddress == "" {
+		if remoteAddr := request.RemoteAddr; remoteAddr != "" {
+			if host, _, err := net.SplitHostPort(remoteAddr); err == nil && net.ParseIP(host) != nil {
+				metadata.IpAddress = host
+			}
+		}
+	}
+
+	return metadata
 }
 
 func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAddress string, idTokenHash []byte) (*response.Response, *response_error.ResponseError) {
@@ -159,13 +211,12 @@ func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAdd
 		}
 	}
 
-	// TODO: Insert name?
-	// TODO: Extract IP address, user agent from context (http context)
+	clientMetadata := clientMetadataFromContext(ctx)
 
 	insertDbCtx, insertDbCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 	defer insertDbCancel()
 
-	authentication, err := m.insertAuthentication(insertDbCtx, accountId, idTokenHash, m.AuthenticationDuration, m.Db)
+	authentication, err := m.insertAuthentication(insertDbCtx, accountId, idTokenHash, m.AuthenticationDuration, clientMetadata, m.Db)
 	if err != nil {
 		wrappedErr := motmedelErrors.New(fmt.Errorf("insert authentication: %w", err))
 		if errors.Is(err, databaseErrors.ErrIdTokenAlreadyUsed) {
@@ -233,8 +284,7 @@ func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAdd
 
 	issuedAt := numeric_date.New(time.Now())
 
-	sessionExpiresAtCandidate := time.Now().Add(m.InitialSessionDuration)
-	sessionExpiresAt := motmedelTime.Min(&sessionExpiresAtCandidate, authenticationExpiresAt)
+	sessionExpiresAt := motmedelTime.Min(new(time.Now().Add(m.InitialSessionDuration)), authenticationExpiresAt)
 	if sessionExpiresAt == nil {
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session expires at")),
@@ -371,6 +421,13 @@ func (m *Manager) RefreshSession(
 				ProblemDetail: problem_detail.New(
 					http.StatusBadRequest,
 					problem_detail_config.WithDetail("The session's authentication has expired."),
+				),
+			}
+		} else if errors.Is(err, sessionErrors.ErrLockedAccount) {
+			return nil, &response_error.ResponseError{
+				ProblemDetail: problem_detail.New(
+					http.StatusForbidden,
+					problem_detail_config.WithDetail("The account is locked."),
 				),
 			}
 		}

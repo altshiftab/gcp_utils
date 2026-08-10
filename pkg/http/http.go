@@ -69,6 +69,12 @@ var edgePdfViewerHashes = []string{
 	"sha256-tbWZ4NP1341cpcrZVDn7B3o9bt/muXgduILAnC0Zbaw=",
 }
 
+const localhost = "localhost"
+
+func IsLocalhost(hostname string) bool {
+	return strings.EqualFold(hostname, localhost) || strings.HasSuffix(strings.ToLower(hostname), ".localhost")
+}
+
 func PatchMuxProblemDetailConverter(mux *motmedelMux.Mux) {
 	if mux == nil {
 		return
@@ -878,8 +884,8 @@ func PatchSecurityTxt(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 
 	hostname := baseUrl.Hostname()
 	var registeredDomain string
-	if strings.EqualFold(hostname, "localhost") {
-		registeredDomain = "localhost"
+	if IsLocalhost(hostname) {
+		registeredDomain = localhost
 	} else {
 		domainParts := domain_parts.New(hostname)
 		if domainParts == nil {
@@ -1143,7 +1149,7 @@ func PatchHttpServiceMux(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 		return fmt.Errorf("patch error reporting: %w", err)
 	}
 
-	if hostname := baseUrl.Hostname(); hostname != "localhost" {
+	if hostname := baseUrl.Hostname(); !IsLocalhost(hostname) {
 		if err := PatchStrictTransportSecurity(mux); err != nil {
 			return fmt.Errorf("patch strict transport security: %w", err)
 		}

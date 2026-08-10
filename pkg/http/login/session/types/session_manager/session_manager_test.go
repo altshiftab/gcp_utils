@@ -4,7 +4,11 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +74,7 @@ func newManager(t *testing.T, signer motmedelCryptoInterfaces.NamedSigner, s *st
 			},
 		),
 		session_manager_config.WithInsertAuthentication(
-			func(_ context.Context, _ string, _ []byte, _ time.Duration, _ *sql.DB) (*authenticationPkg.Authentication, error) {
+			func(_ context.Context, _ string, _ []byte, _ time.Duration, _ *authenticationPkg.ClientMetadata, _ *sql.DB) (*authenticationPkg.Authentication, error) {
 				s.insertedAuth++
 				if s.insertAuthErr != nil {
 					return nil, s.insertAuthErr
@@ -110,6 +114,7 @@ func newAuthentication() *authenticationPkg.Authentication {
 	expires := now.Add(time.Hour)
 	return &authenticationPkg.Authentication{
 		Id:        testAuthId,
+		Account:   newAccount(),
 		CreatedAt: &now,
 		ExpiresAt: &expires,
 	}
@@ -459,6 +464,10 @@ func TestManager_RefreshSession(t *testing.T) {
 		Id:        testAuthId,
 		ExpiresAt: ptrTime(time.Now().Add(-time.Hour)),
 	}
+	lockedAccountAuth := newAuthentication()
+	lockedAccountAuth.Account.Locked = true
+	nilAccountAuth := newAuthentication()
+	nilAccountAuth.Account = nil
 	tokenNoClaims := &session_token.Token{}
 
 	tests := []struct {
@@ -521,6 +530,20 @@ func TestManager_RefreshSession(t *testing.T) {
 			wantDetail:     "The session's authentication has expired.",
 		},
 		{
+			name:           "locked account",
+			authentication: lockedAccountAuth,
+			sessionToken:   makeSessionToken(t, nil),
+			authMethod:     authentication_method.Refresh,
+			wantStatus:     403,
+			wantDetail:     "The account is locked.",
+		},
+		{
+			name:           "nil account",
+			authentication: nilAccountAuth,
+			sessionToken:   makeSessionToken(t, nil),
+			authMethod:     authentication_method.Refresh,
+		},
+		{
 			name:           "session token without claims",
 			authentication: validAuth,
 			sessionToken:   tokenNoClaims,
@@ -571,3 +594,62 @@ func TestManager_RefreshSession(t *testing.T) {
 }
 
 func ptrTime(t time.Time) *time.Time { return &t }
+
+func TestManager_RefreshSession_RolesFromAccount(t *testing.T) {
+	t.Parallel()
+
+	signer := newTestSigner(t)
+	m := newManager(t, signer, &stubs{})
+	defer m.Db.Close()
+
+	authentication := newAuthentication()
+	authentication.Account.Roles = []string{"updated-role"}
+
+	resp, respErr := m.RefreshSession(
+		authentication,
+		makeSessionToken(t, nil),
+		authentication_method.Refresh,
+		time.Hour,
+	)
+	if respErr != nil {
+		t.Fatalf("expected ok, got response error: %+v", respErr)
+	}
+	if resp == nil {
+		t.Fatalf("expected response, got nil")
+	}
+
+	var setCookie string
+	for _, header := range resp.Headers {
+		if header.Name == "Set-Cookie" {
+			setCookie = header.Value
+		}
+	}
+	if setCookie == "" {
+		t.Fatalf("missing Set-Cookie header")
+	}
+
+	cookiePair, _, _ := strings.Cut(setCookie, ";")
+	_, tokenString, found := strings.Cut(cookiePair, "=")
+	if !found {
+		t.Fatalf("malformed cookie pair: %q", cookiePair)
+	}
+
+	tokenParts := strings.Split(tokenString, ".")
+	if len(tokenParts) != 3 {
+		t.Fatalf("unexpected jwt part count: %d", len(tokenParts))
+	}
+	payloadData, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
+	if err != nil {
+		t.Fatalf("base64 decode jwt payload: %v", err)
+	}
+	var payload struct {
+		Roles []string `json:"roles"`
+	}
+	if err := json.Unmarshal(payloadData, &payload); err != nil {
+		t.Fatalf("json unmarshal jwt payload: %v", err)
+	}
+
+	if want := []string{"updated-role"}; !slices.Equal(payload.Roles, want) {
+		t.Errorf("roles: got %v, want %v", payload.Roles, want)
+	}
+}

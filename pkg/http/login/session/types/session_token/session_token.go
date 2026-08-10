@@ -135,6 +135,15 @@ func (t *Token) Refresh(
 		return nil, errors.ErrExpiredAuthentication
 	}
 
+	account := authentication.Account
+	if account == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("authentication account"))
+	}
+
+	if account.Locked {
+		return nil, errors.ErrLockedAccount
+	}
+
 	newSessionExpiresAtTime := motmedelTime.Min(authenticationExpiresAt, new(time.Now().Add(sessionDuration)))
 	if newSessionExpiresAtTime == nil {
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("new session expires at"))
@@ -144,9 +153,13 @@ func (t *Token) Refresh(
 	newSessionClaims.AuthenticationMethods = []string{authenticationMethod}
 	newSessionClaims.ExpiresAt = numeric_date.New(*newSessionExpiresAtTime)
 	newSessionClaims.NotBefore = numeric_date.New(time.Now())
+	// Roles come from the account row, not the old token, so role changes take
+	// effect at the next refresh rather than at the next login.
+	newSessionClaims.Roles = account.Roles
 
 	newSessionToken := *t
 	newSessionToken.Claims = &newSessionClaims
+	newSessionToken.Roles = account.Roles
 
 	return &newSessionToken, nil
 }

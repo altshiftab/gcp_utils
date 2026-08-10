@@ -3,12 +3,13 @@ module github.com/altshiftab/gcp_utils/pkg/http/login
 go 1.26
 
 require (
-	github.com/Motmedel/utils_go v0.0.489
-	github.com/Motmedel/utils_go/pkg/http/mux v0.0.189
+	github.com/Motmedel/utils_go v0.0.496
+	github.com/Motmedel/utils_go/pkg/http/mux v0.0.192
 	github.com/Motmedel/utils_go/pkg/http/parsing/headers v0.0.45
 	github.com/Motmedel/utils_go/pkg/testing/cmp v0.0.1
 	github.com/google/go-cmp v0.7.0
 	github.com/jackc/pgx/v5 v5.8.0
+	golang.org/x/text v0.29.0
 )
 
 require (
@@ -18,5 +19,4 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/pandatix/go-abnf v0.4.2 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
 )

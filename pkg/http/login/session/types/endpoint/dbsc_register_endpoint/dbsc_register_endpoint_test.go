@@ -139,11 +139,10 @@ func TestEndpoint(t *testing.T) {
 							return nil, fmt.Errorf("authentication id mismatch: got %s, want %s", authenticationId, loginTesting.AuthenticationId)
 						}
 
-						expiresAt := time.Now().Add(time.Hour)
 						return &dbsc_challenge.Challenge{
 							Authentication: &authenticationPkg.Authentication{Id: authenticationId},
 							Challenge:      []byte(challenge),
-							ExpiresAt:      &expiresAt,
+							ExpiresAt:      new(time.Now().Add(time.Hour)),
 						}, nil
 					},
 				),

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
@@ -32,6 +33,10 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/login_endpoint/login_endpoint_config"
 )
+
+func isLocalhost(hostname string) bool {
+	return strings.EqualFold(hostname, "localhost") || strings.HasSuffix(strings.ToLower(hostname), ".localhost")
+}
 
 func makeCodeVerifier() (string, error) {
 	challenge := make([]byte, 96)
@@ -85,7 +90,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *motmedelOauth2Config.C
 	e.UrlParser = adapter.New(
 		url_allower.New(
 			query_extractor.New[*UrlInput](),
-			url_allower_config.WithAllowLocalhost(domain == "localhost"),
+			url_allower_config.WithAllowLocalhost(isLocalhost(domain)),
 			url_allower_config.WithAllowedRegisteredDomains([]string{domain}),
 		),
 	)

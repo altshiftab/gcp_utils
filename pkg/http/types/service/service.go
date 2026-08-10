@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
@@ -33,7 +32,7 @@ func New(domain string, port string, options ...service_config.Option) (*Service
 	}
 
 	var scheme string
-	if domain == "localhost" {
+	if gcpUtilsHttp.IsLocalhost(domain) {
 		scheme = "http"
 	} else {
 		scheme = "https"
@@ -72,7 +71,7 @@ func New(domain string, port string, options ...service_config.Option) (*Service
 	vhostMux.DefaultHeaders = mux.DefaultHeaders
 
 	var handler http.Handler
-	if strings.EqualFold(domain, "localhost") {
+	if gcpUtilsHttp.IsLocalhost(domain) {
 		handler = vhostMux
 	} else {
 		handler = h2c.NewHandler(vhostMux, &http2.Server{})

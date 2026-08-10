@@ -120,7 +120,7 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 			},
 		),
 		session_manager_config.WithInsertAuthentication(
-			func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, database *sql.DB) (*authenticationPkg.Authentication, error) {
+			func(ctx context.Context, accountId string, idTokenHash []byte, expirationDuration time.Duration, metadata *authenticationPkg.ClientMetadata, database *sql.DB) (*authenticationPkg.Authentication, error) {
 				if len(idTokenHash) > 0 {
 					if _, loaded := usedIdTokenHashes.LoadOrStore(string(idTokenHash), struct{}{}); loaded {
 						return nil, databaseErrors.ErrIdTokenAlreadyUsed
