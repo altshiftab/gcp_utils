@@ -68,21 +68,20 @@ func New(domain string, port string, options ...service_config.Option) (*Service
 	vhostMux := &motmedelMux.VhostMux{HostToSpecification: hostToSpecification}
 	vhostMux.DefaultHeaders = mux.DefaultHeaders
 
+	// GCP load balancers speak prior-knowledge unencrypted HTTP/2 to the backend, which the
+	// standard library serves natively alongside HTTP/1; enabling both is harmless to plain
+	// HTTP/1.1 clients (e.g. on localhost).
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
 	httpServer := &http.Server{
 		Addr:                         fmt.Sprintf(":%s", port),
 		Handler:                      vhostMux,
+		Protocols:                    protocols,
 		ReadHeaderTimeout:            5 * time.Second,
 		DisableGeneralOptionsHandler: true,
 		ErrorLog:                     slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
-	}
-
-	if !gcpUtilsHttp.IsLocalhost(domain) {
-		// GCP load balancers speak prior-knowledge unencrypted HTTP/2 to the backend, which the
-		// standard library serves natively alongside HTTP/1.
-		protocols := new(http.Protocols)
-		protocols.SetHTTP1(true)
-		protocols.SetUnencryptedHTTP2(true)
-		httpServer.Protocols = protocols
 	}
 
 	return &Service{Server: httpServer, Mux: mux}, nil
