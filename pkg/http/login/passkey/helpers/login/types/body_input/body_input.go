@@ -1,19 +1,21 @@
 package body_input
 
 import (
+	"context"
 	"net/http"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_processor"
+	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	processorPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/processor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
-	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
-	passkeyUtilsError "github.com/altshiftab/passkey_utils/pkg/errors"
-	"github.com/altshiftab/passkey_utils/pkg/types/public_key_credential"
-	"github.com/altshiftab/passkey_utils/pkg/types/public_key_credential/transport"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	"github.com/Motmedel/utils_go/pkg/webauthn"
+	webauthnTransport "github.com/Motmedel/utils_go/pkg/webauthn/transport"
 )
 
 type BodyInput struct {
-	Credential           *public_key_credential.AssertionPublicKeyCredential
+	Credential           *webauthn.AssertionPublicKeyCredential
 	CredentialId         []byte
 	Challenge            []byte
 	UserId               string
@@ -21,50 +23,38 @@ type BodyInput struct {
 	RawAuthenticatorData []byte
 }
 
-var PublicKeyCredentialProcessor = body_processor.BodyProcessorFunction[*BodyInput, *transport.AssertionPublicKeyCredential](
-	func(transportCredential *transport.AssertionPublicKeyCredential) (*BodyInput, *response_error.ResponseError) {
+var PublicKeyCredentialProcessor = processorPkg.New(
+	func(_ context.Context, transportCredential *webauthnTransport.AssertionPublicKeyCredential) (*BodyInput, *response_error.ResponseError) {
 		if transportCredential == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(passkeyUtilsError.ErrNilPublicKeyCredential),
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("public key credential")),
 			}
 		}
-		credential, err := transport.MakeAssertionPublicKeyCredential(transportCredential)
+		credential, err := webauthnTransport.MakeAssertionPublicKeyCredential(transportCredential)
 		if err != nil {
 			return nil, &response_error.ResponseError{
-				ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+				ProblemDetail: problem_detail.New(
 					http.StatusUnprocessableEntity,
-					"The public key credential could not be decoded.",
-					nil,
+					problem_detail_config.WithDetail("The public key credential could not be decoded."),
 				),
+				ClientError: err,
 			}
 		}
 		if credential == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(passkeyUtilsError.ErrNilPublicKeyCredential),
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("public key credential")),
 			}
 		}
 
-		transportClientDataJson := transportCredential.Response.ClientDataJson
-		if transportClientDataJson == nil {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(passkeyUtilsError.ErrNilCollectedClientData),
-			}
-		}
-
-		transportAuthenticatorData := transportCredential.Response.AuthenticatorData
-		if transportAuthenticatorData == nil {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(passkeyUtilsError.ErrNilAuthenticatorData),
-			}
-		}
+		response := credential.Response
 
 		return &BodyInput{
 			Credential:           credential,
 			CredentialId:         credential.Id,
-			Challenge:            credential.Response.ClientDataJson.Challenge,
-			UserId:               string(credential.Response.UserHandle),
-			RawClientDataJson:    *transportClientDataJson,
-			RawAuthenticatorData: *transportAuthenticatorData,
+			Challenge:            response.ClientDataJson.Challenge,
+			UserId:               string(response.UserHandle),
+			RawClientDataJson:    transportCredential.Response.GetClientDataJson(),
+			RawAuthenticatorData: transportCredential.Response.GetAuthenticatorData(),
 		}, nil
 	},
 )

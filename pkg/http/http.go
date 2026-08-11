@@ -29,10 +29,9 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_writer"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
-	contentSecurityPolicyParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_security_policy"
-	contentTypeParsing "github.com/Motmedel/utils_go/pkg/http/parsing/headers/content_type"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/content_security_policy"
+	contentTypeParsing "github.com/Motmedel/utils_go/pkg/http/types/content_type"
 	"github.com/Motmedel/utils_go/pkg/http/types/integrity_policy"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/reporting_api"
@@ -104,7 +103,7 @@ func patchStyleSrcWithHashes(mux *motmedelMux.Mux, hashes ...string) error {
 		return fmt.Errorf("mux get content security policy: %w", err)
 	}
 	if csp == nil {
-		csp, err = contentSecurityPolicyParsing.Parse([]byte(response_writer.DefaultContentSecurityPolicyString))
+		csp, err = content_security_policy.Parse([]byte(response_writer.DefaultContentSecurityPolicyString))
 		if err != nil {
 			return fmt.Errorf("parse content security policy: %w", err)
 		}
@@ -413,7 +412,7 @@ func PatchErrorReporting(mux *motmedelMux.Mux, baseUrl *url.URL) error {
 	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
 	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
 		var err error
-		contentSecurityPolicy, err = contentSecurityPolicyParsing.Parse(
+		contentSecurityPolicy, err = content_security_policy.Parse(
 			[]byte(contentSecurityPolicyString),
 		)
 		if err != nil {
@@ -969,7 +968,7 @@ func PatchFedCm(mux *motmedelMux.Mux, manifestUrls []*url.URL, providerUrls []*u
 		return fmt.Errorf("mux get content security policy: %w", err)
 	}
 	if csp == nil {
-		csp, err = contentSecurityPolicyParsing.Parse([]byte(response_writer.DefaultContentSecurityPolicyString))
+		csp, err = content_security_policy.Parse([]byte(response_writer.DefaultContentSecurityPolicyString))
 		if err != nil {
 			return fmt.Errorf("parse content security policy: %w", err)
 		}
@@ -1086,7 +1085,7 @@ func PatchTrustedTypes(mux *motmedelMux.Mux, policies ...string) error {
 	var contentSecurityPolicy *content_security_policy.ContentSecurityPolicy
 	if contentSecurityPolicyString := defaultDocumentHeaders[ContentSecurityPolicyHeader]; contentSecurityPolicyString != "" {
 		var err error
-		contentSecurityPolicy, err = contentSecurityPolicyParsing.Parse(
+		contentSecurityPolicy, err = content_security_policy.Parse(
 			[]byte(contentSecurityPolicyString),
 		)
 		if err != nil {

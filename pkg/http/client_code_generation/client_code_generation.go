@@ -8,17 +8,16 @@ import (
 	"reflect"
 	"strings"
 	"text/template"
+	"unicode"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
+	typeGenerationTypesContext "github.com/Motmedel/utils_go/pkg/type_export/types/context"
+	typeGenerationTypescriptTypes "github.com/Motmedel/utils_go/pkg/type_export/typescript/types"
 	clientCodeGenerationTypes "github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types"
 	"github.com/altshiftab/gcp_utils/pkg/http/client_code_generation/types/template_options"
-	typeGenerationTypescriptTypes "github.com/vphpersson/type_generation/pkg/producers/typescript/types"
-	typeGenerationTypesContext "github.com/vphpersson/type_generation/pkg/types/context"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 //go:embed script.ts.tmpl
@@ -109,9 +108,17 @@ func makeTypescriptContext(endpoints []*endpointPkg.Endpoint) (*typeGenerationTy
 
 var emptyInterfaceType = reflect.TypeFor[any]()
 
-func makePathPart(path string) string {
-	caser := cases.Title(language.English, cases.NoLower)
+// titleCase uppercases the first rune of s, leaving the rest unchanged.
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
 
+func makePathPart(path string) string {
 	segments := strings.Split(
 		strings.ReplaceAll(
 			strings.TrimPrefix(
@@ -126,7 +133,7 @@ func makePathPart(path string) string {
 
 	var casedSegments []string
 	for _, segment := range segments {
-		casedSegments = append(casedSegments, caser.String(segment))
+		casedSegments = append(casedSegments, titleCase(segment))
 	}
 
 	return strings.ReplaceAll(strings.Join(casedSegments, ""), ".", "")

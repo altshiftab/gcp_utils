@@ -13,8 +13,6 @@ import (
 	motmedelMux "github.com/Motmedel/utils_go/pkg/http/mux"
 	gcpUtilsHttp "github.com/altshiftab/gcp_utils/pkg/http"
 	"github.com/altshiftab/gcp_utils/pkg/http/types/service/service_config"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 type Service struct {
@@ -70,19 +68,21 @@ func New(domain string, port string, options ...service_config.Option) (*Service
 	vhostMux := &motmedelMux.VhostMux{HostToSpecification: hostToSpecification}
 	vhostMux.DefaultHeaders = mux.DefaultHeaders
 
-	var handler http.Handler
-	if gcpUtilsHttp.IsLocalhost(domain) {
-		handler = vhostMux
-	} else {
-		handler = h2c.NewHandler(vhostMux, &http2.Server{})
-	}
-
 	httpServer := &http.Server{
 		Addr:                         fmt.Sprintf(":%s", port),
-		Handler:                      handler,
+		Handler:                      vhostMux,
 		ReadHeaderTimeout:            5 * time.Second,
 		DisableGeneralOptionsHandler: true,
 		ErrorLog:                     slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
+	}
+
+	if !gcpUtilsHttp.IsLocalhost(domain) {
+		// GCP load balancers speak prior-knowledge unencrypted HTTP/2 to the backend, which the
+		// standard library serves natively alongside HTTP/1.
+		protocols := new(http.Protocols)
+		protocols.SetHTTP1(true)
+		protocols.SetUnencryptedHTTP2(true)
+		httpServer.Protocols = protocols
 	}
 
 	return &Service{Server: httpServer, Mux: mux}, nil

@@ -8,15 +8,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"reflect"
 
 	motmedelEnv "github.com/Motmedel/utils_go/pkg/env"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/go/code_generation"
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	motmedelContextLogger "github.com/Motmedel/utils_go/pkg/log/context_logger"
 	errorLogger "github.com/Motmedel/utils_go/pkg/log/error_logger"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	"github.com/vphpersson/code_generation/pkg/code_generation"
-	"github.com/vphpersson/code_generation/pkg/translate"
 )
 
 const map16 = "abcdefghijklmnop"
@@ -95,14 +95,14 @@ func main() {
 		)
 	}
 
-	extensionIdMap := map[string]any{"extensionId": extensionId}
-	code, err := translate.Map(extensionIdMap)
+	literal, _, err := code_generation.GenerateLiteral(reflect.ValueOf(extensionId), nil)
 	if err != nil {
 		logger.FatalWithExitingMessage(
-			"An error occurred when translating the map.",
-			motmedelErrors.New(fmt.Errorf("translate map: %w", err), extensionIdMap),
+			"An error occurred when generating the extension id literal.",
+			motmedelErrors.New(fmt.Errorf("generate literal: %w", err), extensionId),
 		)
 	}
+	code := fmt.Sprintf("const extensionId = %s", literal)
 
 	output, err := code_generation.MakeFileContent(
 		code,

@@ -27,8 +27,6 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser/authorizer_request_parser_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 const (
@@ -93,8 +91,8 @@ func TestParser_Parse(t *testing.T) {
 
 	method := &motmedelCryptoEddsa.Method{PrivateKey: privateKey, PublicKey: publicKey}
 
-	problemDetailOpts := []cmp.Option{
-		cmpopts.IgnoreFields(problem_detail.Detail{}, "Type", "Instance"),
+	problemDetailOpts := []motmedelTestingCmp.Option{
+		motmedelTestingCmp.IgnoreFields(problem_detail.Detail{}, "Type", "Instance"),
 	}
 
 	testCases := []struct {
@@ -194,7 +192,7 @@ func TestParser_Parse(t *testing.T) {
 					testCase.wantProblemDetail.Title = http.StatusText(testCase.wantProblemDetail.Status)
 				}
 
-				if diff := cmp.Diff(gotResponseError.ProblemDetail, testCase.wantProblemDetail, problemDetailOpts...); diff != "" {
+				if diff := motmedelTestingCmp.Diff(gotResponseError.ProblemDetail, testCase.wantProblemDetail, problemDetailOpts...); diff != "" {
 					t.Errorf("response error problem detail mismatch (-expected +got):\n%s", diff)
 				}
 			}
@@ -260,8 +258,8 @@ func TestNew(t *testing.T) {
 		issuer   = "test-issuer"
 	)
 
-	opts := []cmp.Option{
-		cmpopts.IgnoreFields(Parser{}, "verifier", "JwtExtractor"),
+	opts := []motmedelTestingCmp.Option{
+		motmedelTestingCmp.IgnoreFields(Parser{}, "verifier", "JwtExtractor"),
 	}
 
 	type args struct {
@@ -311,7 +309,7 @@ func TestNew(t *testing.T) {
 				motmedelTestingCmp.CompareErr(t, gotErr, testCase.wantErr)
 			}
 
-			if diff := cmp.Diff(testCase.want, got, opts...); diff != "" {
+			if diff := motmedelTestingCmp.Diff(testCase.want, got, opts...); diff != "" {
 				t.Errorf("parser mismatch (-expected +got):\n%s", diff)
 			}
 		})

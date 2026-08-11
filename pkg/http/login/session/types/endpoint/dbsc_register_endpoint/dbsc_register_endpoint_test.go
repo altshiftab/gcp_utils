@@ -21,6 +21,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/token_cookie_extractor/token_cookie_extractor_config"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	motmedelTestingCmp "github.com/Motmedel/utils_go/pkg/testing/cmp"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
@@ -32,8 +33,6 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_register_endpoint/dbsc_register_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 var defaultSessionCookieString string
@@ -280,12 +279,12 @@ func TestEndpoint_Initialize(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	opts := []cmp.Option{
-		cmpopts.IgnoreFields(
+	opts := []motmedelTestingCmp.Option{
+		motmedelTestingCmp.IgnoreFields(
 			Endpoint{},
 			"updateAuthenticationWithDbscPublicKey",
 		),
-		cmpopts.EquateComparable(adapter.Adapter[struct{}]{}),
+		motmedelTestingCmp.EquateComparable(adapter.Adapter[struct{}]{}),
 	}
 
 	type args struct {
@@ -342,7 +341,7 @@ func TestNew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := New(tt.args.options...)
-			if diff := cmp.Diff(tt.want, got, opts...); diff != "" {
+			if diff := motmedelTestingCmp.Diff(tt.want, got, opts...); diff != "" {
 				t.Errorf("endpoint mismatch (-expected +got):\n%s", diff)
 			}
 		})

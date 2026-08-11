@@ -28,8 +28,8 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
-	"github.com/Motmedel/utils_go/pkg/http/parsing/headers/accept_language"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
+	"github.com/Motmedel/utils_go/pkg/http/types/accept_language"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
@@ -41,13 +41,10 @@ import (
 	"github.com/Motmedel/utils_go/pkg/net/types/domain_parts"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	"github.com/Motmedel/utils_go/pkg/utils"
+	gcpUtilsHttp "github.com/altshiftab/gcp_utils/pkg/http"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/magic_link/types/endpoint/generate_endpoint/generate_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/magic_link/types/mail_sender"
 )
-
-func isLocalhost(hostname string) bool {
-	return strings.EqualFold(hostname, "localhost") || strings.HasSuffix(strings.ToLower(hostname), ".localhost")
-}
 
 type BodyInput struct {
 	EmailAddress string `json:"email_address" jsonschema:"email_address,format:email"`
@@ -113,7 +110,7 @@ func makeBodyProcessor(domain string) processorPkg.Processor[*ParsedBodyInput, *
 			}
 
 			hostname := parsedRedirect.Hostname()
-			if !isLocalhost(domain) || !isLocalhost(hostname) {
+			if !gcpUtilsHttp.IsLocalhost(domain) || !gcpUtilsHttp.IsLocalhost(hostname) {
 				parts := domain_parts.New(hostname)
 				if parts == nil || parts.RegisteredDomain != domain {
 					return nil, &response_error.ResponseError{

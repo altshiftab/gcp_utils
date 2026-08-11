@@ -3,15 +3,12 @@ package database
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
-
+	"github.com/Motmedel/utils_go/pkg/database/sql/postgres"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -23,7 +20,12 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
 )
 
-var pgTypeMap = pgtype.NewMap()
+// isIdTokenUniqueViolation reports whether err is a unique violation of the id token hash
+// constraint. The constraint name only appears in the error message, not in any accessor.
+func isIdTokenUniqueViolation(err error) bool {
+	sqlState, ok := postgres.SqlState(err)
+	return ok && sqlState == postgres.SqlStateUniqueViolation && strings.Contains(err.Error(), "id_token_hash")
+}
 
 const (
 	authenticationInsertQuery                  = `INSERT INTO authentication (account, created_at, expires_at, id_token_hash, ip_address, ip_address_country, ip_address_city, user_agent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id;`
@@ -100,7 +102,7 @@ func InsertAuthentication(
 
 	var authenticationId string
 	if err := row.Scan(&authenticationId); err != nil {
-		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "id_token_hash") {
+		if isIdTokenUniqueViolation(err) {
 			return nil, motmedelErrors.NewWithTrace(fmt.Errorf("%w: %w", databaseErrors.ErrIdTokenAlreadyUsed, err))
 		}
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
@@ -147,7 +149,7 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 	var dbscPublicKey []byte
 	var locked bool
 	var roles []string
-	if err := row.Scan(&ended, &expiresAt, &dbscPublicKey, &locked, pgTypeMap.SQLScanner(&roles)); err != nil {
+	if err := row.Scan(&ended, &expiresAt, &dbscPublicKey, &locked, postgres.TextArrayScanner{Target: &roles}); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 
@@ -189,7 +191,7 @@ func SelectEmailAddressAccount(ctx context.Context, emailAddress string, databas
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
-	if err := row.Scan(&accountId, &locked, &customerId, &customerName, pgTypeMap.SQLScanner(&roles)); err != nil {
+	if err := row.Scan(&accountId, &locked, &customerId, &customerName, postgres.TextArrayScanner{Target: &roles}); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
 	}
 

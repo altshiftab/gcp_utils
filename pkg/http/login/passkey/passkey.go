@@ -2,32 +2,32 @@ package passkey
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/rsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 
-	motmedelCrypto "github.com/Motmedel/utils_go/pkg/crypto"
-	motmedelEcdsa "github.com/Motmedel/utils_go/pkg/crypto/ecdsa"
-	motmedelCryptoInterfaces "github.com/Motmedel/utils_go/pkg/crypto/interfaces"
-	motmedelRsa "github.com/Motmedel/utils_go/pkg/crypto/rsa"
+	"github.com/Motmedel/utils_go/pkg/cose"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	"github.com/Motmedel/utils_go/pkg/http/mux"
-	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_parser/adapter"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint_specification"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/parsing"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_loader/body_setting"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser"
+	bodyParserAdapter "github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/adapter"
+	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/types/body_parser/json_schema_body_parser"
+	endpointPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
-	jsonSchemaBodyParser "github.com/Motmedel/utils_go/pkg/http/mux/utils/body_parser/json/schema"
-	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
-	"github.com/Motmedel/utils_go/pkg/net/domain_breakdown"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	"github.com/Motmedel/utils_go/pkg/net/types/domain_parts"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
+	"github.com/Motmedel/utils_go/pkg/webauthn"
+	webauthnTransport "github.com/Motmedel/utils_go/pkg/webauthn/transport"
 	passkeyProviderErrors "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/errors"
 	passkeyHelpers "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/login"
@@ -35,17 +35,13 @@ import (
 	loginBodyInput "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/login/types/body_input"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/registration"
 	registrationBodyInput "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/registration/types/body_input"
-	passkeyUtilsErrors "github.com/altshiftab/passkey_utils/pkg/errors"
-	"github.com/altshiftab/passkey_utils/pkg/types/public_key_credential"
-	"github.com/altshiftab/passkey_utils/pkg/types/public_key_credential_creation_options"
-	transportUserEntity "github.com/altshiftab/passkey_utils/pkg/types/public_key_credential_entity/public_key_credential_user_entity/transport"
-	"github.com/altshiftab/passkey_utils/pkg/utils/transport"
-	passkeyUtilsValidation "github.com/altshiftab/passkey_utils/pkg/utils/validation"
 )
+
+const contentTypeJson = "application/json"
 
 type UserHandler interface {
 	GetPublicKeyCredential(ctx context.Context, credentialId []byte) (*types.SigningData, error)
-	AddPublicKeyCredential(ctx context.Context, userId string, credential *public_key_credential.AttestationPublicKeyCredential) error
+	AddPublicKeyCredential(ctx context.Context, userId string, credential *webauthn.AttestationPublicKeyCredential) error
 	UpdatePublicKeyCredential(ctx context.Context, credentialId []byte, signatureCount uint32) error
 	AddRegistrationIssuance(ctx context.Context, userId string, challenge []byte) error
 	DeleteRegistrationIssuance(ctx context.Context, challenge []byte) (string, error)
@@ -65,7 +61,7 @@ func PatchMux(
 	sessionHandler SessionHandler,
 	userHandler UserHandler,
 	originUrl *url.URL,
-	relayingParty *public_key_credential_creation_options.RelayingParty,
+	relyingParty *webauthn.RelyingParty,
 	allowedCoseAlgorithms []int,
 ) error {
 	if mux == nil {
@@ -73,51 +69,63 @@ func PatchMux(
 	}
 
 	if originUrl == nil {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilOriginUrl)
+		return motmedelErrors.NewWithTrace(nil_error.New("origin url"))
 	}
 
 	originUrlString := originUrl.String()
 	originUrlHostName := originUrl.Hostname()
 
-	domainBreakdown := domain_breakdown.GetDomainBreakdown(originUrlHostName)
-	if domainBreakdown == nil {
-		return motmedelErrors.New(nil_error.New("domain breakdown"))
+	domainParts := domain_parts.New(originUrlHostName)
+	if domainParts == nil {
+		return motmedelErrors.New(nil_error.New("domain parts"))
 	}
 
 	if utils.IsNil(sessionHandler) {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilSessionHandler)
+		return motmedelErrors.NewWithTrace(nil_error.New("session handler"))
 	}
 
 	if utils.IsNil(userHandler) {
-		return motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrNilUserHandler)
+		return motmedelErrors.NewWithTrace(nil_error.New("user handler"))
 	}
 
-	if relayingParty == nil {
-		return motmedelErrors.NewWithTrace(passkeyUtilsErrors.ErrNilRelayingParty)
+	if relyingParty == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("relying party"))
 	}
 
-	relayingPartyId := relayingParty.Id
-	if relayingPartyId == "" {
-		return motmedelErrors.NewWithTrace(passkeyUtilsErrors.ErrEmptyRelayingPartyId)
+	relyingPartyId := relyingParty.Id
+	if relyingPartyId == "" {
+		return motmedelErrors.NewWithTrace(empty_error.New("relying party id"))
 	}
 
-	relayingPartyName := relayingParty.Name
-	if relayingPartyName == "" {
-		return motmedelErrors.NewWithTrace(passkeyUtilsErrors.ErrEmptyRelayingPartyName)
+	if relyingParty.Name == "" {
+		return motmedelErrors.NewWithTrace(empty_error.New("relying party name"))
 	}
 
-	loginPublicKeyCredentialBodyParser, err := jsonSchemaBodyParser.NewWithProcessor(loginBodyInput.PublicKeyCredentialProcessor)
+	coseAlgorithms := make([]cose.Algorithm, 0, len(allowedCoseAlgorithms))
+	for _, allowedCoseAlgorithm := range allowedCoseAlgorithms {
+		coseAlgorithms = append(coseAlgorithms, cose.Algorithm(allowedCoseAlgorithm))
+	}
+
+	loginTransportCredentialBodyParser, err := jsonSchemaBodyParser.New[*webauthnTransport.AssertionPublicKeyCredential]()
 	if err != nil {
-		return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new with processor (login public key credential): %w", err))
+		return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (login public key credential): %w", err))
 	}
+	loginPublicKeyCredentialBodyParser := body_parser.NewWithProcessor(
+		loginTransportCredentialBodyParser,
+		loginBodyInput.PublicKeyCredentialProcessor,
+	)
 
-	registerPublicKeyCredentialBodyParser, err := jsonSchemaBodyParser.NewWithProcessor(registrationBodyInput.PublicKeyCredentialProcessor)
+	registerTransportCredentialBodyParser, err := jsonSchemaBodyParser.New[*webauthnTransport.AttestationPublicKeyCredential]()
 	if err != nil {
-		return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new with processor (register public key credential): %w", err))
+		return motmedelErrors.NewWithTrace(fmt.Errorf("json schema body parser new (register public key credential): %w", err))
 	}
+	registerPublicKeyCredentialBodyParser := body_parser.NewWithProcessor(
+		registerTransportCredentialBodyParser,
+		registrationBodyInput.PublicKeyCredentialProcessor,
+	)
 
 	mux.Add(
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/api/login/passkey/options",
 			Method: http.MethodGet,
 			Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
@@ -139,7 +147,7 @@ func PatchMux(
 					}
 				}
 
-				optionsBytes, err := login.MakeOptionsBytes(challenge, relayingPartyId)
+				optionsBytes, err := login.MakeOptionsBytes(challenge, relyingPartyId)
 				if err != nil {
 					return nil, &muxResponseError.ResponseError{
 						ServerError: motmedelErrors.NewWithTrace(
@@ -150,16 +158,17 @@ func PatchMux(
 				}
 
 				return &muxResponse.Response{
-					Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
+					Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: contentTypeJson}},
 					Body:    optionsBytes,
 				}, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/api/login/passkey",
 			Method: http.MethodPost,
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
-				ContentType: "application/json",
+			BodyLoader: &body_loader.Loader{
+				Setting:     body_setting.Required,
+				ContentType: contentTypeJson,
 				MaxBytes:    2048,
 				Parser:      bodyParserAdapter.New(loginPublicKeyCredentialBodyParser),
 			},
@@ -174,11 +183,10 @@ func PatchMux(
 				credentialId := bodyInput.CredentialId
 				if len(credentialId) == 0 {
 					return nil, &muxResponseError.ResponseError{
-						ClientError: motmedelErrors.NewWithTrace(passkeyUtilsErrors.ErrEmptyCredentialId),
-						ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+						ClientError: motmedelErrors.NewWithTrace(empty_error.New("credential id")),
+						ProblemDetail: problem_detail.New(
 							http.StatusUnprocessableEntity,
-							"The credential id is empty.",
-							nil,
+							problem_detail_config.WithDetail("The credential id is empty."),
 						),
 					}
 				}
@@ -190,9 +198,11 @@ func PatchMux(
 
 					if errors.Is(err, passkeyProviderErrors.ErrNoPublicKeyCredential) {
 						return nil, &muxResponseError.ResponseError{
-							ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-								"No stored public key credential was found for the given credential id.",
-								nil,
+							ProblemDetail: problem_detail.New(
+								http.StatusBadRequest,
+								problem_detail_config.WithDetail(
+									"No stored public key credential was found for the given credential id.",
+								),
 							),
 							ClientError: wrappedErr,
 						}
@@ -202,7 +212,7 @@ func PatchMux(
 				}
 				if signingData == nil {
 					return nil, &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(passkeyProviderErrors.ErrNilSigningData),
+						ServerError: motmedelErrors.NewWithTrace(nil_error.New("signing data")),
 					}
 				}
 
@@ -231,80 +241,49 @@ func PatchMux(
 					}
 				}
 
-				var verifier motmedelCryptoInterfaces.Verifier
-
-				switch typedPublicKey := publicKey.(type) {
-				case *ecdsa.PublicKey:
-					ecdsaMethod, err := motmedelEcdsa.FromPublicKey(typedPublicKey)
-					if err != nil {
-						return nil, &muxResponseError.ResponseError{
-							ServerError: motmedelErrors.NewWithTrace(
-								fmt.Errorf("ecdsa from public key: %w", err),
-								publicKey,
-							),
-						}
-					}
-					verifier = &motmedelEcdsa.Asn1DerEncodedMethod{Method: *ecdsaMethod}
-				case *rsa.PublicKey:
-					coseAlgorithm := signingData.PublicKeyAlgorithm
-					name, ok := motmedelCrypto.CoseAlgNames[coseAlgorithm]
-					if !ok {
-						return nil, &muxResponseError.ResponseError{
-							ServerError: motmedelErrors.NewWithTrace(
-								passkeyProviderErrors.ErrUnexpectedAlgorithm,
-								coseAlgorithm,
-							),
-						}
-					}
-
-					rsaMethod, err := motmedelRsa.New(name, nil, typedPublicKey)
-					if err != nil {
-						return nil, &muxResponseError.ResponseError{
-							ServerError: motmedelErrors.NewWithTrace(
-								fmt.Errorf("rsa new: %w", err),
-								typedPublicKey,
-							),
-						}
-					}
-
-					verifier = rsaMethod
-				default:
+				verifier, err := webauthn.NewVerifier(cose.Algorithm(signingData.PublicKeyAlgorithm), publicKey)
+				if err != nil {
 					return nil, &muxResponseError.ResponseError{
-						ServerError: motmedelErrors.NewWithTrace(motmedelErrors.ErrConversionNotOk, publicKey),
+						ServerError: motmedelErrors.New(
+							fmt.Errorf("webauthn new verifier: %w", err),
+							signingData.PublicKeyAlgorithm, publicKey,
+						),
 					}
 				}
 
-				err = passkeyUtilsValidation.ValidateAssertionPublicKeyCredential(
+				err = webauthn.ValidateAssertionPublicKeyCredential(
 					bodyInput.Credential,
 					bodyInput.RawClientDataJson,
 					bodyInput.RawAuthenticatorData,
 					challenge,
 					originUrlString,
-					relayingPartyId,
+					relyingPartyId,
 					signingData.SignatureCount,
 					verifier,
 				)
 				if err != nil {
 					wrappedErr := motmedelErrors.New(
-						fmt.Errorf("validate ecdsa assertion public key credential: %w", err),
+						fmt.Errorf("validate assertion public key credential: %w", err),
 						bodyInput.Credential,
 						bodyInput.RawClientDataJson,
 						bodyInput.RawAuthenticatorData,
 						challenge,
 						originUrlString,
-						relayingPartyId,
+						relyingPartyId,
 						signingData.SignatureCount,
 						verifier,
 					)
 
-					if errors.Is(err, motmedelErrors.ErrValidationError) {
+					// Signature failures are wrapped as verification errors; both classes are
+					// caused by client input.
+					if motmedelErrors.IsAny(err, motmedelErrors.ErrValidationError, motmedelErrors.ErrVerificationError) {
 						validationResponseError := passkeyHelpers.MakeValidationResponseError(
 							wrappedErr,
-							passkeyUtilsValidation.AssertionBadRequestErrors,
+							webauthn.AssertionBadRequestErrors,
 						)
 						if validationResponseError == nil {
 							return nil, &muxResponseError.ResponseError{
-								ServerError: motmedelErrors.New(passkeyProviderErrors.ErrNilValidationResponseError),
+								ServerError: motmedelErrors.NewWithTrace(nil_error.New("validation response error")),
 							}
 						}
 						return nil, validationResponseError
@@ -337,7 +316,7 @@ func PatchMux(
 				return &muxResponse.Response{Headers: headerEntries}, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/api/register/passkey/options",
 			Method: http.MethodGet,
 			Handler: func(request *http.Request, _ []byte) (*muxResponse.Response, *muxResponseError.ResponseError) {
@@ -351,14 +330,14 @@ func PatchMux(
 				}
 
 				userId := userHandler.GenerateUserId(ctx)
-				transportUserId := transport.Base64URL(userId)
+				transportUserId := webauthnTransport.Base64URL(userId)
 
 				// NOTE: `Name` and `DisplayName` are set client side.
 				optionsBytes, err := registration.MakeRegistrationOptionsBytes(
-					&transportUserEntity.PublicKeyCredentialUserEntity{
+					&webauthnTransport.PublicKeyCredentialUserEntity{
 						Id: &transportUserId,
 					},
-					relayingParty,
+					relyingParty,
 					challenge,
 					allowedCoseAlgorithms,
 				)
@@ -380,16 +359,17 @@ func PatchMux(
 				}
 
 				return &muxResponse.Response{
-					Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
+					Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: contentTypeJson}},
 					Body:    optionsBytes,
 				}, nil
 			},
 		},
-		&endpoint_specification.EndpointSpecification{
+		&endpointPkg.Endpoint{
 			Path:   "/api/register/passkey",
 			Method: http.MethodPost,
-			BodyParserConfiguration: &parsing.BodyParserConfiguration{
-				ContentType: "application/json",
+			BodyLoader: &body_loader.Loader{
+				Setting:     body_setting.Required,
+				ContentType: contentTypeJson,
 				Parser:      bodyParserAdapter.New(registerPublicKeyCredentialBodyParser),
 				MaxBytes:    2048,
 			},
@@ -416,27 +396,58 @@ func PatchMux(
 					}
 				}
 
-				err = passkeyUtilsValidation.ValidateAttestationPublicKeyCredential(
+				err = webauthn.ValidateAttestationPublicKeyCredential(
 					bodyInput.Credential,
 					challenge,
 					originUrlString,
-					relayingPartyId,
-					allowedCoseAlgorithms,
+					relyingPartyId,
+					coseAlgorithms,
 				)
 				if err != nil {
 					wrappedErr := motmedelErrors.New(
 						fmt.Errorf("validate attestation public key credential: %w", err),
-						bodyInput.Credential, challenge, originUrlString, relayingPartyId, allowedCoseAlgorithms,
+						bodyInput.Credential, challenge, originUrlString, relyingPartyId, coseAlgorithms,
 					)
 
 					if errors.Is(err, motmedelErrors.ErrValidationError) {
 						validationResponseError := passkeyHelpers.MakeValidationResponseError(
 							wrappedErr,
-							passkeyUtilsValidation.AttestationBadRequestErrors,
+							webauthn.AttestationBadRequestErrors,
 						)
 						if validationResponseError == nil {
 							return nil, &muxResponseError.ResponseError{
-								ServerError: motmedelErrors.New(passkeyProviderErrors.ErrNilValidationResponseError),
+								ServerError: motmedelErrors.NewWithTrace(nil_error.New("validation response error")),
+							}
+						}
+						return nil, validationResponseError
+					}
+
+					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
+				}
+
+				// Verify the attestation statement (WebAuthn §7.1.19). Registration requests
+				// "none" attestation, so a conforming authenticator returns an empty "none"
+				// statement; verification confirms that and rejects any unexpected or malformed
+				// statement rather than trusting the credential unconditionally. The returned
+				// attestation type and trust path are not evaluated further, as "none" is
+				// requested.
+				if _, err := webauthn.VerifyAttestationStatement(
+					bodyInput.Credential.Response.AttestationObject,
+					bodyInput.RawClientDataJson,
+				); err != nil {
+					wrappedErr := motmedelErrors.New(
+						fmt.Errorf("verify attestation statement: %w", err),
+						bodyInput.Credential, bodyInput.RawClientDataJson,
+					)
+
+					if motmedelErrors.IsAny(err, motmedelErrors.ErrValidationError, motmedelErrors.ErrVerificationError) {
+						validationResponseError := passkeyHelpers.MakeValidationResponseError(
+							wrappedErr,
+							webauthn.AttestationBadRequestErrors,
+						)
+						if validationResponseError == nil {
+							return nil, &muxResponseError.ResponseError{
+								ServerError: motmedelErrors.NewWithTrace(nil_error.New("validation response error")),
 							}
 						}
 						return nil, validationResponseError
@@ -453,10 +464,11 @@ func PatchMux(
 
 					if errors.Is(err, passkeyProviderErrors.ErrEmailAddressUserIdConflict) {
 						return nil, &muxResponseError.ResponseError{
-							ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+							ProblemDetail: problem_detail.New(
 								http.StatusConflict,
-								"The email address is already registered with a different user id.",
-								nil,
+								problem_detail_config.WithDetail(
+									"The email address is already registered with a different user id.",
+								),
 							),
 							ClientError: wrappedErr,
 						}

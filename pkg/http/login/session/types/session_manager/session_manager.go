@@ -21,6 +21,7 @@ import (
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	"github.com/Motmedel/utils_go/pkg/iso3166"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claim_strings"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
@@ -37,8 +38,6 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
-	"golang.org/x/text/language"
-	"golang.org/x/text/language/display"
 )
 
 type Manager struct {
@@ -89,9 +88,7 @@ func clientMetadataFromContext(ctx context.Context) *authenticationPkg.ClientMet
 		metadata.IpAddressCity = header.Get("X-Client-Geo-City-Name")
 
 		if countryIsoCode := header.Get("X-Client-Geo-Country-Iso-Code"); countryIsoCode != "" {
-			if region, err := language.ParseRegion(countryIsoCode); err == nil {
-				metadata.IpAddressCountry = display.Regions(language.English).Name(region)
-			}
+			metadata.IpAddressCountry = iso3166.CountryName(countryIsoCode)
 		}
 	}
 

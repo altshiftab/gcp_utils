@@ -96,7 +96,7 @@ func TestEndpoint(t *testing.T) {
 				ExpectedProblemDetail: &problem_detail.Detail{
 					Detail: "Bad query.",
 					Extension: map[string]any{
-						"errors": []any{"missing parameter: token"},
+						"errors": []any{"validation error: missing parameter: token"},
 					},
 				},
 			},

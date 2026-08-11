@@ -7,10 +7,9 @@ import (
 	"fmt"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/utils"
-	passkeyUtilsErrors "github.com/altshiftab/passkey_utils/pkg/errors"
-	requestOptionsTransport "github.com/altshiftab/passkey_utils/pkg/types/public_key_credential_request_options/transport"
-	"github.com/altshiftab/passkey_utils/pkg/utils/transport"
+	webauthnTransport "github.com/Motmedel/utils_go/pkg/webauthn/transport"
 )
 
 func MakeEcdsaPublicKey(data []byte) (*ecdsa.PublicKey, error) {
@@ -27,17 +26,17 @@ func MakeEcdsaPublicKey(data []byte) (*ecdsa.PublicKey, error) {
 	return ecdsaPublicKey, nil
 }
 
-func MakeOptionsBytes(challenge []byte, relayingPartyId string) ([]byte, error) {
+func MakeOptionsBytes(challenge []byte, relyingPartyId string) ([]byte, error) {
 	if len(challenge) == 0 {
-		return nil, motmedelErrors.NewWithTrace(passkeyUtilsErrors.ErrEmptyChallenge)
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("challenge"))
 	}
 
-	transportChallenge := transport.Base64URL(challenge)
+	transportChallenge := webauthnTransport.Base64URL(challenge)
 
-	// NOTE: Relaying party id is optional.
-	options := requestOptionsTransport.PublicKeyCredentialRequestOptions{
+	// NOTE: Relying party id is optional.
+	options := webauthnTransport.PublicKeyCredentialRequestOptions{
 		Challenge: &transportChallenge,
-		RpId:      relayingPartyId,
+		RpId:      relyingPartyId,
 	}
 
 	optionsBytes, err := json.Marshal(options)

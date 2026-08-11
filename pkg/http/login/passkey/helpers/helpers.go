@@ -8,9 +8,10 @@ import (
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	muxResponseError "github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
-	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
-	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
-	passkeyUtilsValidation "github.com/altshiftab/passkey_utils/pkg/utils/validation"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	"github.com/Motmedel/utils_go/pkg/webauthn"
+	passkeyProviderErrors "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/errors"
 )
 
 func GenerateChallenge() ([]byte, error) {
@@ -24,7 +25,7 @@ func GenerateChallenge() ([]byte, error) {
 
 func MakeValidationResponseError(err error, badRequestErrors []error) *muxResponseError.ResponseError {
 	var statusCode int
-	isBadRequestErr := motmedelErrors.IsAny(err, passkeyUtilsValidation.CommonBadRequestErrors...) || motmedelErrors.IsAny(err, badRequestErrors...)
+	isBadRequestErr := motmedelErrors.IsAny(err, webauthn.CommonBadRequestErrors...) || motmedelErrors.IsAny(err, badRequestErrors...)
 	if isBadRequestErr {
 		statusCode = http.StatusBadRequest
 	} else {
@@ -32,30 +33,28 @@ func MakeValidationResponseError(err error, badRequestErrors []error) *muxRespon
 	}
 
 	return &muxResponseError.ResponseError{
-		ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+		ProblemDetail: problem_detail.New(
 			statusCode,
-			"The public key credential did not pass validation.",
-			nil,
+			problem_detail_config.WithDetail("The public key credential did not pass validation."),
 		),
 		ClientError: err,
 	}
 }
 
 func MakeDatabaseChallengeResponseError(err error) *muxResponseError.ResponseError {
-	if errors.Is(err, altshiftGcpUtilsHttpLoginErrors.ErrNoChallenge) {
+	if errors.Is(err, passkeyProviderErrors.ErrNoChallenge) {
 		return &muxResponseError.ResponseError{
-			ProblemDetail: problem_detail.MakeBadRequestProblemDetail(
-				"No challenge was found.",
-				nil,
+			ProblemDetail: problem_detail.New(
+				http.StatusBadRequest,
+				problem_detail_config.WithDetail("No challenge was found."),
 			),
 			ClientError: err,
 		}
-	} else if errors.Is(err, altshiftGcpUtilsHttpLoginErrors.ErrExpiredChallenge) {
+	} else if errors.Is(err, passkeyProviderErrors.ErrExpiredChallenge) {
 		return &muxResponseError.ResponseError{
-			ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+			ProblemDetail: problem_detail.New(
 				http.StatusUnauthorized,
-				"The challenge has expired.",
-				nil,
+				problem_detail_config.WithDetail("The challenge has expired."),
 			),
 			ClientError: err,
 		}

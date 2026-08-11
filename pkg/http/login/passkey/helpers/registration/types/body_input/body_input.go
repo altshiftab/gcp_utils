@@ -1,38 +1,47 @@
 package body_input
 
 import (
+	"context"
 	"net/http"
 
-	"github.com/Motmedel/utils_go/pkg/http/mux/interfaces/body_processor"
+	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
+	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	processorPkg "github.com/Motmedel/utils_go/pkg/http/mux/types/processor"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
-	"github.com/Motmedel/utils_go/pkg/http/problem_detail"
-	passkeyUtilsErrors "github.com/altshiftab/passkey_utils/pkg/errors"
-	"github.com/altshiftab/passkey_utils/pkg/types/public_key_credential"
-	"github.com/altshiftab/passkey_utils/pkg/types/public_key_credential/transport"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
+	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
+	"github.com/Motmedel/utils_go/pkg/webauthn"
+	webauthnTransport "github.com/Motmedel/utils_go/pkg/webauthn/transport"
 )
 
 type BodyInput struct {
-	Credential *public_key_credential.AttestationPublicKeyCredential
+	Credential *webauthn.AttestationPublicKeyCredential
+	// RawClientDataJson is the client data exactly as received, needed to verify the attestation
+	// statement's binding to this ceremony.
+	RawClientDataJson []byte
 }
 
-var PublicKeyCredentialProcessor = body_processor.BodyProcessorFunction[*BodyInput, *transport.AttestationPublicKeyCredential](
-	func(transportCredential *transport.AttestationPublicKeyCredential) (*BodyInput, *response_error.ResponseError) {
-		credential, err := transport.MakeAttestationPublicKeyCredential(transportCredential)
+var PublicKeyCredentialProcessor = processorPkg.New(
+	func(_ context.Context, transportCredential *webauthnTransport.AttestationPublicKeyCredential) (*BodyInput, *response_error.ResponseError) {
+		credential, err := webauthnTransport.MakeAttestationPublicKeyCredential(transportCredential)
 		if err != nil {
 			return nil, &response_error.ResponseError{
-				ProblemDetail: problem_detail.MakeStatusCodeProblemDetail(
+				ProblemDetail: problem_detail.New(
 					http.StatusUnprocessableEntity,
-					"The public key credential could not be decoded.",
-					nil,
+					problem_detail_config.WithDetail("The public key credential could not be decoded."),
 				),
+				ClientError: err,
 			}
 		}
 		if credential == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: passkeyUtilsErrors.ErrNilPublicKeyCredential,
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("public key credential")),
 			}
 		}
 
-		return &BodyInput{Credential: credential}, nil
+		return &BodyInput{
+			Credential:        credential,
+			RawClientDataJson: transportCredential.Response.GetClientDataJson(),
+		}, nil
 	},
 )

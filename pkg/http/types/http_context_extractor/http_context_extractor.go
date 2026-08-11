@@ -11,13 +11,11 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/text/language"
-	"golang.org/x/text/language/display"
-
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	motmedelHttpContext "github.com/Motmedel/utils_go/pkg/http/context"
-	"github.com/Motmedel/utils_go/pkg/http/parsing/headers/authorization"
 	motmedelHttpTypes "github.com/Motmedel/utils_go/pkg/http/types"
+	"github.com/Motmedel/utils_go/pkg/http/types/authorization"
+	"github.com/Motmedel/utils_go/pkg/iso3166"
 	motmedelJson "github.com/Motmedel/utils_go/pkg/json"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jws"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
@@ -549,8 +547,8 @@ func (e *Extractor) Handle(ctx context.Context, record *slog.Record) error {
 						if clientCountryIsoCode != "" {
 							ecsClientGeo.CountryIsoCode = clientCountryIsoCode
 
-							if region, err := language.ParseRegion(clientCountryIsoCode); err == nil {
-								ecsClientGeo.CountryName = display.Regions(language.English).Name(region)
+							if countryName := iso3166.CountryName(clientCountryIsoCode); countryName != "" {
+								ecsClientGeo.CountryName = countryName
 							}
 						}
 

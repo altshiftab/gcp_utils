@@ -5,57 +5,55 @@ import (
 	"fmt"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
-	altshiftGcpUtilsHttpLoginErrors "github.com/altshiftab/gcp_utils/pkg/http/login/errors"
-	passkeyUtilsError "github.com/altshiftab/passkey_utils/pkg/errors"
-	"github.com/altshiftab/passkey_utils/pkg/types/public_key_credential_creation_options"
-	transportCreateOptions "github.com/altshiftab/passkey_utils/pkg/types/public_key_credential_creation_options/transport"
-	transportUserEntity "github.com/altshiftab/passkey_utils/pkg/types/public_key_credential_entity/public_key_credential_user_entity/transport"
-	"github.com/altshiftab/passkey_utils/pkg/utils/transport"
+	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
+	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
+	"github.com/Motmedel/utils_go/pkg/webauthn"
+	webauthnTransport "github.com/Motmedel/utils_go/pkg/webauthn/transport"
 )
 
 func MakeRegistrationOptionsBytes(
-	user *transportUserEntity.PublicKeyCredentialUserEntity,
-	relayingParty *public_key_credential_creation_options.RelayingParty,
+	user *webauthnTransport.PublicKeyCredentialUserEntity,
+	relyingParty *webauthn.RelyingParty,
 	challenge []byte,
 	allowedCoseAlgorithms []int,
 ) ([]byte, error) {
 	if user == nil {
-		return nil, motmedelErrors.NewWithTrace(passkeyUtilsError.ErrNilUserEntity)
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("user entity"))
 	}
 
-	if relayingParty == nil {
-		return nil, motmedelErrors.NewWithTrace(passkeyUtilsError.ErrNilRelayingParty)
+	if relyingParty == nil {
+		return nil, motmedelErrors.NewWithTrace(nil_error.New("relying party"))
 	}
 
 	if len(challenge) == 0 {
-		return nil, motmedelErrors.NewWithTrace(passkeyUtilsError.ErrEmptyChallenge)
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("challenge"))
 	}
 
 	if len(allowedCoseAlgorithms) == 0 {
-		return nil, motmedelErrors.NewWithTrace(altshiftGcpUtilsHttpLoginErrors.ErrEmptyAllowedAlgs)
+		return nil, motmedelErrors.NewWithTrace(empty_error.New("allowed cose algorithms"))
 	}
 
-	var publickeyCredentialParams []*public_key_credential_creation_options.PublicKeyCredentialParam
+	var publickeyCredentialParams []*webauthn.PublicKeyCredentialParam
 	for _, coseAlgorithm := range allowedCoseAlgorithms {
 		publickeyCredentialParams = append(
 			publickeyCredentialParams,
-			&public_key_credential_creation_options.PublicKeyCredentialParam{
+			&webauthn.PublicKeyCredentialParam{
 				Type: "public-key",
 				Alg:  coseAlgorithm,
 			},
 		)
 	}
 
-	transportChallenge := transport.Base64URL(challenge)
+	transportChallenge := webauthnTransport.Base64URL(challenge)
 
-	options := transportCreateOptions.PublicKeyCredentialCreationOptions{
-		RelyingParty:     relayingParty,
+	options := webauthnTransport.PublicKeyCredentialCreationOptions{
+		RelyingParty:     relyingParty,
 		User:             user,
 		Challenge:        &transportChallenge,
 		PubKeyCredParams: publickeyCredentialParams,
-		AuthenticatorSelection: &public_key_credential_creation_options.AuthenticatorSelection{
+		AuthenticatorSelection: &webauthn.AuthenticatorSelection{
 			AuthenticatorAttachment: "platform",
-			ResidentKeyPreference:   "required",
+			ResidentKey:             "required",
 			RequireResidentKey:      true,
 		},
 		Attestation: "none",

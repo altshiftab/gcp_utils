@@ -37,8 +37,6 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/refresh_endpoint/refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 var defaultAuthenticationParser request_parser.RequestParser[any]
@@ -427,12 +425,12 @@ func TestInitialize(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	opts := []cmp.Option{
-		cmpopts.IgnoreFields(
+	opts := []motmedelTestingCmp.Option{
+		motmedelTestingCmp.IgnoreFields(
 			Endpoint{},
 			"selectRefreshAuthentication",
 		),
-		cmpopts.EquateComparable(adapter.Adapter[struct{}]{}),
+		motmedelTestingCmp.EquateComparable(adapter.Adapter[struct{}]{}),
 	}
 
 	type args struct {
@@ -477,7 +475,7 @@ func TestNew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := New(tt.args.options...)
-			if diff := cmp.Diff(tt.want, got, opts...); diff != "" {
+			if diff := motmedelTestingCmp.Diff(tt.want, got, opts...); diff != "" {
 				t.Errorf("endpoint mismatch (-expected +got):\n%s", diff)
 			}
 		})
