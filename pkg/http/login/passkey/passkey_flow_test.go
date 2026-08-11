@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,7 +15,10 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/webauthn"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/login/types"
+	passkeyConfig "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/passkey_config"
 )
+
+var errAttestationRequired = errors.New("attestation required")
 
 // A real registration and authentication ceremony pair for rp id "alt-shift.se", shared with the
 // utils_go webauthn transport tests. The registration's credential public key equals
@@ -265,4 +269,67 @@ func decodeFlowAttestationObject(t *testing.T) []byte {
 	}
 
 	return attestationObject
+}
+
+// TestRegistrationAttestationVerifier verifies that a configured AttestationVerifier is applied
+// to the verified result and can reject the registration.
+func TestRegistrationAttestationVerifier(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		verifier       func(result *webauthn.AttestationVerificationResult) error
+		expectAccepted bool
+	}{
+		{
+			name:           "accepting verifier",
+			verifier:       func(_ *webauthn.AttestationVerificationResult) error { return nil },
+			expectAccepted: true,
+		},
+		{
+			name: "rejecting verifier",
+			verifier: func(result *webauthn.AttestationVerificationResult) error {
+				// The flow fixture is a "none" attestation; a policy requiring real attestation
+				// rejects it.
+				if result.Type == webauthn.AttestationTypeNone {
+					return errAttestationRequired
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			mux := &muxPkg.Mux{}
+			err := PatchMux(
+				mux,
+				&flowSessionHandler{},
+				&flowUserHandler{registrationUserId: "registered-user-id"},
+				&url.URL{Scheme: "https", Host: "login.alt-shift.se"},
+				&webauthn.RelyingParty{Id: "alt-shift.se", Name: "Alt-Shift"},
+				[]int{-7},
+				passkeyConfig.WithAttestationVerifier(testCase.verifier),
+			)
+			if err != nil {
+				t.Fatalf("patch mux: %v", err)
+			}
+
+			httpServer := httptest.NewServer(mux)
+			t.Cleanup(httpServer.Close)
+
+			statusCode, _ := postJson(t, httpServer.URL, "/api/register/passkey", flowRegistrationBodyJson)
+			if testCase.expectAccepted {
+				if statusCode >= 300 {
+					t.Errorf("status code: got %d, want < 300", statusCode)
+				}
+				return
+			}
+			if statusCode != http.StatusForbidden {
+				t.Errorf("status code: got %d, want %d", statusCode, http.StatusForbidden)
+			}
+		})
+	}
 }

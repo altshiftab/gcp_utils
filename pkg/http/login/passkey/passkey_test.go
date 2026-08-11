@@ -14,6 +14,7 @@ import (
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/webauthn"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/login/types"
+	passkeyConfig "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/passkey_config"
 )
 
 type stubUserHandler struct {
@@ -91,6 +92,7 @@ func TestPatchMux(t *testing.T) {
 		userHandler    UserHandler
 		originUrl      *url.URL
 		relyingParty   *webauthn.RelyingParty
+		options        []passkeyConfig.Option
 		expectError    bool
 	}{
 		{
@@ -136,6 +138,29 @@ func TestPatchMux(t *testing.T) {
 			originUrl:      &url.URL{Scheme: "https", Host: "example.com"},
 			relyingParty:   makeRelyingParty(),
 		},
+		{
+			name:           "direct attestation preference",
+			mux:            &muxPkg.Mux{},
+			sessionHandler: &stubSessionHandler{},
+			userHandler:    &stubUserHandler{},
+			originUrl:      &url.URL{Scheme: "https", Host: "example.com"},
+			relyingParty:   makeRelyingParty(),
+			options: []passkeyConfig.Option{
+				passkeyConfig.WithAttestationConveyancePreference(passkeyConfig.AttestationConveyancePreferenceDirect),
+			},
+		},
+		{
+			name:           "unknown attestation preference",
+			mux:            &muxPkg.Mux{},
+			sessionHandler: &stubSessionHandler{},
+			userHandler:    &stubUserHandler{},
+			originUrl:      &url.URL{Scheme: "https", Host: "example.com"},
+			relyingParty:   makeRelyingParty(),
+			options: []passkeyConfig.Option{
+				passkeyConfig.WithAttestationConveyancePreference("bogus"),
+			},
+			expectError: true,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -149,6 +174,7 @@ func TestPatchMux(t *testing.T) {
 				testCase.originUrl,
 				testCase.relyingParty,
 				[]int{-7},
+				testCase.options...,
 			)
 			if testCase.expectError && err == nil {
 				t.Fatalf("expected error, got nil")

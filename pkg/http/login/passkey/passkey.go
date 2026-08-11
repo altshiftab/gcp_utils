@@ -35,6 +35,7 @@ import (
 	loginBodyInput "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/login/types/body_input"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/registration"
 	registrationBodyInput "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/helpers/registration/types/body_input"
+	passkeyConfig "github.com/altshiftab/gcp_utils/pkg/http/login/passkey/passkey_config"
 )
 
 const contentTypeJson = "application/json"
@@ -63,9 +64,27 @@ func PatchMux(
 	originUrl *url.URL,
 	relyingParty *webauthn.RelyingParty,
 	allowedCoseAlgorithms []int,
+	options ...passkeyConfig.Option,
 ) error {
 	if mux == nil {
 		return nil
+	}
+
+	config := passkeyConfig.New(options...)
+
+	switch config.AttestationConveyancePreference {
+	case passkeyConfig.AttestationConveyancePreferenceNone,
+		passkeyConfig.AttestationConveyancePreferenceIndirect,
+		passkeyConfig.AttestationConveyancePreferenceDirect,
+		passkeyConfig.AttestationConveyancePreferenceEnterprise:
+	default:
+		return motmedelErrors.NewWithTrace(
+			fmt.Errorf(
+				"%w: unsupported attestation conveyance preference %q",
+				motmedelErrors.ErrValidationError,
+				config.AttestationConveyancePreference,
+			),
+		)
 	}
 
 	if originUrl == nil {
@@ -340,6 +359,7 @@ func PatchMux(
 					relyingParty,
 					challenge,
 					allowedCoseAlgorithms,
+					config.AttestationConveyancePreference,
 				)
 				if err != nil {
 					return nil, &muxResponseError.ResponseError{
@@ -425,16 +445,17 @@ func PatchMux(
 					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
 				}
 
-				// Verify the attestation statement (WebAuthn §7.1.19). Registration requests
-				// "none" attestation, so a conforming authenticator returns an empty "none"
-				// statement; verification confirms that and rejects any unexpected or malformed
-				// statement rather than trusting the credential unconditionally. The returned
-				// attestation type and trust path are not evaluated further, as "none" is
-				// requested.
-				if _, err := webauthn.VerifyAttestationStatement(
+				// Verify the attestation statement (WebAuthn §7.1.19). With the default "none"
+				// preference a conforming authenticator returns an empty "none" statement, and
+				// verification confirms that and rejects any unexpected or malformed statement;
+				// with a stronger preference it verifies the actual statement format. The
+				// verified result is handed to the configured AttestationVerifier, if any, which
+				// applies the relying party's trust policy.
+				attestationResult, err := webauthn.VerifyAttestationStatement(
 					bodyInput.Credential.Response.AttestationObject,
 					bodyInput.RawClientDataJson,
-				); err != nil {
+				)
+				if err != nil {
 					wrappedErr := motmedelErrors.New(
 						fmt.Errorf("verify attestation statement: %w", err),
 						bodyInput.Credential, bodyInput.RawClientDataJson,
@@ -454,6 +475,21 @@ func PatchMux(
 					}
 
 					return nil, &muxResponseError.ResponseError{ServerError: wrappedErr}
+				}
+
+				if attestationVerifier := config.AttestationVerifier; attestationVerifier != nil {
+					if err := attestationVerifier(attestationResult); err != nil {
+						return nil, &muxResponseError.ResponseError{
+							ProblemDetail: problem_detail.New(
+								http.StatusForbidden,
+								problem_detail_config.WithDetail("The authenticator is not acceptable."),
+							),
+							ClientError: motmedelErrors.New(
+								fmt.Errorf("attestation verifier: %w", err),
+								attestationResult,
+							),
+						}
+					}
 				}
 
 				if err := userHandler.AddUser(ctx, userId, ""); err != nil {

@@ -16,6 +16,7 @@ func MakeRegistrationOptionsBytes(
 	relyingParty *webauthn.RelyingParty,
 	challenge []byte,
 	allowedCoseAlgorithms []int,
+	attestationConveyancePreference string,
 ) ([]byte, error) {
 	if user == nil {
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("user entity"))
@@ -44,6 +45,10 @@ func MakeRegistrationOptionsBytes(
 		)
 	}
 
+	if attestationConveyancePreference == "" {
+		attestationConveyancePreference = "none"
+	}
+
 	transportChallenge := webauthnTransport.Base64URL(challenge)
 
 	options := webauthnTransport.PublicKeyCredentialCreationOptions{
@@ -56,7 +61,7 @@ func MakeRegistrationOptionsBytes(
 			ResidentKey:             "required",
 			RequireResidentKey:      true,
 		},
-		Attestation: "none",
+		Attestation: attestationConveyancePreference,
 	}
 
 	optionsBytes, err := json.Marshal(options)

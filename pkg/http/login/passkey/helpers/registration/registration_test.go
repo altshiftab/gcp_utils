@@ -21,7 +21,7 @@ func TestMakeRegistrationOptionsBytes(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		t.Parallel()
 
-		optionsBytes, err := MakeRegistrationOptionsBytes(user, relyingParty, challenge, []int{-7, -257})
+		optionsBytes, err := MakeRegistrationOptionsBytes(user, relyingParty, challenge, []int{-7, -257}, "")
 		if err != nil {
 			t.Fatalf("make registration options bytes: %v", err)
 		}
@@ -68,6 +68,26 @@ func TestMakeRegistrationOptionsBytes(t *testing.T) {
 		}
 	})
 
+	t.Run("attestation conveyance preference", func(t *testing.T) {
+		t.Parallel()
+
+		optionsBytes, err := MakeRegistrationOptionsBytes(user, relyingParty, challenge, []int{-7}, "direct")
+		if err != nil {
+			t.Fatalf("make registration options bytes: %v", err)
+		}
+
+		var options struct {
+			Attestation string `json:"attestation"`
+		}
+		if err := json.Unmarshal(optionsBytes, &options); err != nil {
+			t.Fatalf("json unmarshal: %v", err)
+		}
+
+		if options.Attestation != "direct" {
+			t.Errorf("attestation: got %q, want %q", options.Attestation, "direct")
+		}
+	})
+
 	testCases := []struct {
 		name                  string
 		user                  *webauthnTransport.PublicKeyCredentialUserEntity
@@ -90,6 +110,7 @@ func TestMakeRegistrationOptionsBytes(t *testing.T) {
 				testCase.relyingParty,
 				testCase.challenge,
 				testCase.allowedCoseAlgorithms,
+				"",
 			)
 			if err == nil {
 				t.Errorf("expected error")
