@@ -8,6 +8,7 @@ import (
 	motmedelLog "github.com/Motmedel/utils_go/pkg/log"
 	motmedelContextLogger "github.com/Motmedel/utils_go/pkg/log/context_logger"
 	motmedelErrorLogger "github.com/Motmedel/utils_go/pkg/log/error_logger"
+	"github.com/altshiftab/gcp_utils/pkg/types/logger/entry_size_guard"
 	"github.com/altshiftab/gcp_utils/pkg/types/logger/logger_config"
 )
 
@@ -16,7 +17,9 @@ func New(options ...logger_config.Option) *motmedelErrorLogger.Logger {
 
 	slogger := motmedelContextLogger.New(
 		slog.NewJSONHandler(
-			config.Writer,
+			// Oversized entries are rejected by Cloud Logging wholesale; the
+			// guard reduces them instead.
+			entry_size_guard.New(config.Writer),
 			&slog.HandlerOptions{Level: config.LogLevel, ReplaceAttr: gcpLogger.ReplaceAttr},
 		),
 		&motmedelLog.ErrorContextExtractor{
