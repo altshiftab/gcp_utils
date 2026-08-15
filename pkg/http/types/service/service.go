@@ -1,10 +1,15 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
@@ -18,6 +23,59 @@ import (
 type Service struct {
 	Server *http.Server
 	Mux    *motmedelMux.Mux
+
+	shutdownTimeout time.Duration
+}
+
+// Serve serves until the process is asked to stop, and then lets the requests
+// it is handling finish. An instance is terminated whenever a revision is
+// replaced or the service scales in, and a request killed midway leaves
+// whatever it was doing half done, so the signal is handled rather than left to
+// end the process.
+func (s *Service) Serve() error {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(signals)
+
+	return s.serve(signals)
+}
+
+func (s *Service) serve(stop <-chan os.Signal) error {
+	server := s.Server
+	if server == nil {
+		return motmedelErrors.NewWithTrace(nil_error.New("http server"))
+	}
+
+	served := make(chan error, 1)
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			served <- motmedelErrors.NewWithTrace(fmt.Errorf("http server listen and serve: %w", err))
+			return
+		}
+		served <- nil
+	}()
+
+	select {
+	case err := <-served:
+		return err
+	case <-stop:
+	}
+
+	shutdownTimeout := s.shutdownTimeout
+	if shutdownTimeout <= 0 {
+		shutdownTimeout = service_config.DefaultShutdownTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	// Requests still being handled are given the remaining time; those that do
+	// not finish are ended when the process is killed anyway.
+	if err := server.Shutdown(ctx); err != nil {
+		return motmedelErrors.NewWithTrace(fmt.Errorf("http server shutdown: %w", err))
+	}
+
+	return nil
 }
 
 func New(domain string, port string, options ...service_config.Option) (*Service, error) {
@@ -84,5 +142,5 @@ func New(domain string, port string, options ...service_config.Option) (*Service
 		ErrorLog:                     slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 	}
 
-	return &Service{Server: httpServer, Mux: mux}, nil
+	return &Service{Server: httpServer, Mux: mux, shutdownTimeout: config.ShutdownTimeout}, nil
 }

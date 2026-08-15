@@ -1,17 +1,26 @@
 package service_config
 
-import "github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
+import (
+	"time"
+
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
+)
+
+// DefaultShutdownTimeout leaves room within the time Cloud Run allows an
+// instance between asking it to stop and killing it.
+const DefaultShutdownTimeout = 9 * time.Second
 
 type Config struct {
 	Public                 bool
 	StaticContentEndpoints []*endpoint.Endpoint
 	Redirects              [][2]string
+	ShutdownTimeout        time.Duration
 }
 
 type Option func(*Config)
 
 func New(options ...Option) *Config {
-	config := &Config{}
+	config := &Config{ShutdownTimeout: DefaultShutdownTimeout}
 	for _, option := range options {
 		if option != nil {
 			option(config)
@@ -36,5 +45,13 @@ func WithStaticContentEndpoints(endpoints []*endpoint.Endpoint) Option {
 func WithRedirects(redirects [][2]string) Option {
 	return func(config *Config) {
 		config.Redirects = redirects
+	}
+}
+
+// WithShutdownTimeout bounds how long the requests being handled are given to
+// finish once the process has been asked to stop.
+func WithShutdownTimeout(shutdownTimeout time.Duration) Option {
+	return func(config *Config) {
+		config.ShutdownTimeout = shutdownTimeout
 	}
 }
