@@ -66,6 +66,61 @@ type Endpoint struct {
 	updateAuthenticationWithDbscPublicKey func(ctx context.Context, id string, key []byte, database *sql.DB) error
 }
 
+// makeSessionCookieHeader reissues the session cookie carried by the request, unchanged except for
+// expiring with the session token it carries rather than with the authentication.
+func makeSessionCookieHeader(
+	request *http.Request,
+	sessionToken *session_token.Token,
+	cookieName string,
+	registeredDomain string,
+	sessionCookieOptions ...session_cookie_config.Option,
+) (*muxResponse.HeaderEntry, *response_error.ResponseError) {
+	claims := sessionToken.Claims
+	if claims == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token claims")),
+		}
+	}
+
+	expiresAt := claims.ExpiresAt
+	if expiresAt == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token claims expires at")),
+		}
+	}
+
+	// The authorizer parsed the session token out of this cookie, so it is present.
+	requestCookie, err := request.Cookie(cookieName)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("request cookie: %w", err), cookieName),
+		}
+	}
+
+	sessionCookie, err := session_cookie.New(
+		requestCookie.Value,
+		expiresAt.Time,
+		cookieName,
+		registeredDomain,
+		sessionCookieOptions...,
+	)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(
+				fmt.Errorf("session cookie new: %w", err),
+				expiresAt.Time, cookieName, registeredDomain,
+			),
+		}
+	}
+	if sessionCookie == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session cookie")),
+		}
+	}
+
+	return &muxResponse.HeaderEntry{Name: "Set-Cookie", Value: sessionCookie.String()}, nil
+}
+
 func (e *Endpoint) Initialize(
 	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
@@ -198,9 +253,27 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
+		// The browser refreshes a DBSC-bound session when the bound cookie expires, and from here
+		// on it is the only thing that refreshes this session. The cookie set when the session was
+		// created outlives its session token, so it is reissued with the token's own expiry;
+		// otherwise the token would expire with nothing arranged to renew it.
+		sessionCookieHeader, responseError := makeSessionCookieHeader(
+			request,
+			sessionToken,
+			cookieName,
+			registeredDomain,
+			sessionCookieOptions...,
+		)
+		if responseError != nil {
+			return nil, responseError
+		}
+
 		return &muxResponse.Response{
-			Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
-			Body:    responseData,
+			Headers: []*muxResponse.HeaderEntry{
+				{Name: "Content-Type", Value: "application/json"},
+				sessionCookieHeader,
+			},
+			Body: responseData,
 		}, nil
 	}
 

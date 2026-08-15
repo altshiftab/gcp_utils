@@ -347,3 +347,97 @@ func TestNew(t *testing.T) {
 		})
 	}
 }
+
+// TestEndpoint_ReissuesSessionCookieWithTokenExpiry asserts that registering a DBSC session
+// reissues the session cookie so that it expires with the session token it carries. The browser
+// refreshes a bound session when its cookie expires, and from registration onwards it is the only
+// thing refreshing the session, so a cookie outliving the token would leave it unarmed.
+func TestEndpoint_ReissuesSessionCookieWithTokenExpiry(t *testing.T) {
+	t.Parallel()
+
+	const validToken = "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRic2Mrand0In0.eyJhdWQiOiJodHRwczovL2V4YW1wbGUuY29tL2FwaS9zZXNzaW9uL2Ric2MvcmVnaXN0ZXIiLCJqdGkiOiJjdiIsImlhdCI6MTcyNTU3OTA1NSwia2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiSy1aSHM3cWo1RmtDZGhIeno4NFFzQ2FkOFFwVnNJdzVIRWdhQkZoeEN3TSIsInkiOiJwanUtWFVCdDN3TXhzRlBRdW9EVHNWcjU4SHREc2ZnOTVkLXVqYXFMRmtNIn0sImF1dGhvcml6YXRpb24iOiJhYyJ9.MEYCIQDZAGTcudcWFHZiUkr8jgF0cbBKT-C5H8jUSwh5fplCrwIhAMRR375Bm0DjmCt9P_85Q79ovtv7o97cvc1NOQaNWdrA"
+
+	// Shorter than the cookie a created session carries, which expires with the authentication.
+	sessionTokenExpiresAt := time.Now().Add(15 * time.Minute)
+	sessionCookieString := loginTesting.MakeCookieExplicit(
+		loginTesting.AuthenticationId,
+		method,
+		[]string{"ext"},
+		sessionTokenExpiresAt,
+		time.Now(),
+	)
+
+	testEndpoint := New()
+	testEndpointProcessor, err := dbsc_session_response_processor.New(
+		"https://example.com"+dbsc_register_endpoint_config.DefaultPath,
+		db,
+		dbsc_session_response_processor_config.WithPopDbscChallenge(
+			func(_ context.Context, challenge string, authenticationId string, _ *sql.DB) (*dbsc_challenge.Challenge, error) {
+				return &dbsc_challenge.Challenge{
+					Authentication: &authenticationPkg.Authentication{Id: authenticationId},
+					Challenge:      []byte(challenge),
+					ExpiresAt:      new(time.Now().Add(time.Hour)),
+				}, nil
+			},
+		),
+	)
+	if err != nil {
+		t.Fatalf("dbsc session response processor new: %v", err)
+	}
+
+	if err := testEndpoint.Initialize(
+		defaultAuthorizationRequestParser,
+		testEndpointProcessor,
+		loginTesting.RegisteredDomain,
+	); err != nil {
+		t.Fatalf("test endpoint initialize: %v", err)
+	}
+
+	mux := &muxPkg.Mux{}
+	mux.Add(testEndpoint.Endpoint.Endpoint)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	request, err := http.NewRequest(testEndpoint.Method, httpServer.URL+testEndpoint.Path, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	request.Header.Set("Cookie", sessionCookieString)
+	request.Header.Set(session.DbscSessionResponseHeaderName, validToken)
+
+	response, err := httpServer.Client().Do(request)
+	if err != nil {
+		t.Fatalf("client do: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("got status code %d, expected %d", response.StatusCode, http.StatusOK)
+	}
+
+	setCookie := response.Header.Get("Set-Cookie")
+	if setCookie == "" {
+		t.Fatalf("missing Set-Cookie header")
+	}
+
+	sessionCookie, err := http.ParseSetCookie(setCookie)
+	if err != nil {
+		t.Fatalf("parse set cookie: %v", err)
+	}
+
+	if sessionCookie.Expires.Sub(sessionTokenExpiresAt).Abs() > time.Minute {
+		t.Errorf(
+			"cookie expiry %s, expected the session token expiry %s",
+			sessionCookie.Expires, sessionTokenExpiresAt,
+		)
+	}
+
+	// The session token itself is untouched; only the cookie's expiry changes.
+	requestCookie, err := http.ParseSetCookie(sessionCookieString)
+	if err != nil {
+		t.Fatalf("parse set cookie (request): %v", err)
+	}
+	if sessionCookie.Value != requestCookie.Value {
+		t.Errorf("got cookie value %q, expected %q", sessionCookie.Value, requestCookie.Value)
+	}
+}
