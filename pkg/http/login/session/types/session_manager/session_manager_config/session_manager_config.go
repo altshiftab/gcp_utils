@@ -15,8 +15,9 @@ import (
 
 var (
 	DefaultCookieName = "session"
-	// TODO: This could change as DBSC becomes more mature?
-	DefaultInitialSessionDuration = 12 * time.Hour
+	// The session token is short-lived: revocation is only enforced when a session is refreshed,
+	// so the token's lifetime is how long a revoked session remains usable.
+	DefaultInitialSessionDuration = 15 * time.Minute
 	DefaultAuthenticationDuration = 12 * time.Hour
 	DefaultDbscChallengeDuration  = dbsc_refresh_endpoint_config.DefaultChallengeDuration
 	DefaultDbscRegisterPath       = dbsc_register_endpoint_config.DefaultPath

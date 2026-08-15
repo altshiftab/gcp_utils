@@ -121,6 +121,17 @@ func (e *Endpoint) Initialize(
 			return nil, nil
 		}
 
+		// An expired session token is the normal case here: the token is short-lived, and the
+		// cookie carrying it outlives it so that the session can be renewed. What must still hold
+		// is that the authentication has not ended or expired, which RefreshSession validates.
+		//
+		// The session token should be refreshed if one third or less of its expiration duration
+		// remains. Clients poll in proportion to that duration, so this is checked before the
+		// authentication is read: most calls need no refresh and should not reach the database.
+		if remainingExpirationDuration := time.Until(sessionExpiresAt.Time); remainingExpirationDuration > (sessionExpiresAt.Sub(sessionNotBefore.Time) / 3) {
+			return nil, nil
+		}
+
 		authentication, err := e.selectRefreshAuthentication(ctx, authenticationId, db)
 		if err != nil {
 			return nil, &response_error.ResponseError{
@@ -135,15 +146,6 @@ func (e *Endpoint) Initialize(
 
 		// Don't refresh if this is the first session and DBSC has been added.
 		if slices.Contains(claims.AuthenticationMethods, authentication_method.Sso) && len(authentication.DbscPublicKey) > 0 {
-			return nil, nil
-		}
-
-		// An expired session token is the normal case here: the token is short-lived, and the
-		// cookie carrying it outlives it so that the session can be renewed. What must still hold
-		// is that the authentication has not ended or expired, which RefreshSession validates.
-		//
-		// The session token should be refreshed if one third or less of its expiration duration remains.
-		if remainingExpirationDuration := time.Until(sessionExpiresAt.Time); remainingExpirationDuration > (sessionExpiresAt.Sub(sessionNotBefore.Time) / 3) {
 			return nil, nil
 		}
 

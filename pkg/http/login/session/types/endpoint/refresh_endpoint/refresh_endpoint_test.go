@@ -67,6 +67,16 @@ func TestMain(m *testing.M) {
 func TestEndpoint(t *testing.T) {
 	t.Parallel()
 
+	// A session token with most of its lifetime left is not refreshed and never reaches the
+	// authentication, so cases that exercise the lookup carry one that is due for refresh.
+	dueForRefreshCookie := loginTesting.MakeCookieExplicit(
+		loginTesting.AuthenticationId,
+		method,
+		[]string{"ext"},
+		time.Now().Add(time.Minute),
+		time.Now().Add(-59*time.Minute),
+	)
+
 	testCases := []struct {
 		name                      string
 		args                      *muxTesting.Args
@@ -157,11 +167,27 @@ func TestEndpoint(t *testing.T) {
 				Headers: [][2]string{
 					{
 						"Cookie",
-						loginTesting.MakeStandardCookie(loginTesting.AuthenticationId, method),
+						dueForRefreshCookie,
 					},
 				},
 				ExpectedStatusCode:        http.StatusInternalServerError,
 				ExpectedProblemDetail:     &problem_detail.Detail{},
+				ExpectedHeadersNotPresent: []string{"Set-Cookie"},
+			},
+			dbErr: errors.New("db error"),
+		},
+		{
+			// Clients poll this endpoint far more often than a refresh is due, so a call that
+			// needs no refresh must not read the authentication. The database would error here.
+			name: "not due for refresh does not read the authentication",
+			args: &muxTesting.Args{
+				Headers: [][2]string{
+					{
+						"Cookie",
+						loginTesting.MakeStandardCookie(loginTesting.AuthenticationId, method),
+					},
+				},
+				ExpectedStatusCode:        http.StatusNoContent,
 				ExpectedHeadersNotPresent: []string{"Set-Cookie"},
 			},
 			dbErr: errors.New("db error"),
@@ -172,7 +198,7 @@ func TestEndpoint(t *testing.T) {
 				Headers: [][2]string{
 					{
 						"Cookie",
-						loginTesting.MakeStandardCookie(loginTesting.AuthenticationId, method),
+						dueForRefreshCookie,
 					},
 				},
 				ExpectedStatusCode:    http.StatusInternalServerError,

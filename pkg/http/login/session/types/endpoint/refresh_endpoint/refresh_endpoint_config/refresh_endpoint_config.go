@@ -11,7 +11,7 @@ import (
 
 var (
 	DefaultPath                        = "/api/session/refresh"
-	DefaultSessionDuration             = 12 * time.Hour
+	DefaultSessionDuration             = 15 * time.Minute
 	DefaultSelectRefreshAuthentication = database.SelectRefreshAuthentication
 )
 
