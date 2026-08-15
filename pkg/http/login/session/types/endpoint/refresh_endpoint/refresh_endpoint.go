@@ -24,7 +24,6 @@ import (
 	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
-	motmedelTimeErrors "github.com/Motmedel/utils_go/pkg/time/errors"
 	"github.com/Motmedel/utils_go/pkg/utils"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
@@ -139,19 +138,12 @@ func (e *Endpoint) Initialize(
 			return nil, nil
 		}
 
-		remainingExpirationDuration := time.Until(sessionExpiresAt.Time)
-		if remainingExpirationDuration < 0 {
-			return nil, &response_error.ResponseError{
-				ClientError: motmedelErrors.NewWithTrace(motmedelTimeErrors.ErrNegativeDuration),
-				ProblemDetail: problem_detail.New(
-					http.StatusBadRequest,
-					problem_detail_config.WithDetail("The expiration duration is negative, indicating an invalid session token."),
-				),
-			}
-		}
-
+		// An expired session token is the normal case here: the token is short-lived, and the
+		// cookie carrying it outlives it so that the session can be renewed. What must still hold
+		// is that the authentication has not ended or expired, which RefreshSession validates.
+		//
 		// The session token should be refreshed if one third or less of its expiration duration remains.
-		if remainingExpirationDuration > (sessionExpiresAt.Sub(sessionNotBefore.Time) / 3) {
+		if remainingExpirationDuration := time.Until(sessionExpiresAt.Time); remainingExpirationDuration > (sessionExpiresAt.Sub(sessionNotBefore.Time) / 3) {
 			return nil, nil
 		}
 

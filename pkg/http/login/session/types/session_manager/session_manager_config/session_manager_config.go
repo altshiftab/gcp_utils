@@ -17,7 +17,7 @@ var (
 	DefaultCookieName = "session"
 	// TODO: This could change as DBSC becomes more mature?
 	DefaultInitialSessionDuration = 12 * time.Hour
-	DefaultAuthenticationDuration = 24 * 7 * time.Hour
+	DefaultAuthenticationDuration = 12 * time.Hour
 	DefaultDbscChallengeDuration  = dbsc_refresh_endpoint_config.DefaultChallengeDuration
 	DefaultDbscRegisterPath       = dbsc_register_endpoint_config.DefaultPath
 	DefaultDbscAlgs               = []string{"ES256"}

@@ -34,6 +34,7 @@ import (
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	sessionErrors "github.com/altshiftab/gcp_utils/pkg/http/login/session/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
@@ -332,9 +333,13 @@ func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAdd
 		}
 	}
 
+	// The cookie outlives the session token it carries: the token is short-lived and renewed
+	// through the refresh endpoint, which is reachable only for as long as the browser keeps
+	// sending the cookie. Expiring the cookie with the token would end the session at the first
+	// token expiry, making the authentication's own lifetime unreachable.
 	sessionCookie, err := session_cookie.New(
 		sessionTokenString,
-		*sessionExpiresAt,
+		*authenticationExpiresAt,
 		m.CookieName,
 		m.CookieDomain,
 		m.SessionCookieOptions...,
@@ -343,7 +348,7 @@ func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAdd
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.New(
 				fmt.Errorf("session cookie new: %w", err),
-				sessionTokenString, sessionExpiresAt, m.CookieName, m.CookieDomain,
+				sessionTokenString, authenticationExpiresAt, m.CookieName, m.CookieDomain,
 			),
 		}
 	}
@@ -460,9 +465,25 @@ func (m *Manager) RefreshSession(
 		}
 	}
 
+	authenticationExpiresAt := authentication.ExpiresAt
+	if authenticationExpiresAt == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication expires at")),
+		}
+	}
+
+	// As when the session is created, the cookie outlives the token it carries and expires with
+	// the authentication instead, so that a client can reach the refresh endpoint with an expired
+	// token. A DBSC-bound session is the exception: there the browser performs the refresh when
+	// the cookie expires, so its cookie must keep expiring with the token to stay armed.
+	cookieExpiresAt := *authenticationExpiresAt
+	if authenticationMethod == authentication_method.Dbsc {
+		cookieExpiresAt = newSessionTokenExpiresAt.Time
+	}
+
 	sessionCookie, err := session_cookie.New(
 		newSessionTokenString,
-		newSessionTokenExpiresAt.Time,
+		cookieExpiresAt,
 		m.CookieName,
 		m.CookieDomain,
 		m.SessionCookieOptions...,
@@ -471,7 +492,7 @@ func (m *Manager) RefreshSession(
 		return nil, &response_error.ResponseError{
 			ServerError: motmedelErrors.New(
 				fmt.Errorf("session cookie new: %w", err),
-				newSessionTokenString, newSessionTokenExpiresAt.Time, m.CookieName, m.CookieDomain,
+				newSessionTokenString, cookieExpiresAt, m.CookieName, m.CookieDomain,
 			),
 		}
 	}

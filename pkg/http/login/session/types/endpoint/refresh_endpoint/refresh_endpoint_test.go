@@ -243,11 +243,12 @@ func TestEndpoint(t *testing.T) {
 			invalidSessionTokenNbf: true,
 		},
 		{
-			name: "session negative duration",
+			// The session token is short-lived and the cookie carrying it outlives it, so an
+			// expired token is the normal case for a refresh; the authentication is what decides.
+			name: "expired session token",
 			args: &muxTesting.Args{
-				ExpectedStatusCode:        http.StatusBadRequest,
-				ExpectedProblemDetail:     &problem_detail.Detail{Detail: "The expiration duration is negative, indicating an invalid session token."},
-				ExpectedHeadersNotPresent: []string{"Set-Cookie"},
+				ExpectedStatusCode:     http.StatusNoContent,
+				ExpectedHeadersPresent: []string{"Set-Cookie"},
 			},
 			negativeDuration: true,
 		},

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	motmedelCryptoEddsa "github.com/Motmedel/utils_go/pkg/crypto/eddsa"
 	motmedelCryptoInterfaces "github.com/Motmedel/utils_go/pkg/crypto/interfaces"
 	motmedelSqlTesting "github.com/Motmedel/utils_go/pkg/database/sql/testing"
+	"github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claim_strings"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/registered_claims"
 	"github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/claims/session_claims"
@@ -651,5 +653,141 @@ func TestManager_RefreshSession_RolesFromAccount(t *testing.T) {
 
 	if want := []string{"updated-role"}; !slices.Equal(payload.Roles, want) {
 		t.Errorf("roles: got %v, want %v", payload.Roles, want)
+	}
+}
+
+// sessionCookieAndTokenExpiry returns the session cookie's expiry and the expiry of the session
+// token it carries.
+func sessionCookieAndTokenExpiry(t *testing.T, headers []*response.HeaderEntry) (time.Time, time.Time) {
+	t.Helper()
+
+	var setCookie string
+	for _, header := range headers {
+		if header != nil && header.Name == "Set-Cookie" {
+			setCookie = header.Value
+		}
+	}
+	if setCookie == "" {
+		t.Fatalf("missing Set-Cookie header")
+	}
+
+	cookie, err := http.ParseSetCookie(setCookie)
+	if err != nil {
+		t.Fatalf("parse set cookie: %v", err)
+	}
+
+	tokenParts := strings.Split(cookie.Value, ".")
+	if len(tokenParts) != 3 {
+		t.Fatalf("unexpected jwt part count: %d", len(tokenParts))
+	}
+	payloadData, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
+	if err != nil {
+		t.Fatalf("base64 decode jwt payload: %v", err)
+	}
+	var payload struct {
+		ExpiresAt int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payloadData, &payload); err != nil {
+		t.Fatalf("json unmarshal jwt payload: %v", err)
+	}
+
+	return cookie.Expires, time.Unix(payload.ExpiresAt, 0)
+}
+
+// TestManager_CookieOutlivesSessionToken asserts that the session cookie expires with the
+// authentication rather than with the short-lived session token it carries. Expiring it with the
+// token would end the session at the first token expiry, leaving the refresh endpoint unreachable
+// and the authentication's own lifetime unused.
+func TestManager_CookieOutlivesSessionToken(t *testing.T) {
+	t.Parallel()
+
+	const sessionDuration = 15 * time.Minute
+
+	signer := newTestSigner(t)
+	authenticationExpiresAt := time.Now().Add(7 * 24 * time.Hour)
+
+	testCases := []struct {
+		name    string
+		refresh bool
+		// A DBSC-bound session is refreshed by the browser when the cookie expires, so its cookie
+		// must keep expiring with the token rather than outliving it.
+		dbsc bool
+	}{
+		{name: "create session"},
+		{name: "refresh session", refresh: true},
+		{name: "dbsc refresh session", refresh: true, dbsc: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			authentication := newAuthentication()
+			authentication.ExpiresAt = &authenticationExpiresAt
+
+			m := newManager(t, signer, &stubs{account: newAccount(), authentication: authentication})
+			defer m.Db.Close()
+			m.InitialSessionDuration = sessionDuration
+
+			var headers []*response.HeaderEntry
+			if testCase.refresh {
+				refreshMethod := authentication_method.Refresh
+				if testCase.dbsc {
+					refreshMethod = authentication_method.Dbsc
+				}
+
+				resp, respErr := m.RefreshSession(
+					authentication,
+					makeSessionToken(t, nil),
+					refreshMethod,
+					sessionDuration,
+				)
+				if respErr != nil {
+					t.Fatalf("refresh session: %+v", respErr)
+				}
+				headers = resp.Headers
+			} else {
+				resp, respErr := m.CreateSession(
+					context.Background(),
+					authentication_method.Sso,
+					testEmail,
+					[]byte("hash"),
+				)
+				if respErr != nil {
+					t.Fatalf("create session: %+v", respErr)
+				}
+				headers = resp.Headers
+			}
+
+			cookieExpiresAt, tokenExpiresAt := sessionCookieAndTokenExpiry(t, headers)
+
+			if testCase.dbsc {
+				if cookieExpiresAt.Sub(tokenExpiresAt).Abs() > time.Minute {
+					t.Errorf(
+						"cookie expiry %s, expected the session token expiry %s",
+						cookieExpiresAt, tokenExpiresAt,
+					)
+				}
+				return
+			}
+
+			if cookieExpiresAt.Sub(authenticationExpiresAt).Abs() > time.Minute {
+				t.Errorf(
+					"cookie expiry %s, expected the authentication expiry %s",
+					cookieExpiresAt, authenticationExpiresAt,
+				)
+			}
+
+			if !tokenExpiresAt.Before(cookieExpiresAt) {
+				t.Errorf(
+					"session token expiry %s is not before the cookie expiry %s",
+					tokenExpiresAt, cookieExpiresAt,
+				)
+			}
+
+			if expected := time.Now().Add(sessionDuration); tokenExpiresAt.Sub(expected).Abs() > time.Minute {
+				t.Errorf("session token expiry %s, expected roughly %s", tokenExpiresAt, expected)
+			}
+		})
 	}
 }
