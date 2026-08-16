@@ -1,9 +1,9 @@
 package dbsc_refresh_endpoint
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,7 +12,6 @@ import (
 	motmedelDatabase "github.com/Motmedel/utils_go/pkg/database"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
-	"github.com/Motmedel/utils_go/pkg/errors/types/mismatch_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
@@ -24,12 +23,12 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/http/utils"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_instructions"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 )
 
@@ -48,6 +47,23 @@ type Endpoint struct {
 	insertDbscChallenge         func(ctx context.Context, challenge string, authenticationId string, challengeDuration time.Duration, db *sql.DB) error
 	selectRefreshAuthentication func(ctx context.Context, id string, database *sql.DB) (*authenticationPkg.Authentication, error)
 	generateDbscChallenge       func() (string, error)
+}
+
+// endedSessionResponse tells the browser to stop applying the session and discard its key. A
+// session whose authentication is gone, ended or expired can never be refreshed again, so ending it
+// is more useful to the browser than an error it would keep retrying.
+func endedSessionResponse() (*muxResponse.Response, *response_error.ResponseError) {
+	body, err := json.Marshal(session_instructions.Ended())
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("json marshal (session instructions): %w", err)),
+		}
+	}
+
+	return &muxResponse.Response{
+		Headers: []*muxResponse.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
+		Body:    body,
+	}, nil
 }
 
 // Initialize wires the endpoint. It deliberately takes no session authorizer: a device bound
@@ -157,23 +173,6 @@ func (e *Endpoint) Initialize(
 			}, nil
 		}
 
-		publicKey, responseError := dbscSessionResponseProcessor.Process(
-			ctx,
-			&dbsc_session_response_processor.Input{
-				TokenString:      sessionResponseValue,
-				DbscSessionId:    sessionId,
-				AuthenticationId: authenticationId,
-			},
-		)
-		if responseError != nil {
-			return nil, responseError
-		}
-		if len(publicKey) == 0 {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("public key")),
-			}
-		}
-
 		selectDbCtx, selectDbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
 		defer selectDbCtxCancel()
 
@@ -181,13 +180,7 @@ func (e *Endpoint) Initialize(
 		if err != nil {
 			wrappedErr := motmedelErrors.New(fmt.Errorf("select refresh authentication: %w", err), authenticationId)
 			if errors.Is(err, sql.ErrNoRows) {
-				return nil, &response_error.ResponseError{
-					ClientError: wrappedErr,
-					ProblemDetail: problem_detail.New(
-						http.StatusBadRequest,
-						problem_detail_config.WithDetail("No authentication matches the session id."),
-					),
-				}
+				return endedSessionResponse()
 			}
 			return nil, &response_error.ResponseError{ServerError: wrappedErr}
 		}
@@ -195,6 +188,13 @@ func (e *Endpoint) Initialize(
 			return nil, &response_error.ResponseError{
 				ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication")),
 			}
+		}
+
+		if authentication.Ended {
+			return endedSessionResponse()
+		}
+		if expiresAt := authentication.ExpiresAt; expiresAt != nil && time.Now().After(*expiresAt) {
+			return endedSessionResponse()
 		}
 
 		authenticationPublicKey := authentication.DbscPublicKey
@@ -207,14 +207,16 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		if !bytes.Equal(authenticationPublicKey, publicKey) {
-			return nil, &response_error.ResponseError{
-				ProblemDetail: problem_detail.New(
-					http.StatusBadRequest,
-					problem_detail_config.WithDetail("Public key mismatch."),
-				),
-				ClientError: mismatch_error.New("public key", publicKey, authenticationPublicKey),
-			}
+		if _, responseError := dbscSessionResponseProcessor.Process(
+			ctx,
+			&dbsc_session_response_processor.Input{
+				TokenString:      sessionResponseValue,
+				DbscSessionId:    sessionId,
+				AuthenticationId: authenticationId,
+				PublicKey:        authenticationPublicKey,
+			},
+		); responseError != nil {
+			return nil, responseError
 		}
 
 		return sessionManager.MintSession(authentication, authentication_method.Dbsc, e.SessionDuration)
@@ -239,8 +241,8 @@ func New(options ...dbsc_refresh_endpoint_config.Option) *Endpoint {
 		},
 		SessionDuration:             config.SessionDuration,
 		ChallengeDuration:           config.ChallengeDuration,
-		insertDbscChallenge:         database.InsertDbscChallenge,
-		selectRefreshAuthentication: database.SelectRefreshAuthentication,
-		generateDbscChallenge:       session.GenerateDbscChallenge,
+		insertDbscChallenge:         config.InsertDbscChallenge,
+		selectRefreshAuthentication: config.SelectRefreshAuthentication,
+		generateDbscChallenge:       config.GenerateDbscChallenge,
 	}
 }

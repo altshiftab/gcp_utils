@@ -31,6 +31,7 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_register_endpoint/dbsc_register_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_cookie/session_cookie_config"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_instructions"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
@@ -39,31 +40,47 @@ const (
 	sessionResponseHeaderName = session.DbscSessionResponseHeaderName
 )
 
-type Scope struct {
-	Origin        string `json:"origin,omitzero"`
-	IncludeSite   bool   `json:"include_site,omitzero"`
-	DeferRequests bool   `json:"defer_requests,omitzero"`
-}
-
-type Credential struct {
-	Type       string `json:"type,omitzero"`
-	Name       string `json:"name,omitzero"`
-	Attributes string `json:"attributes,omitzero"`
-}
-
-type Response struct {
-	SessionIdentifier string        `json:"session_identifier"`
-	RefreshURL        string        `json:"refresh_url"`
-	Scope             Scope         `json:"scope"`
-	Credentials       []*Credential `json:"credentials"`
-}
+type (
+	Scope      = session_instructions.Scope
+	Credential = session_instructions.Credential
+	Response   = session_instructions.Instructions
+)
 
 var sessionResponseRequestParser *header_extractor.Parser
 
 type Endpoint struct {
 	*initialization_endpoint.Endpoint
 	RefreshPath                           string
+	IncludeSite                           bool
+	Origin                                string
+	ScopeSpecification                    []*session_instructions.ScopeSpecification
+	AllowedRefreshInitiators              []string
 	updateAuthenticationWithDbscPublicKey func(ctx context.Context, id string, key []byte, database *sql.DB) error
+}
+
+// requestOrigin derives the origin a session belongs to from the request. The browser compares its
+// requests against this, so it has to be the origin actually being served rather than an assumed
+// one: behind a load balancer the scheme is only visible in X-Forwarded-Proto, and the host carries
+// any port and subdomain.
+func requestOrigin(request *http.Request) (string, error) {
+	host := request.Host
+	if host == "" {
+		return "", motmedelErrors.NewWithTrace(empty_error.New("host"))
+	}
+
+	var scheme string
+	if requestHeader := request.Header; requestHeader != nil {
+		scheme = requestHeader.Get("X-Forwarded-Proto")
+	}
+	if scheme == "" {
+		if request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+
+	return new(url.URL{Scheme: scheme, Host: host}).String(), nil
 }
 
 // makeSessionCookieHeader reissues the session cookie carried by the request, unchanged except for
@@ -227,13 +244,25 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
+		origin := e.Origin
+		if origin == "" {
+			var err error
+			if origin, err = requestOrigin(request); err != nil {
+				return nil, &response_error.ResponseError{
+					ServerError: motmedelErrors.New(fmt.Errorf("request origin: %w", err)),
+				}
+			}
+		}
+
 		response := Response{
 			SessionIdentifier: authenticationId,
 			RefreshURL:        e.RefreshPath,
-			Scope: Scope{
-				Origin:      new(url.URL{Scheme: "https", Host: registeredDomain}).String(),
-				IncludeSite: true,
+			Scope: &Scope{
+				Origin:             origin,
+				IncludeSite:        e.IncludeSite,
+				ScopeSpecification: e.ScopeSpecification,
 			},
+			AllowedRefreshInitiators: e.AllowedRefreshInitiators,
 			Credentials: []*Credential{
 				{
 					Type:       "cookie",
@@ -293,6 +322,10 @@ func New(options ...dbsc_register_endpoint_config.Option) *Endpoint {
 			},
 		},
 		RefreshPath:                           config.RefreshPath,
+		IncludeSite:                           config.IncludeSite,
+		Origin:                                config.Origin,
+		ScopeSpecification:                    config.ScopeSpecification,
+		AllowedRefreshInitiators:              config.AllowedRefreshInitiators,
 		updateAuthenticationWithDbscPublicKey: config.UpdateAuthenticationWithDbscPublicKey,
 	}
 }

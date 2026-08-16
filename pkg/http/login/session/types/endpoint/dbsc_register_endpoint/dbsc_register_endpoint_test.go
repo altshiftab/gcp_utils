@@ -60,18 +60,18 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+const originPlaceholder = ""
+
 func TestEndpoint(t *testing.T) {
 	t.Parallel()
 
-	const (
-		validToken = "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRic2Mrand0In0.eyJhdWQiOiJodHRwczovL2V4YW1wbGUuY29tL2FwaS9zZXNzaW9uL2Ric2MvcmVnaXN0ZXIiLCJqdGkiOiJjdiIsImlhdCI6MTcyNTU3OTA1NSwia2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiSy1aSHM3cWo1RmtDZGhIeno4NFFzQ2FkOFFwVnNJdzVIRWdhQkZoeEN3TSIsInkiOiJwanUtWFVCdDN3TXhzRlBRdW9EVHNWcjU4SHREc2ZnOTVkLXVqYXFMRmtNIn0sImF1dGhvcml6YXRpb24iOiJhYyJ9.MEYCIQDZAGTcudcWFHZiUkr8jgF0cbBKT-C5H8jUSwh5fplCrwIhAMRR375Bm0DjmCt9P_85Q79ovtv7o97cvc1NOQaNWdrA"
-	)
+	validToken, _ := loginTesting.MakeDbscProof("cv")
 
 	response := Response{
 		SessionIdentifier: loginTesting.AuthenticationId,
 		RefreshURL:        dbsc_register_endpoint_config.DefaultRefreshPath,
-		Scope: Scope{
-			Origin:      fmt.Sprintf("https://%s", loginTesting.RegisteredDomain),
+		Scope: &Scope{
+			Origin:      originPlaceholder,
 			IncludeSite: true,
 		},
 		Credentials: []*Credential{
@@ -81,11 +81,6 @@ func TestEndpoint(t *testing.T) {
 				Attributes: session_cookie.Attributes(loginTesting.RegisteredDomain),
 			},
 		},
-	}
-
-	responseData, err := json.Marshal(response)
-	if err != nil {
-		t.Fatalf("json marshal (response): %v", err)
 	}
 
 	testCases := []struct {
@@ -98,7 +93,7 @@ func TestEndpoint(t *testing.T) {
 			args: &muxTesting.Args{
 				Headers:            [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, validToken}},
 				ExpectedStatusCode: http.StatusOK,
-				ExpectedBody:       responseData,
+				ExpectedBody:       []byte("placeholder"),
 			},
 		},
 		{
@@ -159,6 +154,16 @@ func TestEndpoint(t *testing.T) {
 			httpServer := httptest.NewServer(mux)
 			defer httpServer.Close()
 
+			if len(tc.args.ExpectedBody) != 0 {
+				scopedResponse := response
+				scopedResponse.Scope.Origin = httpServer.URL
+				responseData, err := json.Marshal(scopedResponse)
+				if err != nil {
+					t.Fatalf("json marshal (response): %v", err)
+				}
+				tc.args.ExpectedBody = responseData
+			}
+
 			tc.args.Path = testEndpoint.Path
 			tc.args.Method = testEndpoint.Method
 
@@ -170,15 +175,15 @@ func TestEndpoint(t *testing.T) {
 func TestEndpoint_SessionCookieOptions(t *testing.T) {
 	t.Parallel()
 
-	const validToken = "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRic2Mrand0In0.eyJhdWQiOiJodHRwczovL2V4YW1wbGUuY29tL2FwaS9zZXNzaW9uL2Ric2MvcmVnaXN0ZXIiLCJqdGkiOiJjdiIsImlhdCI6MTcyNTU3OTA1NSwia2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiSy1aSHM3cWo1RmtDZGhIeno4NFFzQ2FkOFFwVnNJdzVIRWdhQkZoeEN3TSIsInkiOiJwanUtWFVCdDN3TXhzRlBRdW9EVHNWcjU4SHREc2ZnOTVkLXVqYXFMRmtNIn0sImF1dGhvcml6YXRpb24iOiJhYyJ9.MEYCIQDZAGTcudcWFHZiUkr8jgF0cbBKT-C5H8jUSwh5fplCrwIhAMRR375Bm0DjmCt9P_85Q79ovtv7o97cvc1NOQaNWdrA"
+	validToken, _ := loginTesting.MakeDbscProof("cv")
 
 	sessionCookieOption := session_cookie_config.WithSameSite(http.SameSiteStrictMode)
 
 	expectedResponse := Response{
 		SessionIdentifier: loginTesting.AuthenticationId,
 		RefreshURL:        dbsc_register_endpoint_config.DefaultRefreshPath,
-		Scope: Scope{
-			Origin:      fmt.Sprintf("https://%s", loginTesting.RegisteredDomain),
+		Scope: &Scope{
+			Origin:      originPlaceholder,
 			IncludeSite: true,
 		},
 		Credentials: []*Credential{
@@ -188,11 +193,6 @@ func TestEndpoint_SessionCookieOptions(t *testing.T) {
 				Attributes: session_cookie.Attributes(loginTesting.RegisteredDomain, sessionCookieOption),
 			},
 		},
-	}
-
-	expectedBody, err := json.Marshal(expectedResponse)
-	if err != nil {
-		t.Fatalf("json marshal (expected response): %v", err)
 	}
 
 	if !strings.Contains(expectedResponse.Credentials[0].Attributes, "SameSite=Strict") {
@@ -230,6 +230,12 @@ func TestEndpoint_SessionCookieOptions(t *testing.T) {
 	mux.Add(testEndpoint.Endpoint.Endpoint)
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
+
+	expectedResponse.Scope.Origin = httpServer.URL
+	expectedBody, err := json.Marshal(expectedResponse)
+	if err != nil {
+		t.Fatalf("json marshal (expected response): %v", err)
+	}
 
 	muxTesting.TestArgs(
 		t,
@@ -306,6 +312,7 @@ func TestNew(t *testing.T) {
 					},
 				},
 				RefreshPath: dbsc_refresh_endpoint_config.DefaultPath,
+				IncludeSite: dbsc_register_endpoint_config.DefaultIncludeSite,
 			},
 		},
 		{
@@ -320,6 +327,7 @@ func TestNew(t *testing.T) {
 					},
 				},
 				RefreshPath: dbsc_refresh_endpoint_config.DefaultPath,
+				IncludeSite: dbsc_register_endpoint_config.DefaultIncludeSite,
 			},
 		},
 		{
@@ -334,6 +342,7 @@ func TestNew(t *testing.T) {
 					},
 				},
 				RefreshPath: "/refresh-test",
+				IncludeSite: dbsc_register_endpoint_config.DefaultIncludeSite,
 			},
 		},
 	}
@@ -355,7 +364,7 @@ func TestNew(t *testing.T) {
 func TestEndpoint_ReissuesSessionCookieWithTokenExpiry(t *testing.T) {
 	t.Parallel()
 
-	const validToken = "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRic2Mrand0In0.eyJhdWQiOiJodHRwczovL2V4YW1wbGUuY29tL2FwaS9zZXNzaW9uL2Ric2MvcmVnaXN0ZXIiLCJqdGkiOiJjdiIsImlhdCI6MTcyNTU3OTA1NSwia2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiSy1aSHM3cWo1RmtDZGhIeno4NFFzQ2FkOFFwVnNJdzVIRWdhQkZoeEN3TSIsInkiOiJwanUtWFVCdDN3TXhzRlBRdW9EVHNWcjU4SHREc2ZnOTVkLXVqYXFMRmtNIn0sImF1dGhvcml6YXRpb24iOiJhYyJ9.MEYCIQDZAGTcudcWFHZiUkr8jgF0cbBKT-C5H8jUSwh5fplCrwIhAMRR375Bm0DjmCt9P_85Q79ovtv7o97cvc1NOQaNWdrA"
+	validToken, _ := loginTesting.MakeDbscProof("cv")
 
 	// Shorter than the cookie a created session carries, which expires with the authentication.
 	sessionTokenExpiresAt := time.Now().Add(15 * time.Minute)

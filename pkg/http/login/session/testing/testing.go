@@ -1,9 +1,17 @@
 package testing
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"database/sql"
+	"encoding/json/v2"
 	"fmt"
+	motmedelCryptoEcdsa "github.com/Motmedel/utils_go/pkg/crypto/ecdsa"
+	"github.com/Motmedel/utils_go/pkg/json/jose/jwk/types/key/ec"
+	motmedelJwtToken "github.com/Motmedel/utils_go/pkg/json/jose/jwt/types/token"
 	"log/slog"
 	"os"
 	"strings"
@@ -122,4 +130,61 @@ func SetUp() (*authorizer_request_parser.Parser, *motmedelCryptoEddsa.Method, *s
 	testDb := motmedelSqlTesting.NewDb()
 
 	return authorizerRequestParser, method, testDb
+}
+
+// MakeDbscProof mints a device bound session proof of the shape a browser sends: the public key
+// carried in the JWT header as "jwk", and the challenge as the only payload claim. It returns the
+// serialised token together with the DER encoded public key the server derives from it.
+func MakeDbscProof(challenge string, extraClaims ...map[string]any) (string, []byte) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(motmedelErrors.NewWithTrace(fmt.Errorf("ecdsa generate key: %w", err)))
+	}
+
+	signer, err := motmedelCryptoEcdsa.FromPrivateKey(privateKey)
+	if err != nil {
+		panic(motmedelErrors.New(fmt.Errorf("ecdsa from private key: %w", err)))
+	}
+
+	jwkKey, err := ec.NewFromPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		panic(motmedelErrors.New(fmt.Errorf("ec new from public key: %w", err)))
+	}
+
+	jwkData, err := json.Marshal(jwkKey)
+	if err != nil {
+		panic(motmedelErrors.NewWithTrace(fmt.Errorf("json marshal (jwk): %w", err)))
+	}
+
+	var jwk map[string]any
+	if err := json.Unmarshal(jwkData, &jwk); err != nil {
+		panic(motmedelErrors.NewWithTrace(fmt.Errorf("json unmarshal (jwk): %w", err)))
+	}
+	if jwk == nil {
+		panic(motmedelErrors.NewWithTrace(nil_error.New("jwk")))
+	}
+	// The key type belongs to the JWK itself; the EC value carries only the curve and coordinates.
+	jwk["kty"] = "EC"
+
+	payload := map[string]any{"jti": challenge}
+	for _, claims := range extraClaims {
+		for name, value := range claims {
+			payload[name] = value
+		}
+	}
+
+	tokenString, err := (&motmedelJwtToken.Token{
+		Header:  map[string]any{"typ": "dbsc+jwt", "jwk": jwk},
+		Payload: payload,
+	}).Encode(signer)
+	if err != nil {
+		panic(motmedelErrors.New(fmt.Errorf("token encode: %w", err)))
+	}
+
+	derEncodedPublicKey, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		panic(motmedelErrors.NewWithTrace(fmt.Errorf("x509 marshal pkix public key: %w", err)))
+	}
+
+	return tokenString, derEncodedPublicKey
 }

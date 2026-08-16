@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
 	"net/http"
 	"strings"
 	"testing"
@@ -17,7 +18,6 @@ import (
 // A DBSC response JWT (typ dbsc+jwt) self-signed with the EC key embedded in its own key claim,
 // shared with the dbsc_register_endpoint tests.
 const (
-	validToken    = "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRic2Mrand0In0.eyJhdWQiOiJodHRwczovL2V4YW1wbGUuY29tL2FwaS9zZXNzaW9uL2Ric2MvcmVnaXN0ZXIiLCJqdGkiOiJjdiIsImlhdCI6MTcyNTU3OTA1NSwia2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiSy1aSHM3cWo1RmtDZGhIeno4NFFzQ2FkOFFwVnNJdzVIRWdhQkZoeEN3TSIsInkiOiJwanUtWFVCdDN3TXhzRlBRdW9EVHNWcjU4SHREc2ZnOTVkLXVqYXFMRmtNIn0sImF1dGhvcml6YXRpb24iOiJhYyJ9.MEYCIQDZAGTcudcWFHZiUkr8jgF0cbBKT-C5H8jUSwh5fplCrwIhAMRR375Bm0DjmCt9P_85Q79ovtv7o97cvc1NOQaNWdrA"
 	validAudience = "https://example.com/api/session/dbsc/register"
 )
 
@@ -80,6 +80,12 @@ func TestNew(t *testing.T) {
 		}
 	})
 }
+
+var validToken, _ = loginTesting.MakeDbscProof("cv")
+
+// A browser speaking the current protocol sends no audience; the check still applies to a client
+// that does send one.
+var wrongAudienceToken, _ = loginTesting.MakeDbscProof("cv", map[string]any{"aud": "https://wrong.example.com"})
 
 func TestProcess(t *testing.T) {
 	t.Parallel()
@@ -154,7 +160,7 @@ func TestProcess(t *testing.T) {
 
 		_, responseError := processor.Process(
 			t.Context(),
-			&Input{TokenString: validToken, AuthenticationId: "auth-id"},
+			&Input{TokenString: wrongAudienceToken, AuthenticationId: "auth-id"},
 		)
 		if responseError == nil || responseError.ClientError == nil {
 			t.Fatalf("expected client error, got %+v", responseError)

@@ -2,6 +2,7 @@ package dbsc_session_response_processor
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"database/sql"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	motmedelCryptoEcdsa "github.com/Motmedel/utils_go/pkg/crypto/ecdsa"
 	motmedelErrors "github.com/Motmedel/utils_go/pkg/errors"
 	"github.com/Motmedel/utils_go/pkg/errors/types/empty_error"
 	"github.com/Motmedel/utils_go/pkg/errors/types/nil_error"
@@ -33,6 +35,10 @@ type Input struct {
 	TokenString      string
 	AuthenticationId string
 	DbscSessionId    string
+	// PublicKey is the DER encoded key already registered for the session. A refresh proof carries
+	// no key of its own — the browser only signs the challenge — so it is verified against this.
+	// Registration proofs leave it empty and carry the key in the token header instead.
+	PublicKey []byte
 }
 
 type Output struct {
@@ -45,6 +51,64 @@ type Processor struct {
 	Db             *sql.DB
 
 	popDbscChallenge func(ctx context.Context, challenge string, authenticationId string, db *sql.DB) (*dbsc_challenge.Challenge, error)
+}
+
+// processWithRegisteredKey validates a proof against the key already registered for the session,
+// which is how a refresh is authenticated: the browser signs the challenge with the device bound
+// key and sends no key material of its own.
+func (p *Processor) processWithRegisteredKey(ctx context.Context, input *Input, tokenString string) ([]byte, *response_error.ResponseError) {
+	publicKey, err := x509.ParsePKIXPublicKey(input.PublicKey)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(fmt.Errorf("x509 parse pkix public key: %w", err)),
+		}
+	}
+
+	ecdsaPublicKey, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(
+				fmt.Errorf("%w: the registered key is not an ecdsa key", motmedelErrors.ErrValidationError),
+			),
+		}
+	}
+
+	namedVerifier, err := motmedelCryptoEcdsa.FromPublicKey(ecdsaPublicKey)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(fmt.Errorf("ecdsa from public key: %w", err)),
+		}
+	}
+
+	authenticatedToken, err := authenticated_token.New(
+		tokenString,
+		authenticated_token_config.WithTokenValidator(p.TokenValidator),
+		authenticated_token_config.WithSignatureVerifier(namedVerifier),
+	)
+	if err != nil {
+		wrappedErr := motmedelErrors.New(fmt.Errorf("authenticated jwt token new: %w", err), tokenString)
+		if motmedelErrors.IsAny(wrappedErr, motmedelErrors.ErrValidationError, motmedelErrors.ErrVerificationError, motmedelErrors.ErrParseError) {
+			return nil, &response_error.ResponseError{
+				ClientError: wrappedErr,
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("Invalid token."),
+				),
+			}
+		}
+		return nil, &response_error.ResponseError{ServerError: wrappedErr}
+	}
+	if authenticatedToken == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authenticated jwt token")),
+		}
+	}
+
+	if responseError := p.consumeChallenge(ctx, authenticatedToken.Payload, input.AuthenticationId); responseError != nil {
+		return nil, responseError
+	}
+
+	return input.PublicKey, nil
 }
 
 func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *response_error.ResponseError) {
@@ -85,7 +149,21 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(nil_error.New("jwt token payload"))}
 	}
 
-	key, err := utils.MapGetConvert[map[string]any](tokenPayload, "key")
+	tokenHeader := token.Header
+	if tokenHeader == nil {
+		return nil, &response_error.ResponseError{ServerError: motmedelErrors.NewWithTrace(nil_error.New("jwt token header"))}
+	}
+
+	// A refresh proves possession of the key registered earlier, so it is verified against that key
+	// rather than one the token supplies.
+	if len(input.PublicKey) != 0 {
+		return p.processWithRegisteredKey(ctx, input, tokenString)
+	}
+
+	// The browser carries its public key in the JWT header as "jwk". An earlier revision of the
+	// protocol placed it in the payload as "key"; a browser speaking the current one sends neither
+	// that claim nor "aud" and "iat", so requiring them rejected every registration.
+	key, err := utils.MapGetConvert[map[string]any](tokenHeader, "jwk")
 	if err != nil {
 		wrappedErr := motmedelErrors.New(fmt.Errorf("map get convert: %w", err), tokenPayload)
 		if motmedelErrors.IsAny(err, motmedelErrors.ErrConversionNotOk, motmedelErrors.ErrNotInMap) {
@@ -93,7 +171,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 				ClientError: wrappedErr,
 				ProblemDetail: problem_detail.New(
 					http.StatusBadRequest,
-					problem_detail_config.WithDetail("Invalid token; no key object."),
+					problem_detail_config.WithDetail("Invalid token; no jwk object."),
 				),
 			}
 		}
@@ -177,7 +255,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 	authenticatedToken, err := authenticated_token.New(
 		tokenString,
 		authenticated_token_config.WithTokenValidator(p.TokenValidator),
-		authenticated_token_config.WithAllowUnauthenticated(true),
+		authenticated_token_config.WithSignatureVerifier(namedVerifier),
 	)
 	if err != nil {
 		wrappedErr := motmedelErrors.New(
@@ -209,21 +287,31 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		}
 	}
 
-	jti, err := utils.MapGetConvert[string](authenticatedTokenPayload, "jti")
+	if responseError := p.consumeChallenge(ctx, authenticatedTokenPayload, authenticationId); responseError != nil {
+		return nil, responseError
+	}
+
+	return derEncodedKeyMaterial, nil
+}
+
+// consumeChallenge redeems the challenge the proof answers, which must exist for the session and
+// not have expired. It is single use, which is what binds a proof to one refresh.
+func (p *Processor) consumeChallenge(ctx context.Context, payload map[string]any, authenticationId string) *response_error.ResponseError {
+	jti, err := utils.MapGetConvert[string](payload, "jti")
 	if err != nil {
-		return nil, &response_error.ResponseError{
-			ServerError: motmedelErrors.New(fmt.Errorf("map get convert (jti): %w", err), authenticatedTokenPayload),
+		return &response_error.ResponseError{
+			ServerError: motmedelErrors.New(fmt.Errorf("map get convert (jti): %w", err), payload),
 		}
 	}
 
 	dbscChallenge, err := p.popDbscChallenge(ctx, jti, authenticationId, p.Db)
 	if err != nil {
-		return nil, &response_error.ResponseError{
+		return &response_error.ResponseError{
 			ServerError: motmedelErrors.New(fmt.Errorf("get challenge: %w", err), jti, authenticationId),
 		}
 	}
 	if dbscChallenge == nil {
-		return nil, &response_error.ResponseError{
+		return &response_error.ResponseError{
 			ProblemDetail: problem_detail.New(
 				http.StatusBadRequest,
 				problem_detail_config.WithDetail("No challenge was found matching the JTI and authentication ID."),
@@ -233,12 +321,12 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 
 	expiresAt := dbscChallenge.ExpiresAt
 	if expiresAt == nil {
-		return nil, &response_error.ResponseError{
+		return &response_error.ResponseError{
 			ServerError: motmedelErrors.NewWithTrace(nil_error.New("dbsc challenge expires at")),
 		}
 	}
 	if time.Now().After(*expiresAt) {
-		return nil, &response_error.ResponseError{
+		return &response_error.ResponseError{
 			ProblemDetail: problem_detail.New(
 				http.StatusBadRequest,
 				problem_detail_config.WithDetail("The challenge has expired."),
@@ -246,7 +334,7 @@ func (p *Processor) Process(ctx context.Context, input *Input) ([]byte, *respons
 		}
 	}
 
-	return derEncodedKeyMaterial, nil
+	return nil
 }
 
 func New(audience string, db *sql.DB, options ...dbsc_session_response_processor_config.Option) (*Processor, error) {
@@ -272,11 +360,13 @@ func New(audience string, db *sql.DB, options ...dbsc_session_response_processor
 			},
 		},
 		PayloadValidator: &registered_claims_validator.Validator{
+			// The proof carries only the challenge; it is bound to the session by that challenge
+			// being server issued and single use. Audience and issued-at are checked when present,
+			// which a browser speaking the current protocol does not send.
 			Settings: map[string]setting.Setting{
-				"aud": setting.Required,
-				"iat": setting.Required,
+				"aud": setting.Optional,
+				"iat": setting.Optional,
 				"jti": setting.Required,
-				"key": setting.Required,
 			},
 			Expected: &registered_claims_validator.ExpectedClaims{
 				AudienceComparer: comparer.NewEqualComparer(audience),

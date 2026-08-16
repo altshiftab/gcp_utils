@@ -72,26 +72,22 @@ func TestMain(m *testing.M) {
 func TestEndpoint(t *testing.T) {
 	t.Parallel()
 
-	const (
-		validToken    = "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRic2Mrand0In0.eyJhdWQiOiJodHRwczovL2V4YW1wbGUuY29tL2FwaS9zZXNzaW9uL2Ric2MvcmVnaXN0ZXIiLCJqdGkiOiJjdiIsImlhdCI6MTcyNTU3OTA1NSwia2V5Ijp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiSy1aSHM3cWo1RmtDZGhIeno4NFFzQ2FkOFFwVnNJdzVIRWdhQkZoeEN3TSIsInkiOiJwanUtWFVCdDN3TXhzRlBRdW9EVHNWcjU4SHREc2ZnOTVkLXVqYXFMRmtNIn0sImF1dGhvcml6YXRpb24iOiJhYyJ9.MEYCIQDZAGTcudcWFHZiUkr8jgF0cbBKT-C5H8jUSwh5fplCrwIhAMRR375Bm0DjmCt9P_85Q79ovtv7o97cvc1NOQaNWdrA"
-		testChallenge = "test-challenge"
-	)
+	const testChallenge = "test-challenge"
 
-	validTokenPublicKey := []byte{
-		0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
-		0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04, 0x2b, 0xe6, 0x47, 0xb3, 0xba,
-		0xa3, 0xe4, 0x59, 0x02, 0x76, 0x11, 0xf3, 0xcf, 0xce, 0x10, 0xb0, 0x26, 0x9d, 0xf1, 0x0a, 0x55,
-		0xb0, 0x8c, 0x39, 0x1c, 0x48, 0x1a, 0x04, 0x58, 0x71, 0x0b, 0x03, 0xa6, 0x3b, 0xbe, 0x5d, 0x40,
-		0x6d, 0xdf, 0x03, 0x31, 0xb0, 0x53, 0xd0, 0xba, 0x80, 0xd3, 0xb1, 0x5a, 0xf9, 0xf0, 0x7b, 0x43,
-		0xb1, 0xf8, 0x3d, 0xe5, 0xdf, 0xae, 0x8d, 0xaa, 0x8b, 0x16, 0x43,
-	}
+	// Minted the way a browser sends it: the public key in the JWT header, the challenge as jti.
+	validToken, validTokenPublicKey := loginTesting.MakeDbscProof(testChallenge)
+
+	// A different, valid key: the proof then fails verification rather than parsing.
+	_, otherPublicKey := loginTesting.MakeDbscProof(testChallenge)
 
 	testCases := []struct {
-		name               string
-		args               *muxTesting.Args
-		noDbAuthentication bool
-		emptyPublicKey     bool
-		publicKeyMismatch  bool
+		name                  string
+		args                  *muxTesting.Args
+		noDbAuthentication    bool
+		emptyPublicKey        bool
+		publicKeyMismatch     bool
+		endedAuthentication   bool
+		expiredAuthentication bool
 	}{
 		{
 			name: "valid session response token happy path",
@@ -101,15 +97,32 @@ func TestEndpoint(t *testing.T) {
 			},
 		},
 		{
-			name: "valid session response token, no db authentication",
+			// A session that cannot be refreshed again is ended, so the browser stops applying it.
+			name: "no db authentication ends the session",
 			args: &muxTesting.Args{
 				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
-				ExpectedStatusCode: http.StatusBadRequest,
-				ExpectedProblemDetail: &problem_detail.Detail{
-					Detail: "No authentication matches the session id.",
-				},
+				ExpectedStatusCode: http.StatusOK,
+				ExpectedBody:       []byte(`{"continue":false}`),
 			},
 			noDbAuthentication: true,
+		},
+		{
+			name: "ended authentication ends the session",
+			args: &muxTesting.Args{
+				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
+				ExpectedStatusCode: http.StatusOK,
+				ExpectedBody:       []byte(`{"continue":false}`),
+			},
+			endedAuthentication: true,
+		},
+		{
+			name: "expired authentication ends the session",
+			args: &muxTesting.Args{
+				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
+				ExpectedStatusCode: http.StatusOK,
+				ExpectedBody:       []byte(`{"continue":false}`),
+			},
+			expiredAuthentication: true,
 		},
 		{
 			name: "valid session response token, empty public key",
@@ -128,7 +141,7 @@ func TestEndpoint(t *testing.T) {
 				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
 				ExpectedStatusCode: http.StatusBadRequest,
 				ExpectedProblemDetail: &problem_detail.Detail{
-					Detail: "Public key mismatch.",
+					Detail: "Invalid token.",
 				},
 			},
 			publicKeyMismatch: true,
@@ -226,10 +239,13 @@ func TestEndpoint(t *testing.T) {
 				}
 
 				if tc.publicKeyMismatch {
-					publicKey = []byte{1, 2, 3}
+					publicKey = otherPublicKey
 				}
 
 				expiresAt := time.Now().Add(time.Hour)
+				if tc.expiredAuthentication {
+					expiresAt = time.Now().Add(-time.Hour)
+				}
 				createdAt := time.Now().Add(-time.Hour)
 				return &authenticationPkg.Authentication{
 					Id: id,
@@ -238,7 +254,7 @@ func TestEndpoint(t *testing.T) {
 						EmailAddress: "test@example.com",
 						Roles:        []string{"test-role"},
 					},
-					Ended:         false,
+					Ended:         tc.endedAuthentication,
 					DbscPublicKey: publicKey,
 					CreatedAt:     &createdAt,
 					ExpiresAt:     &expiresAt,
