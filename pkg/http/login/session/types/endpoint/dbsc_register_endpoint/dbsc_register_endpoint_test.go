@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -61,6 +64,21 @@ func TestMain(m *testing.M) {
 }
 
 const originPlaceholder = ""
+
+var errAuthenticationIdMismatch = errors.New("authentication id mismatch")
+
+// expectedSiteOrigin is the scope origin a session that includes the site has to carry: the
+// registrable domain instead of the host actually serving registration, on the same port.
+func expectedSiteOrigin(t *testing.T, serverUrl string) string {
+	t.Helper()
+
+	parsedServerUrl, err := url.Parse(serverUrl)
+	if err != nil {
+		t.Fatalf("url parse (server url): %v", err)
+	}
+
+	return "http://" + net.JoinHostPort(loginTesting.RegisteredDomain, parsedServerUrl.Port())
+}
 
 func TestEndpoint(t *testing.T) {
 	t.Parallel()
@@ -155,8 +173,13 @@ func TestEndpoint(t *testing.T) {
 			defer httpServer.Close()
 
 			if len(tc.args.ExpectedBody) != 0 {
+				// Scope is a pointer, so it is replaced rather than assigned through: the
+				// subtests run in parallel and each has its own port.
 				scopedResponse := response
-				scopedResponse.Scope.Origin = httpServer.URL
+				scopedResponse.Scope = &Scope{
+					Origin:      expectedSiteOrigin(t, httpServer.URL),
+					IncludeSite: true,
+				}
 				responseData, err := json.Marshal(scopedResponse)
 				if err != nil {
 					t.Fatalf("json marshal (response): %v", err)
@@ -231,7 +254,7 @@ func TestEndpoint_SessionCookieOptions(t *testing.T) {
 	httpServer := httptest.NewServer(mux)
 	defer httpServer.Close()
 
-	expectedResponse.Scope.Origin = httpServer.URL
+	expectedResponse.Scope.Origin = expectedSiteOrigin(t, httpServer.URL)
 	expectedBody, err := json.Marshal(expectedResponse)
 	if err != nil {
 		t.Fatalf("json marshal (expected response): %v", err)
@@ -248,6 +271,155 @@ func TestEndpoint_SessionCookieOptions(t *testing.T) {
 		},
 		httpServer.URL,
 	)
+}
+
+// TestEndpoint_OriginScoped covers a session that does not include the site. Its scope stays the
+// origin actually being served, since naming the registrable domain is required only of a session
+// that claims the whole site.
+func TestEndpoint_OriginScoped(t *testing.T) {
+	t.Parallel()
+
+	validToken, _ := loginTesting.MakeDbscProof("cv")
+
+	testEndpoint := New(dbsc_register_endpoint_config.WithIncludeSite(false))
+	testEndpointProcessor, err := dbsc_session_response_processor.New(
+		"https://example.com"+dbsc_register_endpoint_config.DefaultPath,
+		db,
+		dbsc_session_response_processor_config.WithPopDbscChallenge(
+			func(ctx context.Context, challenge string, authenticationId string, db *sql.DB) (*dbsc_challenge.Challenge, error) {
+				if authenticationId != loginTesting.AuthenticationId {
+					return nil, fmt.Errorf(
+						"%w: got %s, want %s",
+						errAuthenticationIdMismatch, authenticationId, loginTesting.AuthenticationId,
+					)
+				}
+
+				return &dbsc_challenge.Challenge{
+					Authentication: &authenticationPkg.Authentication{Id: authenticationId},
+					Challenge:      []byte(challenge),
+					ExpiresAt:      new(time.Now().Add(time.Hour)),
+				}, nil
+			},
+		),
+	)
+	if err != nil {
+		t.Fatalf("dbsc session response processor new: %v", err)
+	}
+
+	if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, testEndpointProcessor, loginTesting.RegisteredDomain); err != nil {
+		t.Fatalf("test endpoint initialize: %v", err)
+	}
+
+	mux := &muxPkg.Mux{}
+	mux.Add(testEndpoint.Endpoint.Endpoint)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	expectedBody, err := json.Marshal(
+		Response{
+			SessionIdentifier: loginTesting.AuthenticationId,
+			RefreshURL:        dbsc_register_endpoint_config.DefaultRefreshPath,
+			Scope:             &Scope{Origin: httpServer.URL, IncludeSite: false},
+			Credentials: []*Credential{
+				{
+					Type:       "cookie",
+					Name:       token_cookie_extractor_config.DefaultName,
+					Attributes: session_cookie.Attributes(loginTesting.RegisteredDomain),
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("json marshal (expected response): %v", err)
+	}
+
+	muxTesting.TestArgs(
+		t,
+		&muxTesting.Args{
+			Path:               testEndpoint.Path,
+			Method:             testEndpoint.Method,
+			Headers:            [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, validToken}},
+			ExpectedStatusCode: http.StatusOK,
+			ExpectedBody:       expectedBody,
+		},
+		httpServer.URL,
+	)
+}
+
+func TestSiteOrigin(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		origin           string
+		registeredDomain string
+		expected         string
+		expectError      bool
+	}{
+		{
+			name:             "subdomain gives way to the registrable domain",
+			origin:           "https://login.example.com",
+			registeredDomain: "example.com",
+			expected:         "https://example.com",
+		},
+		{
+			name:             "port is kept",
+			origin:           "https://login.example.com:8443",
+			registeredDomain: "example.com",
+			expected:         "https://example.com:8443",
+		},
+		{
+			name:             "scheme is kept",
+			origin:           "http://login.example.com:8080",
+			registeredDomain: "example.com",
+			expected:         "http://example.com:8080",
+		},
+		{
+			name:             "deeper subdomain gives way as well",
+			origin:           "https://dev.login.example.com",
+			registeredDomain: "example.com",
+			expected:         "https://example.com",
+		},
+		{
+			name:             "an origin already naming the site is unchanged",
+			origin:           "https://example.com",
+			registeredDomain: "example.com",
+			expected:         "https://example.com",
+		},
+		{
+			name:             "empty origin",
+			origin:           "",
+			registeredDomain: "example.com",
+			expectError:      true,
+		},
+		{
+			name:             "empty registered domain",
+			origin:           "https://login.example.com",
+			registeredDomain: "",
+			expectError:      true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			origin, err := siteOrigin(testCase.origin, testCase.registeredDomain)
+			if testCase.expectError {
+				if err == nil {
+					t.Fatalf("expected an error, got origin %q", origin)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("site origin: %v", err)
+			}
+
+			if origin != testCase.expected {
+				t.Errorf("got %q, expected %q", origin, testCase.expected)
+			}
+		})
+	}
 }
 
 func TestEndpoint_Initialize(t *testing.T) {

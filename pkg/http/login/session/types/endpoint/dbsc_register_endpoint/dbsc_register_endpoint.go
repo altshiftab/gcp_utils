@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json/v2"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 
@@ -58,10 +59,10 @@ type Endpoint struct {
 	updateAuthenticationWithDbscPublicKey func(ctx context.Context, id string, key []byte, database *sql.DB) error
 }
 
-// requestOrigin derives the origin a session belongs to from the request. The browser compares its
-// requests against this, so it has to be the origin actually being served rather than an assumed
+// requestOrigin derives the origin actually being served from the request rather than an assumed
 // one: behind a load balancer the scheme is only visible in X-Forwarded-Proto, and the host carries
-// any port and subdomain.
+// any port and subdomain. That origin is the scope of an origin-scoped session; a session that
+// includes the site names the site instead, see siteOrigin.
 func requestOrigin(request *http.Request) (string, error) {
 	host := request.Host
 	if host == "" {
@@ -81,6 +82,51 @@ func requestOrigin(request *http.Request) (string, error) {
 	}
 
 	return new(url.URL{Scheme: scheme, Host: host}).String(), nil
+}
+
+// siteOrigin replaces the host of an origin with registeredDomain, keeping the scheme and any port.
+//
+// A session that includes the site covers every origin on it, and the protocol requires it to say
+// so: the scope origin's host must equal the registrable domain of the host serving registration
+// ("create a session" in https://w3c.github.io/webappsec-dbsc/). Naming the subdomain that happens
+// to serve the registration endpoint violates that, even though the session ends up covering the
+// same requests either way, since inclusion is decided per site.
+//
+// The distinction is invisible in Chrome, which is why it invites being simplified away. Chrome
+// never compares the scope origin against a registrable domain -- no such check exists in
+// net/device_bound_sessions/session.cc -- so it accepts the subdomain and the session works. What
+// the choice actually decides is consent. A subdomain claiming a whole site has to be authorised by
+// that site, through /.well-known/device-bound-sessions served by the registrable domain, and
+// Chrome decides whether to demand it by comparing hosts (net/device_bound_sessions/
+// registration_fetcher.cc):
+//
+//	final_registration_url.host() != session->origin().host()
+//
+// Naming the subdomain makes those equal, so the check is skipped and the site is never asked.
+// Naming the site is what turns the well-known file from decoration into enforcement.
+//
+// The registrable domain therefore has to serve that file before this reaches production: once the
+// scope origin names the site, Chrome fetches it during registration and refuses the session unless
+// it answers 200 with the registration endpoint's origin listed in "registering_origins".
+func siteOrigin(origin string, registeredDomain string) (string, error) {
+	if origin == "" {
+		return "", motmedelErrors.NewWithTrace(empty_error.New("origin"))
+	}
+	if registeredDomain == "" {
+		return "", motmedelErrors.NewWithTrace(empty_error.New("registered domain"))
+	}
+
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil {
+		return "", motmedelErrors.NewWithTrace(fmt.Errorf("url parse: %w", err), origin)
+	}
+
+	host := registeredDomain
+	if port := parsedOrigin.Port(); port != "" {
+		host = net.JoinHostPort(registeredDomain, port)
+	}
+
+	return new(url.URL{Scheme: parsedOrigin.Scheme, Host: host}).String(), nil
 }
 
 // makeSessionCookieHeader reissues the session cookie carried by the request, unchanged except for
@@ -251,6 +297,19 @@ func (e *Endpoint) Initialize(
 				return nil, &response_error.ResponseError{
 					ServerError: motmedelErrors.New(fmt.Errorf("request origin: %w", err)),
 				}
+			}
+
+			if e.IncludeSite {
+				siteScopedOrigin, err := siteOrigin(origin, registeredDomain)
+				if err != nil {
+					return nil, &response_error.ResponseError{
+						ServerError: motmedelErrors.New(
+							fmt.Errorf("site origin: %w", err),
+							origin, registeredDomain,
+						),
+					}
+				}
+				origin = siteScopedOrigin
 			}
 		}
 
