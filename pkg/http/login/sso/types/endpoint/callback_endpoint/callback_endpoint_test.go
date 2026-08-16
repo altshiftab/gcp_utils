@@ -281,10 +281,10 @@ func TestEndpoint(t *testing.T) {
 	}
 }
 
-// TestEndpoint_RequireMultiFactor covers refusing a sign-in the identity provider does not state was
-// multi-factor. A provider says nothing about its methods unless asked, and may say nothing even
-// then, so an absent statement is treated as unproven rather than as a second factor.
-func TestEndpoint_RequireMultiFactor(t *testing.T) {
+// TestEndpoint_RequireStrongAuthentication covers refusing a sign-in whose method the identity
+// provider does not state was strong enough. A provider says nothing about its methods unless
+// asked, and may say nothing even then, so an absent statement is treated as unproven.
+func TestEndpoint_RequireStrongAuthentication(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -293,20 +293,20 @@ func TestEndpoint_RequireMultiFactor(t *testing.T) {
 		args *muxTesting.Args
 	}{
 		{
-			name: "multi factor stated",
-			code: testing2.OauthMultiFactorCode,
+			name: "strong method stated",
+			code: testing2.OauthStrongAuthenticationCode,
 			args: &muxTesting.Args{
 				ExpectedStatusCode: http.StatusSeeOther,
 				ExpectedHeaders:    [][2]string{{"Location", testing2.RedirectUrl}},
 			},
 		},
 		{
-			name: "multi factor not stated",
+			name: "no strong method stated",
 			code: testing2.OauthCode,
 			args: &muxTesting.Args{
 				ExpectedStatusCode: http.StatusForbidden,
 				ExpectedProblemDetail: &problem_detail.Detail{
-					Detail: "The identity provider did not state that more than one authentication factor was used.",
+					Detail: "The identity provider did not state that a strong enough authentication method was used.",
 				},
 			},
 		},
@@ -318,7 +318,7 @@ func TestEndpoint_RequireMultiFactor(t *testing.T) {
 
 			testEndpoint, err := New[*testing2.ProviderClaims](
 				defaultPath,
-				callback_endpoint_config.WithRequireMultiFactor(true),
+				callback_endpoint_config.WithRequireStrongAuthentication(true),
 			)
 			if err != nil {
 				t.Fatalf("new endpoint: %v", err)

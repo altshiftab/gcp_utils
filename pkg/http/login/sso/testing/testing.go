@@ -60,7 +60,7 @@ const (
 	AuthenticationId = "test-authentication-id"
 
 	OauthErrorCode                  = "oauth_error"
-	OauthMultiFactorCode            = "multi_factor"
+	OauthStrongAuthenticationCode   = "strong_authentication"
 	OauthOrganizationCode           = "organization"
 	Organization                    = "example-organization"
 	OauthSkipIdTokenCode            = "skip_id_token"
@@ -269,7 +269,7 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 
 						// Providers state the methods used only when asked, so the default token
 						// carries none: that is the case a multi-factor requirement must refuse.
-						if inputCode == OauthMultiFactorCode {
+						if inputCode == OauthStrongAuthenticationCode {
 							tokenPayload["amr"] = []string{"pwd", "mfa"}
 						}
 

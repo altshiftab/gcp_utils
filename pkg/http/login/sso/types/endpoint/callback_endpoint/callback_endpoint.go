@@ -83,15 +83,15 @@ var urlInputParser = query_extractor.New[*UrlInput](query_extractor_config.WithA
 
 type Endpoint[T provider_claims.ProviderClaims] struct {
 	*initialization_endpoint.Endpoint
-	CallbackCookieName          string
-	DbscChallengeDuration       time.Duration
-	RequireMultiFactor          bool
-	MultiFactorMethodReferences []string
-	RequireOrganization         bool
-	AllowedOrganizations        []string
-	popOauthFlow                func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
-	problemRedirectUrls         map[oauth_error.Category]string
-	classifyOauthError          func(*oauth_error.Error) oauth_error.Category
+	CallbackCookieName                   string
+	DbscChallengeDuration                time.Duration
+	RequireStrongAuthentication          bool
+	StrongAuthenticationMethodReferences []string
+	RequireOrganization                  bool
+	AllowedOrganizations                 []string
+	popOauthFlow                         func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
+	problemRedirectUrls                  map[oauth_error.Category]string
+	classifyOauthError                   func(*oauth_error.Error) oauth_error.Category
 }
 
 // Initialize wires the endpoint's runtime dependencies. origin is the base URL
@@ -356,13 +356,13 @@ func (e *Endpoint[T]) Initialize(
 		// authenticated the user, and when, is the context that makes a sign-in explicable
 		// afterwards.
 		authenticationContext := providerClaims.AuthenticationContext()
-		multiFactor := authenticationContext.HasAnyMethodReference(e.MultiFactorMethodReferences)
+		strongAuthentication := authenticationContext.HasAnyMethodReference(e.StrongAuthenticationMethodReferences)
 
 		organizationIdentifier := providerClaims.OrganizationIdentifier()
 
 		logAttributes := []any{
-			slog.Bool("multi_factor", multiFactor),
-			slog.Bool("multi_factor_required", e.RequireMultiFactor),
+			slog.Bool("strong_authentication", strongAuthentication),
+			slog.Bool("strong_authentication_required", e.RequireStrongAuthentication),
 			slog.Bool("organization_required", e.RequireOrganization),
 			slog.String("organization", organizationIdentifier),
 		}
@@ -409,13 +409,13 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
-		if e.RequireMultiFactor && !multiFactor {
+		if e.RequireStrongAuthentication && !strongAuthentication {
 			return nil, &response_error.ResponseError{
 				ClientError: motmedelErrors.NewWithTrace(ssoErrors.ErrForbiddenUser),
 				ProblemDetail: problem_detail.New(
 					http.StatusForbidden,
 					problem_detail_config.WithDetail(
-						"The identity provider did not state that more than one authentication factor was used.",
+						"The identity provider did not state that a strong enough authentication method was used.",
 					),
 				),
 			}
@@ -495,12 +495,12 @@ func New[T provider_claims.ProviderClaims](path string, options ...callback_endp
 				},
 			},
 		},
-		CallbackCookieName:          config.CallbackCookieName,
-		RequireMultiFactor:          config.RequireMultiFactor,
-		MultiFactorMethodReferences: config.MultiFactorMethodReferences,
-		RequireOrganization:         config.RequireOrganization,
-		AllowedOrganizations:        config.AllowedOrganizations,
-		popOauthFlow:                config.PopOauthFlow,
-		classifyOauthError:          config.ClassifyOauthError,
+		CallbackCookieName:                   config.CallbackCookieName,
+		RequireStrongAuthentication:          config.RequireStrongAuthentication,
+		StrongAuthenticationMethodReferences: config.StrongAuthenticationMethodReferences,
+		RequireOrganization:                  config.RequireOrganization,
+		AllowedOrganizations:                 config.AllowedOrganizations,
+		popOauthFlow:                         config.PopOauthFlow,
+		classifyOauthError:                   config.ClassifyOauthError,
 	}, nil
 }

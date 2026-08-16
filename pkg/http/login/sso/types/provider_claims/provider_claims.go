@@ -33,7 +33,7 @@ type AuthenticationContext struct {
 	AuthenticatedAt int64
 }
 
-// MultiFactorMethodReferences are the "amr" values taken to mean the sign-in was at least as strong
+// StrongAuthenticationMethodReferences are the "amr" values taken to mean the sign-in was at least as strong
 // as multi-factor.
 //
 // Two kinds are listed. "mfa" and "multipleauthn" are the providers' own statements that more than
@@ -45,7 +45,7 @@ type AuthenticationContext struct {
 // Deliberately absent: "wia" is merely an existing Windows session, and "x509", "cert" and
 // "smartcard" do not by themselves say whether the credential was unlocked. Deployments that treat
 // those as sufficient can say so.
-var MultiFactorMethodReferences = []string{"mfa", "multipleauthn", "fido", "fido2", "hwk", "swk"}
+var StrongAuthenticationMethodReferences = []string{"mfa", "multipleauthn", "fido", "fido2", "hwk", "swk"}
 
 // HasAnyMethodReference reports whether the provider stated any of the given methods. A nil context,
 // or one without method references, reports false: a provider that said nothing is not evidence of
@@ -64,10 +64,10 @@ func (c *AuthenticationContext) HasAnyMethodReference(methodReferences []string)
 	return false
 }
 
-// MultiFactor reports whether the sign-in was at least as strong as multi-factor, by
-// MultiFactorMethodReferences.
-func (c *AuthenticationContext) MultiFactor() bool {
-	return c.HasAnyMethodReference(MultiFactorMethodReferences)
+// StrongAuthentication reports whether the sign-in was at least as strong as multi-factor, by
+// StrongAuthenticationMethodReferences.
+func (c *AuthenticationContext) StrongAuthentication() bool {
+	return c.HasAnyMethodReference(StrongAuthenticationMethodReferences)
 }
 
 type GoogleClaims struct {

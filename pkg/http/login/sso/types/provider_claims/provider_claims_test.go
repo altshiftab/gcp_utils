@@ -99,7 +99,7 @@ func TestMicrosoftClaimsVerifiedEmailAddress(t *testing.T) {
 	}
 }
 
-func TestAuthenticationContextMultiFactor(t *testing.T) {
+func TestAuthenticationContextStrongAuthentication(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -157,7 +157,7 @@ func TestAuthenticationContextMultiFactor(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := testCase.authenticationContext.MultiFactor(); got != testCase.expected {
+			if got := testCase.authenticationContext.StrongAuthentication(); got != testCase.expected {
 				t.Errorf("got %t, expected %t", got, testCase.expected)
 			}
 		})
@@ -169,7 +169,7 @@ func TestProviderClaimsAuthenticationContext(t *testing.T) {
 
 	googleClaims := &GoogleClaims{Amr: []string{"mfa", "pwd"}, Acr: "google-acr", AuthTime: 1786868673}
 	googleContext := googleClaims.AuthenticationContext()
-	if googleContext == nil || !googleContext.MultiFactor() {
+	if googleContext == nil || !googleContext.StrongAuthentication() {
 		t.Errorf("expected google claims to report multi factor")
 	}
 	if googleContext.ContextClass != "google-acr" || googleContext.AuthenticatedAt != 1786868673 {
@@ -178,7 +178,7 @@ func TestProviderClaimsAuthenticationContext(t *testing.T) {
 
 	microsoftClaims := &MicrosoftClaims{Amr: []string{"pwd"}, Acr: "1", AuthTime: 1786868673}
 	microsoftContext := microsoftClaims.AuthenticationContext()
-	if microsoftContext == nil || microsoftContext.MultiFactor() {
+	if microsoftContext == nil || microsoftContext.StrongAuthentication() {
 		t.Errorf("expected microsoft claims not to report multi factor")
 	}
 	if microsoftContext.ContextClass != "1" {
@@ -241,7 +241,7 @@ func TestHasAnyMethodReference(t *testing.T) {
 	if !authenticationContext.HasAnyMethodReference([]string{"x509", "smartcard"}) {
 		t.Errorf("expected the stated x509 method to be accepted")
 	}
-	if authenticationContext.HasAnyMethodReference(MultiFactorMethodReferences) {
+	if authenticationContext.HasAnyMethodReference(StrongAuthenticationMethodReferences) {
 		t.Errorf("expected x509 not to satisfy the default set")
 	}
 	if authenticationContext.HasAnyMethodReference(nil) {
