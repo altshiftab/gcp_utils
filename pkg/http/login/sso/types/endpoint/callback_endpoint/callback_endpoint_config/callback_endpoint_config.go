@@ -12,6 +12,7 @@ import (
 var (
 	DefaultCallbackCookieName = "callback_id"
 	DefaultPopOauthFlow       = database.PopOauthFlow
+	DefaultRequireMultiFactor = false
 )
 
 // DefaultClassifyOauthError is the default classifier; it defers to the error's
@@ -29,6 +30,10 @@ type Config struct {
 	// page each category redirects to is derived from the origin passed to the
 	// endpoint's Initialize method.
 	ClassifyOauthError func(*oauth_error.Error) oauth_error.Category
+	// RequireMultiFactor rejects a sign-in unless the identity provider states that more than one
+	// factor was used. Providers only say so when asked, and may stay silent even then, so enabling
+	// this turns an unproven second factor into a refusal.
+	RequireMultiFactor bool
 }
 
 type Option func(*Config)
@@ -36,6 +41,7 @@ type Option func(*Config)
 func New(options ...Option) *Config {
 	config := &Config{
 		CallbackCookieName: DefaultCallbackCookieName,
+		RequireMultiFactor: DefaultRequireMultiFactor,
 		PopOauthFlow:       DefaultPopOauthFlow,
 		ClassifyOauthError: DefaultClassifyOauthError,
 	}
@@ -61,5 +67,11 @@ func WithPopOauthFlow(popOauthFlow func(ctx context.Context, id string, database
 func WithOauthErrorClassifier(classify func(*oauth_error.Error) oauth_error.Category) Option {
 	return func(config *Config) {
 		config.ClassifyOauthError = classify
+	}
+}
+
+func WithRequireMultiFactor(requireMultiFactor bool) Option {
+	return func(config *Config) {
+		config.RequireMultiFactor = requireMultiFactor
 	}
 }

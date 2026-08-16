@@ -84,6 +84,7 @@ type Endpoint[T provider_claims.ProviderClaims] struct {
 	*initialization_endpoint.Endpoint
 	CallbackCookieName    string
 	DbscChallengeDuration time.Duration
+	RequireMultiFactor    bool
 	popOauthFlow          func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
 	problemRedirectUrls   map[oauth_error.Category]string
 	classifyOauthError    func(*oauth_error.Error) oauth_error.Category
@@ -347,6 +348,43 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
+		// Logged for every sign-in, not just when multi-factor is required: how the provider
+		// authenticated the user, and when, is the context that makes a sign-in explicable
+		// afterwards.
+		authenticationContext := providerClaims.AuthenticationContext()
+		multiFactor := authenticationContext.MultiFactor()
+
+		logAttributes := []any{
+			slog.Bool("multi_factor", multiFactor),
+			slog.Bool("multi_factor_required", e.RequireMultiFactor),
+		}
+		if authenticationContext != nil {
+			logAttributes = append(
+				logAttributes,
+				slog.Any("authentication_method_references", authenticationContext.MethodReferences),
+				slog.String("authentication_context_class", authenticationContext.ContextClass),
+			)
+			if authenticatedAt := authenticationContext.AuthenticatedAt; authenticatedAt != 0 {
+				logAttributes = append(
+					logAttributes,
+					slog.Time("authenticated_at", time.Unix(authenticatedAt, 0).UTC()),
+				)
+			}
+		}
+		slog.InfoContext(ctx, "An identity provider authenticated a user.", logAttributes...)
+
+		if e.RequireMultiFactor && !multiFactor {
+			return nil, &response_error.ResponseError{
+				ClientError: motmedelErrors.NewWithTrace(ssoErrors.ErrForbiddenUser),
+				ProblemDetail: problem_detail.New(
+					http.StatusForbidden,
+					problem_detail_config.WithDetail(
+						"The identity provider did not state that more than one authentication factor was used.",
+					),
+				),
+			}
+		}
+
 		emailAddress, err := providerClaims.VerifiedEmailAddress()
 		if err != nil {
 			wrappedErr := motmedelErrors.New(
@@ -422,6 +460,7 @@ func New[T provider_claims.ProviderClaims](path string, options ...callback_endp
 			},
 		},
 		CallbackCookieName: config.CallbackCookieName,
+		RequireMultiFactor: config.RequireMultiFactor,
 		popOauthFlow:       config.PopOauthFlow,
 		classifyOauthError: config.ClassifyOauthError,
 	}, nil

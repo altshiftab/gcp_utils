@@ -97,3 +97,72 @@ func TestMicrosoftClaimsVerifiedEmailAddress(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthenticationContextMultiFactor(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                  string
+		authenticationContext *AuthenticationContext
+		expected              bool
+	}{
+		{name: "nil context", authenticationContext: nil},
+		{name: "no method references", authenticationContext: &AuthenticationContext{}},
+		{
+			name:                  "single factor",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"pwd"}},
+		},
+		{
+			name:                  "google style",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"mfa", "pwd", "tel"}},
+			expected:              true,
+		},
+		{
+			name:                  "microsoft multipleauthn",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"pwd", "multipleauthn"}},
+			expected:              true,
+		},
+		{
+			name:                  "case insensitive",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"MFA"}},
+			expected:              true,
+		},
+		{
+			// A hardware key alone is one factor as far as the provider's own statement goes.
+			name:                  "hardware key without mfa",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"hwk"}},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := testCase.authenticationContext.MultiFactor(); got != testCase.expected {
+				t.Errorf("got %t, expected %t", got, testCase.expected)
+			}
+		})
+	}
+}
+
+func TestProviderClaimsAuthenticationContext(t *testing.T) {
+	t.Parallel()
+
+	googleClaims := &GoogleClaims{Amr: []string{"mfa", "pwd"}, Acr: "google-acr", AuthTime: 1786868673}
+	googleContext := googleClaims.AuthenticationContext()
+	if googleContext == nil || !googleContext.MultiFactor() {
+		t.Errorf("expected google claims to report multi factor")
+	}
+	if googleContext.ContextClass != "google-acr" || googleContext.AuthenticatedAt != 1786868673 {
+		t.Errorf("google context: got %+v", googleContext)
+	}
+
+	microsoftClaims := &MicrosoftClaims{Amr: []string{"pwd"}, Acr: "1", AuthTime: 1786868673}
+	microsoftContext := microsoftClaims.AuthenticationContext()
+	if microsoftContext == nil || microsoftContext.MultiFactor() {
+		t.Errorf("expected microsoft claims not to report multi factor")
+	}
+	if microsoftContext.ContextClass != "1" {
+		t.Errorf("microsoft context: got %+v", microsoftContext)
+	}
+}

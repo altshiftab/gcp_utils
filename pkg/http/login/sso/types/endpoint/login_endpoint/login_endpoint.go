@@ -26,6 +26,7 @@ import (
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	motmedelOauth2 "github.com/Motmedel/utils_go/pkg/oauth2"
+	"github.com/Motmedel/utils_go/pkg/oauth2/types/auth_code_option"
 	motmedelOauth2Config "github.com/Motmedel/utils_go/pkg/oauth2/types/config"
 	motmedelReflect "github.com/Motmedel/utils_go/pkg/reflect"
 	gcpUtilsHttp "github.com/altshiftab/gcp_utils/pkg/http"
@@ -65,9 +66,10 @@ type Endpoint struct {
 	CallbackPath       string
 	OauthFlowDuration  time.Duration
 
-	makeState        func() (string, error)
-	makeCodeVerifier func() (string, error)
-	insertOauthFlow  func(ctx context.Context, state string, codeVerifier string, redirectUrl string, expirationDuration time.Duration, database *sql.DB) (*oauth_flow.Flow, error)
+	makeState                             func() (string, error)
+	makeCodeVerifier                      func() (string, error)
+	insertOauthFlow                       func(ctx context.Context, state string, codeVerifier string, redirectUrl string, expirationDuration time.Duration, database *sql.DB) (*oauth_flow.Flow, error)
+	RequestAuthenticationMethodReferences bool
 }
 
 func (e *Endpoint) Initialize(domain string, oauthConfig *motmedelOauth2Config.Config, db *sql.DB) error {
@@ -169,6 +171,14 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *motmedelOauth2Config.C
 			}
 		}
 
+		authCodeOptions := motmedelOauth2.S256ChallengeOption(codeVerifier)
+		if e.RequestAuthenticationMethodReferences {
+			authCodeOptions = append(
+				authCodeOptions,
+				auth_code_option.New("claims", authenticationMethodReferencesClaimsParameter),
+			)
+		}
+
 		callbackCookie := http.Cookie{
 			Name:     e.CallbackCookieName,
 			Value:    oauthFlowId,
@@ -188,7 +198,7 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *motmedelOauth2Config.C
 				},
 				{
 					Name:  "Location",
-					Value: oauthConfig.AuthCodeURL(state, motmedelOauth2.S256ChallengeOption(codeVerifier)...),
+					Value: oauthConfig.AuthCodeURL(state, authCodeOptions...),
 				},
 			},
 		}, nil
@@ -198,6 +208,12 @@ func (e *Endpoint) Initialize(domain string, oauthConfig *motmedelOauth2Config.C
 
 	return nil
 }
+
+// authenticationMethodReferencesClaimsParameter asks the provider to include the "amr" claim in the
+// id token. Google omits it unless asked, and may omit it even then; Microsoft supplies it for
+// OpenID Connect applications. It is requested as voluntary so that a provider unable to supply it
+// still authenticates the user, leaving the decision to the caller.
+const authenticationMethodReferencesClaimsParameter = `{"id_token":{"amr":null}}`
 
 func New(path, callbackPath string, options ...login_endpoint_config.Option) (*Endpoint, error) {
 	if path == "" {
@@ -223,6 +239,8 @@ func New(path, callbackPath string, options ...login_endpoint_config.Option) (*E
 		CallbackCookieName: config.CallbackCookieName,
 		CallbackPath:       callbackPath,
 		OauthFlowDuration:  config.OauthFlowDuration,
+
+		RequestAuthenticationMethodReferences: config.RequestAuthenticationMethodReferences,
 
 		makeState:        makeState,
 		makeCodeVerifier: makeCodeVerifier,

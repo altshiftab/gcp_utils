@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/endpoint/callback_endpoint/callback_endpoint_config"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -273,6 +274,78 @@ func TestEndpoint(t *testing.T) {
 			} else {
 				testCase.args.Path = testEndpoint.Path + "?state=" + testing2.State + "&code=" + caseCode
 			}
+			testCase.args.Method = testEndpoint.Method
+
+			muxTesting.TestArgs(t, testCase.args, httpServer.URL)
+		})
+	}
+}
+
+// TestEndpoint_RequireMultiFactor covers refusing a sign-in the identity provider does not state was
+// multi-factor. A provider says nothing about its methods unless asked, and may say nothing even
+// then, so an absent statement is treated as unproven rather than as a second factor.
+func TestEndpoint_RequireMultiFactor(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		code string
+		args *muxTesting.Args
+	}{
+		{
+			name: "multi factor stated",
+			code: testing2.OauthMultiFactorCode,
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusSeeOther,
+				ExpectedHeaders:    [][2]string{{"Location", testing2.RedirectUrl}},
+			},
+		},
+		{
+			name: "multi factor not stated",
+			code: testing2.OauthCode,
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusForbidden,
+				ExpectedProblemDetail: &problem_detail.Detail{
+					Detail: "The identity provider did not state that more than one authentication factor was used.",
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			testEndpoint, err := New[*testing2.ProviderClaims](
+				defaultPath,
+				callback_endpoint_config.WithRequireMultiFactor(true),
+			)
+			if err != nil {
+				t.Fatalf("new endpoint: %v", err)
+			}
+
+			if err := testEndpoint.Initialize(testOrigin, oauthConfig, idTokenAuthenticator, sessionManager); err != nil {
+				t.Fatalf("test endpoint initialize: %v", err)
+			}
+
+			testEndpoint.popOauthFlow = func(_ context.Context, _ string, _ *sql.DB) (*oauth_flow.Flow, error) {
+				expiresAt := time.Now().Add(time.Hour)
+				return &oauth_flow.Flow{
+					Id:          testing2.OauthFlowId,
+					RedirectUrl: testing2.RedirectUrl,
+					State:       testing2.State,
+					ExpiresAt:   &expiresAt,
+				}, nil
+			}
+
+			mux := &muxPkg.Mux{}
+			mux.Add(testEndpoint.Endpoint.Endpoint)
+			httpServer := httptest.NewServer(mux)
+			defer httpServer.Close()
+
+			callbackCookie := http.Cookie{Name: testEndpoint.CallbackCookieName, Value: testing2.OauthFlowId}
+			testCase.args.Headers = append(testCase.args.Headers, [2]string{"Cookie", callbackCookie.String()})
+			testCase.args.Path = testEndpoint.Path + "?state=" + testing2.State + "&code=" + testCase.code
 			testCase.args.Method = testEndpoint.Method
 
 			muxTesting.TestArgs(t, testCase.args, httpServer.URL)

@@ -43,6 +43,7 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager/session_manager_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/provider_claims"
 )
 
 const (
@@ -59,6 +60,7 @@ const (
 	AuthenticationId = "test-authentication-id"
 
 	OauthErrorCode                  = "oauth_error"
+	OauthMultiFactorCode            = "multi_factor"
 	OauthSkipIdTokenCode            = "skip_id_token"
 	OauthInvalidIdTokenCode         = "invalid_id_token"
 	OauthUnverifiedEmailAddressCode = "unverified_email_address"
@@ -73,8 +75,13 @@ var (
 )
 
 type ProviderClaims struct {
-	EmailAddress string `json:"email_address"`
-	Verified     bool   `json:"verified"`
+	EmailAddress string   `json:"email_address"`
+	Verified     bool     `json:"verified"`
+	Amr          []string `json:"amr,omitzero"`
+}
+
+func (c *ProviderClaims) AuthenticationContext() *provider_claims.AuthenticationContext {
+	return &provider_claims.AuthenticationContext{MethodReferences: c.Amr}
 }
 
 func (c *ProviderClaims) VerifiedEmailAddress() (string, error) {
@@ -252,6 +259,12 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 							tokenEmailAddress = EmailAddress
 						}
 						tokenPayload["email_address"] = tokenEmailAddress
+
+						// Providers state the methods used only when asked, so the default token
+						// carries none: that is the case a multi-factor requirement must refuse.
+						if inputCode == OauthMultiFactorCode {
+							tokenPayload["amr"] = []string{"pwd", "mfa"}
+						}
 
 						token := motmedelJwtToken.Token{
 							Header: map[string]any{
