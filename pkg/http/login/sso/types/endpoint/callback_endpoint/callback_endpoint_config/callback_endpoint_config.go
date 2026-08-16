@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	DefaultCallbackCookieName = "callback_id"
-	DefaultPopOauthFlow       = database.PopOauthFlow
-	DefaultRequireMultiFactor = false
+	DefaultCallbackCookieName  = "callback_id"
+	DefaultPopOauthFlow        = database.PopOauthFlow
+	DefaultRequireMultiFactor  = false
+	DefaultRequireOrganization = false
 )
 
 // DefaultClassifyOauthError is the default classifier; it defers to the error's
@@ -34,16 +35,21 @@ type Config struct {
 	// factor was used. Providers only say so when asked, and may stay silent even then, so enabling
 	// this turns an unproven second factor into a refusal.
 	RequireMultiFactor bool
+	// RequireOrganization refuses accounts that belong to no organization. Google omits the hosted
+	// domain for consumer accounts, so requiring one admits only Workspace accounts; Microsoft
+	// carries a tenant either way, so this admits only accounts with one.
+	RequireOrganization bool
 }
 
 type Option func(*Config)
 
 func New(options ...Option) *Config {
 	config := &Config{
-		CallbackCookieName: DefaultCallbackCookieName,
-		RequireMultiFactor: DefaultRequireMultiFactor,
-		PopOauthFlow:       DefaultPopOauthFlow,
-		ClassifyOauthError: DefaultClassifyOauthError,
+		CallbackCookieName:  DefaultCallbackCookieName,
+		RequireMultiFactor:  DefaultRequireMultiFactor,
+		RequireOrganization: DefaultRequireOrganization,
+		PopOauthFlow:        DefaultPopOauthFlow,
+		ClassifyOauthError:  DefaultClassifyOauthError,
 	}
 	for _, option := range options {
 		option(config)
@@ -73,5 +79,11 @@ func WithOauthErrorClassifier(classify func(*oauth_error.Error) oauth_error.Cate
 func WithRequireMultiFactor(requireMultiFactor bool) Option {
 	return func(config *Config) {
 		config.RequireMultiFactor = requireMultiFactor
+	}
+}
+
+func WithRequireOrganization(requireOrganization bool) Option {
+	return func(config *Config) {
+		config.RequireOrganization = requireOrganization
 	}
 }

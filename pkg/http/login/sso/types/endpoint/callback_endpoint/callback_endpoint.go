@@ -85,6 +85,7 @@ type Endpoint[T provider_claims.ProviderClaims] struct {
 	CallbackCookieName    string
 	DbscChallengeDuration time.Duration
 	RequireMultiFactor    bool
+	RequireOrganization   bool
 	popOauthFlow          func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
 	problemRedirectUrls   map[oauth_error.Category]string
 	classifyOauthError    func(*oauth_error.Error) oauth_error.Category
@@ -354,9 +355,13 @@ func (e *Endpoint[T]) Initialize(
 		authenticationContext := providerClaims.AuthenticationContext()
 		multiFactor := authenticationContext.MultiFactor()
 
+		organizationIdentifier := providerClaims.OrganizationIdentifier()
+
 		logAttributes := []any{
 			slog.Bool("multi_factor", multiFactor),
 			slog.Bool("multi_factor_required", e.RequireMultiFactor),
+			slog.Bool("organization_required", e.RequireOrganization),
+			slog.String("organization", organizationIdentifier),
 		}
 		if authenticationContext != nil {
 			logAttributes = append(
@@ -372,6 +377,18 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 		slog.InfoContext(ctx, "An identity provider authenticated a user.", logAttributes...)
+
+		// A personal account belongs to no organization and so carries no identifier, which is what
+		// makes this keep consumer accounts out.
+		if e.RequireOrganization && organizationIdentifier == "" {
+			return nil, &response_error.ResponseError{
+				ClientError: motmedelErrors.NewWithTrace(ssoErrors.ErrForbiddenUser, organizationIdentifier),
+				ProblemDetail: problem_detail.New(
+					http.StatusForbidden,
+					problem_detail_config.WithDetail("The account does not belong to an organization."),
+				),
+			}
+		}
 
 		if e.RequireMultiFactor && !multiFactor {
 			return nil, &response_error.ResponseError{
@@ -459,9 +476,10 @@ func New[T provider_claims.ProviderClaims](path string, options ...callback_endp
 				},
 			},
 		},
-		CallbackCookieName: config.CallbackCookieName,
-		RequireMultiFactor: config.RequireMultiFactor,
-		popOauthFlow:       config.PopOauthFlow,
-		classifyOauthError: config.ClassifyOauthError,
+		CallbackCookieName:  config.CallbackCookieName,
+		RequireMultiFactor:  config.RequireMultiFactor,
+		RequireOrganization: config.RequireOrganization,
+		popOauthFlow:        config.PopOauthFlow,
+		classifyOauthError:  config.ClassifyOauthError,
 	}, nil
 }

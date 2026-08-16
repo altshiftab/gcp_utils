@@ -61,6 +61,8 @@ const (
 
 	OauthErrorCode                  = "oauth_error"
 	OauthMultiFactorCode            = "multi_factor"
+	OauthOrganizationCode           = "organization"
+	Organization                    = "example-organization"
 	OauthSkipIdTokenCode            = "skip_id_token"
 	OauthInvalidIdTokenCode         = "invalid_id_token"
 	OauthUnverifiedEmailAddressCode = "unverified_email_address"
@@ -78,6 +80,11 @@ type ProviderClaims struct {
 	EmailAddress string   `json:"email_address"`
 	Verified     bool     `json:"verified"`
 	Amr          []string `json:"amr,omitzero"`
+	Organization string   `json:"organization,omitzero"`
+}
+
+func (c *ProviderClaims) OrganizationIdentifier() string {
+	return c.Organization
 }
 
 func (c *ProviderClaims) AuthenticationContext() *provider_claims.AuthenticationContext {
@@ -264,6 +271,12 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 						// carries none: that is the case a multi-factor requirement must refuse.
 						if inputCode == OauthMultiFactorCode {
 							tokenPayload["amr"] = []string{"pwd", "mfa"}
+						}
+
+						// An account with no organization carries no identifier, which is the
+						// consumer account case.
+						if inputCode == OauthOrganizationCode {
+							tokenPayload["organization"] = Organization
 						}
 
 						token := motmedelJwtToken.Token{
