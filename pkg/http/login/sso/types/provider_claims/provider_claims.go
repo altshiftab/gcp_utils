@@ -36,8 +36,8 @@ type AuthenticationContext struct {
 	AuthenticatedAt int64
 }
 
-// StrongAuthenticationMethodReferences are the "amr" values taken to mean the sign-in was at least as strong
-// as multi-factor.
+// StrongAuthenticationMethodReferences are the "amr" values taken to mean the sign-in was at least
+// as strong as multi-factor.
 //
 // Two kinds are listed. "mfa" and "multipleauthn" are the providers' own statements that more than
 // one factor was used. The rest are single-step methods that are nonetheless no weaker: a passkey or
@@ -48,6 +48,12 @@ type AuthenticationContext struct {
 // Deliberately absent: "wia" is merely an existing Windows session, and "x509", "cert" and
 // "smartcard" do not by themselves say whether the credential was unlocked. Deployments that treat
 // those as sufficient can say so.
+//
+// TODO: Narrow this to the unphishable methods, dropping "mfa" and "multipleauthn". A one-time code
+// sent by SMS is not a strong factor, being both phishable and interceptable, but the providers
+// report such a sign-in as "mfa", so accepting "mfa" accepts SMS along with it. Left as is until the
+// sign-in logs show which methods are in use, since narrowing it refuses everyone whose second
+// factor is a code.
 var StrongAuthenticationMethodReferences = []string{"mfa", "multipleauthn", "fido", "fido2", "hwk", "swk"}
 
 // HasAnyMethodReference reports whether the provider stated any of the given methods. A nil context,
