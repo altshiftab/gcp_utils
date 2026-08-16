@@ -16,9 +16,17 @@ var (
 	// is refreshed, so this is how long a revoked session stays usable, and binding it to a device
 	// does not change that.
 	//
-	// The browser refreshes a device bound session proactively once its cookie has two minutes or
-	// less remaining (Chromium's kProactiveRefreshThreshold). A duration at or below that makes it
-	// refresh on essentially every request, so keep this comfortably above two minutes.
+	// Keep this comfortably above two minutes. The browser does not wait for the bound cookie to
+	// expire before refreshing: it refreshes once the cookie has two minutes or less remaining, per
+	// kProactiveRefreshThreshold in Chromium's net/device_bound_sessions/session_service_impl.cc:
+	//
+	//	constexpr base::TimeDelta kProactiveRefreshThreshold = base::Seconds(120);
+	//	if (minimum_cookie_lifetime > kProactiveRefreshThreshold) { return; }
+	//
+	// A duration at or below that leaves every request inside the window, so the browser refreshes
+	// on essentially every request. Observed against Chrome 151: a three minute session refreshed
+	// every ~65 seconds, a five minute session not at all within seventy seconds, and a thirty
+	// second session on every request.
 	DefaultSessionDuration             = 15 * time.Minute
 	DefaultChallengeDuration           = 5 * time.Minute
 	DefaultInsertDbscChallenge         = database.InsertDbscChallenge

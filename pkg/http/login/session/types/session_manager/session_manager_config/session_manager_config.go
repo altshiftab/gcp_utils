@@ -17,6 +17,9 @@ var (
 	DefaultCookieName = "session"
 	// The session token is short-lived: revocation is only enforced when a session is refreshed,
 	// so the token's lifetime is how long a revoked session remains usable.
+	//
+	// A device bound session's first cookie expires with this token, so the two minute floor
+	// described in dbsc_refresh_endpoint_config.DefaultSessionDuration applies here too.
 	DefaultInitialSessionDuration = 15 * time.Minute
 	DefaultAuthenticationDuration = 12 * time.Hour
 	DefaultDbscChallengeDuration  = dbsc_refresh_endpoint_config.DefaultChallengeDuration
