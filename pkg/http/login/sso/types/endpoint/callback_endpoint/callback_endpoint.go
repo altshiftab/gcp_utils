@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -86,6 +87,7 @@ type Endpoint[T provider_claims.ProviderClaims] struct {
 	DbscChallengeDuration time.Duration
 	RequireMultiFactor    bool
 	RequireOrganization   bool
+	AllowedOrganizations  []string
 	popOauthFlow          func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
 	problemRedirectUrls   map[oauth_error.Category]string
 	classifyOauthError    func(*oauth_error.Error) oauth_error.Category
@@ -390,6 +392,22 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
+		// An account with no organization is never on the list, so an allow list also excludes
+		// personal accounts whether or not an organization is separately required.
+		if allowedOrganizations := e.AllowedOrganizations; len(allowedOrganizations) != 0 {
+			if organizationIdentifier == "" || !slices.Contains(allowedOrganizations, organizationIdentifier) {
+				return nil, &response_error.ResponseError{
+					ClientError: motmedelErrors.NewWithTrace(ssoErrors.ErrForbiddenUser, organizationIdentifier),
+					ProblemDetail: problem_detail.New(
+						http.StatusForbidden,
+						problem_detail_config.WithDetail(
+							"The account does not belong to an organization that is allowed to sign in.",
+						),
+					),
+				}
+			}
+		}
+
 		if e.RequireMultiFactor && !multiFactor {
 			return nil, &response_error.ResponseError{
 				ClientError: motmedelErrors.NewWithTrace(ssoErrors.ErrForbiddenUser),
@@ -476,10 +494,11 @@ func New[T provider_claims.ProviderClaims](path string, options ...callback_endp
 				},
 			},
 		},
-		CallbackCookieName:  config.CallbackCookieName,
-		RequireMultiFactor:  config.RequireMultiFactor,
-		RequireOrganization: config.RequireOrganization,
-		popOauthFlow:        config.PopOauthFlow,
-		classifyOauthError:  config.ClassifyOauthError,
+		CallbackCookieName:   config.CallbackCookieName,
+		RequireMultiFactor:   config.RequireMultiFactor,
+		RequireOrganization:  config.RequireOrganization,
+		AllowedOrganizations: config.AllowedOrganizations,
+		popOauthFlow:         config.PopOauthFlow,
+		classifyOauthError:   config.ClassifyOauthError,
 	}, nil
 }

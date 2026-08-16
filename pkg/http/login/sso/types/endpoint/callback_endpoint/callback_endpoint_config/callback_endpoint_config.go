@@ -39,6 +39,10 @@ type Config struct {
 	// domain for consumer accounts, so requiring one admits only Workspace accounts; Microsoft
 	// carries a tenant either way, so this admits only accounts with one.
 	RequireOrganization bool
+	// AllowedOrganizations restricts sign-in to accounts belonging to one of these organizations:
+	// hosted domains for Google, tenants for Microsoft. Empty places no restriction. A non-empty
+	// list implies an organization is required, since an account without one cannot be on it.
+	AllowedOrganizations []string
 }
 
 type Option func(*Config)
@@ -85,5 +89,11 @@ func WithRequireMultiFactor(requireMultiFactor bool) Option {
 func WithRequireOrganization(requireOrganization bool) Option {
 	return func(config *Config) {
 		config.RequireOrganization = requireOrganization
+	}
+}
+
+func WithAllowedOrganizations(allowedOrganizations []string) Option {
+	return func(config *Config) {
+		config.AllowedOrganizations = allowedOrganizations
 	}
 }

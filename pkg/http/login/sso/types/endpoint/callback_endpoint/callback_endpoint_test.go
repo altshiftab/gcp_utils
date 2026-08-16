@@ -423,3 +423,88 @@ func TestEndpoint_RequireOrganization(t *testing.T) {
 		})
 	}
 }
+
+// TestEndpoint_AllowedOrganizations covers restricting sign-in to named organizations. An account
+// with no organization is never on the list, so this excludes personal accounts as well.
+func TestEndpoint_AllowedOrganizations(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                 string
+		code                 string
+		allowedOrganizations []string
+		args                 *muxTesting.Args
+	}{
+		{
+			name:                 "listed organization",
+			code:                 testing2.OauthOrganizationCode,
+			allowedOrganizations: []string{"other-organization", testing2.Organization},
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusSeeOther,
+				ExpectedHeaders:    [][2]string{{"Location", testing2.RedirectUrl}},
+			},
+		},
+		{
+			name:                 "unlisted organization",
+			code:                 testing2.OauthOrganizationCode,
+			allowedOrganizations: []string{"other-organization"},
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusForbidden,
+				ExpectedProblemDetail: &problem_detail.Detail{
+					Detail: "The account does not belong to an organization that is allowed to sign in.",
+				},
+			},
+		},
+		{
+			name:                 "no organization",
+			code:                 testing2.OauthCode,
+			allowedOrganizations: []string{testing2.Organization},
+			args: &muxTesting.Args{
+				ExpectedStatusCode: http.StatusForbidden,
+				ExpectedProblemDetail: &problem_detail.Detail{
+					Detail: "The account does not belong to an organization that is allowed to sign in.",
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			testEndpoint, err := New[*testing2.ProviderClaims](
+				defaultPath,
+				callback_endpoint_config.WithAllowedOrganizations(testCase.allowedOrganizations),
+			)
+			if err != nil {
+				t.Fatalf("new endpoint: %v", err)
+			}
+
+			if err := testEndpoint.Initialize(testOrigin, oauthConfig, idTokenAuthenticator, sessionManager); err != nil {
+				t.Fatalf("test endpoint initialize: %v", err)
+			}
+
+			testEndpoint.popOauthFlow = func(_ context.Context, _ string, _ *sql.DB) (*oauth_flow.Flow, error) {
+				expiresAt := time.Now().Add(time.Hour)
+				return &oauth_flow.Flow{
+					Id:          testing2.OauthFlowId,
+					RedirectUrl: testing2.RedirectUrl,
+					State:       testing2.State,
+					ExpiresAt:   &expiresAt,
+				}, nil
+			}
+
+			mux := &muxPkg.Mux{}
+			mux.Add(testEndpoint.Endpoint.Endpoint)
+			httpServer := httptest.NewServer(mux)
+			defer httpServer.Close()
+
+			callbackCookie := http.Cookie{Name: testEndpoint.CallbackCookieName, Value: testing2.OauthFlowId}
+			testCase.args.Headers = append(testCase.args.Headers, [2]string{"Cookie", callbackCookie.String()})
+			testCase.args.Path = testEndpoint.Path + "?state=" + testing2.State + "&code=" + testCase.code
+			testCase.args.Method = testEndpoint.Method
+
+			muxTesting.TestArgs(t, testCase.args, httpServer.URL)
+		})
+	}
+}
