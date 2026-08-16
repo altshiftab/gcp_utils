@@ -35,9 +35,10 @@ type Config struct {
 	// factor was used. Providers only say so when asked, and may stay silent even then, so enabling
 	// this turns an unproven second factor into a refusal.
 	RequireMultiFactor bool
-	// RequireOrganization refuses accounts that belong to no organization. Google omits the hosted
-	// domain for consumer accounts, so requiring one admits only Workspace accounts; Microsoft
-	// carries a tenant either way, so this admits only accounts with one.
+	// RequireOrganization refuses accounts that belong to no organization: personal accounts, which
+	// no organization administers and on which therefore no authentication policy can be required.
+	// Google omits the hosted domain for them; Microsoft places them in a fixed consumer tenant,
+	// which the claims report as no organization.
 	RequireOrganization bool
 	// AllowedOrganizations restricts sign-in to accounts belonging to one of these organizations:
 	// hosted domains for Google, tenants for Microsoft. Empty places no restriction. A non-empty

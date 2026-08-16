@@ -2,6 +2,7 @@ package provider_claims
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	ssoErrors "github.com/altshiftab/gcp_utils/pkg/http/login/sso/errors"
@@ -164,5 +165,51 @@ func TestProviderClaimsAuthenticationContext(t *testing.T) {
 	}
 	if microsoftContext.ContextClass != "1" {
 		t.Errorf("microsoft context: got %+v", microsoftContext)
+	}
+}
+
+func TestOrganizationIdentifier(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		claims   ProviderClaims
+		expected string
+	}{
+		{
+			name:     "google workspace",
+			claims:   &GoogleClaims{Hd: "example.com"},
+			expected: "example.com",
+		},
+		{
+			// Google omits the hosted domain entirely for a personal account.
+			name:   "google consumer",
+			claims: &GoogleClaims{},
+		},
+		{
+			name:     "microsoft work account",
+			claims:   &MicrosoftClaims{Tid: "8c2b4d1e-0000-4a2f-9c3d-111122223333"},
+			expected: "8c2b4d1e-0000-4a2f-9c3d-111122223333",
+		},
+		{
+			// A personal Microsoft account carries the consumer tenant rather than nothing, so
+			// testing for an empty tenant alone would let it through.
+			name:   "microsoft personal account",
+			claims: &MicrosoftClaims{Tid: ConsumerTenantIdentifier},
+		},
+		{
+			name:   "microsoft personal account, upper case",
+			claims: &MicrosoftClaims{Tid: strings.ToUpper(ConsumerTenantIdentifier)},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := testCase.claims.OrganizationIdentifier(); got != testCase.expected {
+				t.Errorf("got %q, expected %q", got, testCase.expected)
+			}
+		})
 	}
 }

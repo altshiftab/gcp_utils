@@ -101,10 +101,19 @@ type MicrosoftClaims struct {
 	AuthTime          int64    `json:"auth_time,omitzero"`
 }
 
-// OrganizationIdentifier returns the "tid" claim, the Entra tenant the account belongs to. Personal
-// Microsoft accounts carry the fixed consumer tenant, so listing the tenants you accept excludes
-// them.
+// ConsumerTenantIdentifier is the fixed tenant that personal Microsoft accounts belong to. It is a
+// tenant in form only: no organization administers it, so an account in it is a personal account.
+const ConsumerTenantIdentifier = "9188040d-6c67-4c5b-b112-36a304b66dad"
+
+// OrganizationIdentifier returns the "tid" claim, the Entra tenant the account belongs to. Unlike
+// Google, which simply omits the hosted domain for a personal account, Microsoft gives personal
+// accounts the consumer tenant; it is reported as no organization so that both providers answer
+// the question the same way.
 func (c *MicrosoftClaims) OrganizationIdentifier() string {
+	if strings.EqualFold(c.Tid, ConsumerTenantIdentifier) {
+		return ""
+	}
+
 	return c.Tid
 }
 
