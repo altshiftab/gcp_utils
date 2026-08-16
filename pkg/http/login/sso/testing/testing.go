@@ -58,6 +58,7 @@ const (
 	Role             = "test-role"
 	AccountId        = "test-account-id"
 	AuthenticationId = "test-authentication-id"
+	Subject          = "test-provider-subject"
 
 	OauthErrorCode                  = "oauth_error"
 	OauthStrongAuthenticationCode   = "strong_authentication"
@@ -81,6 +82,11 @@ type ProviderClaims struct {
 	Verified     bool     `json:"verified"`
 	Amr          []string `json:"amr,omitzero"`
 	Organization string   `json:"organization,omitzero"`
+	Sub          string   `json:"sub,omitzero"`
+}
+
+func (c *ProviderClaims) Subject() string {
+	return c.Sub
 }
 
 func (c *ProviderClaims) OrganizationIdentifier() string {
@@ -266,6 +272,7 @@ func SetUp() (*session_manager.Manager, *authenticator.AuthenticatorWithKeyHandl
 							tokenEmailAddress = EmailAddress
 						}
 						tokenPayload["email_address"] = tokenEmailAddress
+						tokenPayload["sub"] = Subject
 
 						// Providers state the methods used only when asked, so the default token
 						// carries none: that is the case a multi-factor requirement must refuse.

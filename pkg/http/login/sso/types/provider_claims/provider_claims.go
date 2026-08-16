@@ -14,6 +14,9 @@ type ProviderClaims interface {
 	// AuthenticationContext reports how the provider says it authenticated the user. It is nil when
 	// the provider said nothing, which is not the same as saying no second factor was used.
 	AuthenticationContext() *AuthenticationContext
+	// Subject is the provider's stable identifier for the account, which distinguishes one user
+	// from another without depending on the email address.
+	Subject() string
 	// OrganizationIdentifier names the organization the account belongs to: the hosted domain for
 	// Google, the tenant for Microsoft. It is empty for an account that belongs to no organization,
 	// such as a personal Google account, which is what makes it usable to keep consumer accounts
@@ -80,6 +83,10 @@ type GoogleClaims struct {
 	AuthTime      int64    `json:"auth_time,omitzero"`
 }
 
+func (c *GoogleClaims) Subject() string {
+	return c.Sub
+}
+
 // OrganizationIdentifier returns the "hd" claim, the Google Workspace domain hosting the account.
 // Google omits it for consumer accounts, so an empty value means the account is a personal one.
 func (c *GoogleClaims) OrganizationIdentifier() string {
@@ -115,6 +122,10 @@ type MicrosoftClaims struct {
 	Amr               []string `json:"amr,omitzero"`
 	Acr               string   `json:"acr,omitzero"`
 	AuthTime          int64    `json:"auth_time,omitzero"`
+}
+
+func (c *MicrosoftClaims) Subject() string {
+	return c.Sub
 }
 
 // ConsumerTenantIdentifier is the fixed tenant that personal Microsoft accounts belong to. It is a

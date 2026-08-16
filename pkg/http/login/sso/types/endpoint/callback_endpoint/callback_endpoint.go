@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/Motmedel/utils_go/pkg/schema"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -352,15 +353,56 @@ func (e *Endpoint[T]) Initialize(
 			}
 		}
 
-		// Logged for every sign-in, not just when multi-factor is required: how the provider
+		// Resolved before anything is logged or refused, so that every line about this sign-in —
+		// including a refusal — says which account it concerned. Attached to the HTTP context
+		// rather than to one message, so it reaches the request log too and correlates with the
+		// rest of the service by the same fields.
+		emailAddress, err := providerClaims.VerifiedEmailAddress()
+		if err != nil {
+			wrappedErr := motmedelErrors.New(
+				fmt.Errorf("provider claims verified email address: %w", err),
+				providerClaims,
+			)
+			if errors.Is(err, ssoErrors.ErrForbiddenUser) {
+				return nil, &response_error.ResponseError{
+					ProblemDetail: problem_detail.New(
+						http.StatusForbidden,
+						problem_detail_config.WithDetail("The email address that is tied to the id token is unverified or invalid."),
+					),
+				}
+			}
+			return nil, &response_error.ResponseError{ServerError: wrappedErr}
+		}
+		if emailAddress == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("email address")),
+			}
+		}
+
+		organizationIdentifier := providerClaims.OrganizationIdentifier()
+
+		if httpContext, ok := ctx.Value(muxPkg.MuxHttpContextContextKey).(*motmedelHttpTypes.HttpContext); ok && httpContext != nil {
+			httpContext.User = &schema.User{
+				Id:     providerClaims.Subject(),
+				Email:  emailAddress,
+				Domain: organizationIdentifier,
+			}
+		}
+
+		// Logged for every sign-in, not just when a strong method is required: how the provider
 		// authenticated the user, and when, is the context that makes a sign-in explicable
 		// afterwards.
 		authenticationContext := providerClaims.AuthenticationContext()
 		strongAuthentication := authenticationContext.HasAnyMethodReference(e.StrongAuthenticationMethodReferences)
 
-		organizationIdentifier := providerClaims.OrganizationIdentifier()
-
+		// Named on the message itself as well as on the HTTP context: the context is read by the
+		// logger when the request completes, which does not help a line written mid-handler.
 		logAttributes := []any{
+			slog.Group(
+				"user",
+				slog.String("id", providerClaims.Subject()),
+				slog.String("email", emailAddress),
+			),
 			slog.Bool("strong_authentication", strongAuthentication),
 			slog.Bool("strong_authentication_required", e.RequireStrongAuthentication),
 			slog.Bool("organization_required", e.RequireOrganization),
@@ -418,28 +460,6 @@ func (e *Endpoint[T]) Initialize(
 						"The identity provider did not state that a strong enough authentication method was used.",
 					),
 				),
-			}
-		}
-
-		emailAddress, err := providerClaims.VerifiedEmailAddress()
-		if err != nil {
-			wrappedErr := motmedelErrors.New(
-				fmt.Errorf("provider claims verified email address: %w", err),
-				providerClaims,
-			)
-			if errors.Is(err, ssoErrors.ErrForbiddenUser) {
-				return nil, &response_error.ResponseError{
-					ProblemDetail: problem_detail.New(
-						http.StatusForbidden,
-						problem_detail_config.WithDetail("The email address that is tied to the id token is unverified or invalid."),
-					),
-				}
-			}
-			return nil, &response_error.ResponseError{ServerError: wrappedErr}
-		}
-		if emailAddress == "" {
-			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("email address")),
 			}
 		}
 

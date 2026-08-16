@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	muxTesting "github.com/Motmedel/utils_go/pkg/http/mux/testing"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -193,4 +194,73 @@ func keysOf(m map[string]any) []string {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// TestSignInLoggingIdentifiesUser covers the sign-in log naming the account it concerns. Without it
+// the authentication methods can be counted but not attributed, and one user signing in repeatedly
+// is indistinguishable from many users signing in once.
+func TestSignInLoggingIdentifiesUser(t *testing.T) {
+	var logBuffer bytes.Buffer
+	httpContextExtractor := http_context_extractor.New()
+	logger := motmedelContextLogger.New(
+		slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}),
+		&motmedelLog.ErrorContextExtractor{
+			ContextExtractors: []motmedelLog.ContextExtractor{httpContextExtractor},
+		},
+		httpContextExtractor,
+	)
+	previousLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(previousLogger)
+
+	testEndpoint, err := New[*testing2.ProviderClaims](defaultPath)
+	if err != nil {
+		t.Fatalf("new endpoint: %v", err)
+	}
+	if err := testEndpoint.Initialize(testOrigin, oauthConfig, idTokenAuthenticator, sessionManager); err != nil {
+		t.Fatalf("test endpoint initialize: %v", err)
+	}
+	testEndpoint.popOauthFlow = func(_ context.Context, _ string, _ *sql.DB) (*oauth_flow.Flow, error) {
+		expiresAt := time.Now().Add(time.Hour)
+		return &oauth_flow.Flow{
+			Id:          testing2.OauthFlowId,
+			RedirectUrl: testing2.RedirectUrl,
+			State:       testing2.State,
+			ExpiresAt:   &expiresAt,
+		}, nil
+	}
+
+	mux := &muxPkg.Mux{}
+	mux.Add(testEndpoint.Endpoint.Endpoint)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	callbackCookie := http.Cookie{Name: testEndpoint.CallbackCookieName, Value: testing2.OauthFlowId}
+	muxTesting.TestArgs(
+		t,
+		&muxTesting.Args{
+			Path:               testEndpoint.Path + "?state=" + testing2.State + "&code=" + testing2.OauthStrongAuthenticationCode,
+			Method:             testEndpoint.Method,
+			Headers:            [][2]string{{"Cookie", callbackCookie.String()}},
+			ExpectedStatusCode: http.StatusSeeOther,
+		},
+		httpServer.URL,
+	)
+
+	entry := findLogEntry(t, &logBuffer, "An identity provider authenticated a user.")
+
+	user, _ := entry["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("no user in log entry: %v", entry)
+	}
+	if emailAddress, _ := user["email"].(string); emailAddress != testing2.EmailAddress {
+		t.Errorf("user email: got %v, expected %s", user["email"], testing2.EmailAddress)
+	}
+	if id, _ := user["id"].(string); id != testing2.Subject {
+		t.Errorf("user id: got %v, expected %s", user["id"], testing2.Subject)
+	}
+
+	if strongAuthentication, _ := entry["strong_authentication"].(bool); !strongAuthentication {
+		t.Errorf("expected the sign-in to be recorded as strongly authenticated: %v", entry)
+	}
 }
