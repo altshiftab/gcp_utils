@@ -33,25 +33,41 @@ type AuthenticationContext struct {
 	AuthenticatedAt int64
 }
 
-// multiFactorMethodReferences are the "amr" values by which a provider states that more than one
-// factor was used. Google and Microsoft both use "mfa"; Microsoft also uses "multipleauthn".
-var multiFactorMethodReferences = []string{"mfa", "multipleauthn"}
+// MultiFactorMethodReferences are the "amr" values taken to mean the sign-in was at least as strong
+// as multi-factor.
+//
+// Two kinds are listed. "mfa" and "multipleauthn" are the providers' own statements that more than
+// one factor was used. The rest are single-step methods that are nonetheless no weaker: a passkey or
+// security key proves possession of a device and is unphishable, and providers report it without
+// saying "mfa" — Google as "swk" or "hwk", Microsoft as "fido" or "fido2". Requiring "mfa" alone
+// would therefore refuse the strongest sign-ins while admitting a password with an SMS code.
+//
+// Deliberately absent: "wia" is merely an existing Windows session, and "x509", "cert" and
+// "smartcard" do not by themselves say whether the credential was unlocked. Deployments that treat
+// those as sufficient can say so.
+var MultiFactorMethodReferences = []string{"mfa", "multipleauthn", "fido", "fido2", "hwk", "swk"}
 
-// MultiFactor reports whether the provider stated that more than one factor was used. A nil context,
-// or one without method references, reports false: absence of the claim is not evidence that a
-// second factor was used, and callers requiring multi-factor should treat it as unproven.
-func (c *AuthenticationContext) MultiFactor() bool {
+// HasAnyMethodReference reports whether the provider stated any of the given methods. A nil context,
+// or one without method references, reports false: a provider that said nothing is not evidence of
+// anything, and a caller requiring a method should treat it as unproven.
+func (c *AuthenticationContext) HasAnyMethodReference(methodReferences []string) bool {
 	if c == nil {
 		return false
 	}
 
-	for _, methodReference := range c.MethodReferences {
-		if slices.Contains(multiFactorMethodReferences, strings.ToLower(methodReference)) {
+	for _, stated := range c.MethodReferences {
+		if slices.Contains(methodReferences, strings.ToLower(stated)) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// MultiFactor reports whether the sign-in was at least as strong as multi-factor, by
+// MultiFactorMethodReferences.
+func (c *AuthenticationContext) MultiFactor() bool {
+	return c.HasAnyMethodReference(MultiFactorMethodReferences)
 }
 
 type GoogleClaims struct {

@@ -3,6 +3,7 @@ package callback_endpoint_config
 import (
 	"context"
 	"database/sql"
+	"github.com/altshiftab/gcp_utils/pkg/http/login/sso/types/provider_claims"
 
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/oauth_flow"
@@ -14,6 +15,8 @@ var (
 	DefaultPopOauthFlow        = database.PopOauthFlow
 	DefaultRequireMultiFactor  = false
 	DefaultRequireOrganization = false
+	// The methods accepted as satisfying a multi-factor requirement; see the provider claims.
+	DefaultMultiFactorMethodReferences = provider_claims.MultiFactorMethodReferences
 )
 
 // DefaultClassifyOauthError is the default classifier; it defers to the error's
@@ -35,6 +38,8 @@ type Config struct {
 	// factor was used. Providers only say so when asked, and may stay silent even then, so enabling
 	// this turns an unproven second factor into a refusal.
 	RequireMultiFactor bool
+	// MultiFactorMethodReferences are the "amr" values accepted as satisfying RequireMultiFactor.
+	MultiFactorMethodReferences []string
 	// RequireOrganization refuses accounts that belong to no organization: personal accounts, which
 	// no organization administers and on which therefore no authentication policy can be required.
 	// Google omits the hosted domain for them; Microsoft places them in a fixed consumer tenant,
@@ -50,11 +55,12 @@ type Option func(*Config)
 
 func New(options ...Option) *Config {
 	config := &Config{
-		CallbackCookieName:  DefaultCallbackCookieName,
-		RequireMultiFactor:  DefaultRequireMultiFactor,
-		RequireOrganization: DefaultRequireOrganization,
-		PopOauthFlow:        DefaultPopOauthFlow,
-		ClassifyOauthError:  DefaultClassifyOauthError,
+		CallbackCookieName:          DefaultCallbackCookieName,
+		RequireMultiFactor:          DefaultRequireMultiFactor,
+		MultiFactorMethodReferences: DefaultMultiFactorMethodReferences,
+		RequireOrganization:         DefaultRequireOrganization,
+		PopOauthFlow:                DefaultPopOauthFlow,
+		ClassifyOauthError:          DefaultClassifyOauthError,
 	}
 	for _, option := range options {
 		option(config)
@@ -96,5 +102,11 @@ func WithRequireOrganization(requireOrganization bool) Option {
 func WithAllowedOrganizations(allowedOrganizations []string) Option {
 	return func(config *Config) {
 		config.AllowedOrganizations = allowedOrganizations
+	}
+}
+
+func WithMultiFactorMethodReferences(multiFactorMethodReferences []string) Option {
+	return func(config *Config) {
+		config.MultiFactorMethodReferences = multiFactorMethodReferences
 	}
 }

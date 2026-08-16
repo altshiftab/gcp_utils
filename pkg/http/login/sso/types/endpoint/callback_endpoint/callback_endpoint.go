@@ -83,14 +83,15 @@ var urlInputParser = query_extractor.New[*UrlInput](query_extractor_config.WithA
 
 type Endpoint[T provider_claims.ProviderClaims] struct {
 	*initialization_endpoint.Endpoint
-	CallbackCookieName    string
-	DbscChallengeDuration time.Duration
-	RequireMultiFactor    bool
-	RequireOrganization   bool
-	AllowedOrganizations  []string
-	popOauthFlow          func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
-	problemRedirectUrls   map[oauth_error.Category]string
-	classifyOauthError    func(*oauth_error.Error) oauth_error.Category
+	CallbackCookieName          string
+	DbscChallengeDuration       time.Duration
+	RequireMultiFactor          bool
+	MultiFactorMethodReferences []string
+	RequireOrganization         bool
+	AllowedOrganizations        []string
+	popOauthFlow                func(ctx context.Context, id string, database *sql.DB) (*oauth_flow.Flow, error)
+	problemRedirectUrls         map[oauth_error.Category]string
+	classifyOauthError          func(*oauth_error.Error) oauth_error.Category
 }
 
 // Initialize wires the endpoint's runtime dependencies. origin is the base URL
@@ -355,7 +356,7 @@ func (e *Endpoint[T]) Initialize(
 		// authenticated the user, and when, is the context that makes a sign-in explicable
 		// afterwards.
 		authenticationContext := providerClaims.AuthenticationContext()
-		multiFactor := authenticationContext.MultiFactor()
+		multiFactor := authenticationContext.HasAnyMethodReference(e.MultiFactorMethodReferences)
 
 		organizationIdentifier := providerClaims.OrganizationIdentifier()
 
@@ -494,11 +495,12 @@ func New[T provider_claims.ProviderClaims](path string, options ...callback_endp
 				},
 			},
 		},
-		CallbackCookieName:   config.CallbackCookieName,
-		RequireMultiFactor:   config.RequireMultiFactor,
-		RequireOrganization:  config.RequireOrganization,
-		AllowedOrganizations: config.AllowedOrganizations,
-		popOauthFlow:         config.PopOauthFlow,
-		classifyOauthError:   config.ClassifyOauthError,
+		CallbackCookieName:          config.CallbackCookieName,
+		RequireMultiFactor:          config.RequireMultiFactor,
+		MultiFactorMethodReferences: config.MultiFactorMethodReferences,
+		RequireOrganization:         config.RequireOrganization,
+		AllowedOrganizations:        config.AllowedOrganizations,
+		popOauthFlow:                config.PopOauthFlow,
+		classifyOauthError:          config.ClassifyOauthError,
 	}, nil
 }

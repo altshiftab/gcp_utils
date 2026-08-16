@@ -129,9 +129,27 @@ func TestAuthenticationContextMultiFactor(t *testing.T) {
 			expected:              true,
 		},
 		{
-			// A hardware key alone is one factor as far as the provider's own statement goes.
-			name:                  "hardware key without mfa",
+			// Google reports a security key this way and does not add "mfa"; it is unphishable and
+			// no weaker, so it counts.
+			name:                  "google hardware key without mfa",
 			authenticationContext: &AuthenticationContext{MethodReferences: []string{"hwk"}},
+			expected:              true,
+		},
+		{
+			name:                  "google passkey without mfa",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"swk"}},
+			expected:              true,
+		},
+		{
+			// Microsoft reports FIDO2 this way rather than as "mfa".
+			name:                  "microsoft fido2 without mfa",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"fido2"}},
+			expected:              true,
+		},
+		{
+			// An existing Windows session is not a second factor.
+			name:                  "windows integrated authentication",
+			authenticationContext: &AuthenticationContext{MethodReferences: []string{"wia"}},
 		},
 	}
 
@@ -211,5 +229,22 @@ func TestOrganizationIdentifier(t *testing.T) {
 				t.Errorf("got %q, expected %q", got, testCase.expected)
 			}
 		})
+	}
+}
+
+func TestHasAnyMethodReference(t *testing.T) {
+	t.Parallel()
+
+	authenticationContext := &AuthenticationContext{MethodReferences: []string{"pwd", "x509"}}
+
+	// A deployment can name the methods it accepts, rather than taking the default set.
+	if !authenticationContext.HasAnyMethodReference([]string{"x509", "smartcard"}) {
+		t.Errorf("expected the stated x509 method to be accepted")
+	}
+	if authenticationContext.HasAnyMethodReference(MultiFactorMethodReferences) {
+		t.Errorf("expected x509 not to satisfy the default set")
+	}
+	if authenticationContext.HasAnyMethodReference(nil) {
+		t.Errorf("expected an empty set to accept nothing")
 	}
 }
