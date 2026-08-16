@@ -180,7 +180,7 @@ func TestManager_CreateSession(t *testing.T) {
 				authentication: newAuthentication(),
 			},
 			wantBareOK: true,
-			wantHeader: []string{"Set-Cookie", "Sec-Session-Registration"},
+			wantHeader: []string{"Set-Cookie", "Secure-Session-Registration"},
 		},
 		{
 			name:         "success with customer",
@@ -191,7 +191,7 @@ func TestManager_CreateSession(t *testing.T) {
 				authentication: newAuthentication(),
 			},
 			wantBareOK: true,
-			wantHeader: []string{"Set-Cookie", "Sec-Session-Registration"},
+			wantHeader: []string{"Set-Cookie", "Secure-Session-Registration"},
 		},
 		{
 			name:         "empty auth method",
@@ -787,6 +787,88 @@ func TestManager_CookieOutlivesSessionToken(t *testing.T) {
 
 			if expected := time.Now().Add(sessionDuration); tokenExpiresAt.Sub(expected).Abs() > time.Minute {
 				t.Errorf("session token expiry %s, expected roughly %s", tokenExpiresAt, expected)
+			}
+		})
+	}
+}
+
+// TestManager_MintSession covers issuing a session for an authentication that presents no session
+// token, which is how a device bound session is refreshed.
+func TestManager_MintSession(t *testing.T) {
+	t.Parallel()
+
+	signer := newTestSigner(t)
+
+	testCases := []struct {
+		name           string
+		mutate         func(*authenticationPkg.Authentication)
+		wantOk         bool
+		wantStatusCode int
+	}{
+		{name: "success", wantOk: true},
+		{
+			name:           "ended authentication",
+			mutate:         func(a *authenticationPkg.Authentication) { a.Ended = true },
+			wantStatusCode: 400,
+		},
+		{
+			name:           "expired authentication",
+			mutate:         func(a *authenticationPkg.Authentication) { a.ExpiresAt = ptrTime(time.Now().Add(-time.Hour)) },
+			wantStatusCode: 400,
+		},
+		{
+			name:           "locked account",
+			mutate:         func(a *authenticationPkg.Authentication) { a.Account.Locked = true },
+			wantStatusCode: 403,
+		},
+		{
+			name:   "missing account identity",
+			mutate: func(a *authenticationPkg.Authentication) { a.Account.EmailAddress = "" },
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			authentication := newAuthentication()
+			if testCase.mutate != nil {
+				testCase.mutate(authentication)
+			}
+
+			m := newManager(t, signer, &stubs{account: newAccount(), authentication: authentication})
+			defer m.Db.Close()
+
+			resp, respErr := m.MintSession(authentication, authentication_method.Dbsc, 15*time.Minute)
+
+			if !testCase.wantOk {
+				if respErr == nil {
+					t.Fatalf("expected a response error")
+				}
+				if problemDetail := respErr.ProblemDetail; problemDetail != nil {
+					if problemDetail.Status != testCase.wantStatusCode {
+						t.Errorf("got status %d, expected %d", problemDetail.Status, testCase.wantStatusCode)
+					}
+				} else if testCase.wantStatusCode != 0 {
+					t.Errorf("expected a problem detail with status %d", testCase.wantStatusCode)
+				}
+				return
+			}
+
+			if respErr != nil {
+				t.Fatalf("mint session: %+v", respErr)
+			}
+
+			cookieExpiresAt, tokenExpiresAt := sessionCookieAndTokenExpiry(t, resp.Headers)
+
+			// The session is device bound, so the cookie must expire with the token to keep the
+			// browser refreshing it.
+			if cookieExpiresAt.Sub(tokenExpiresAt).Abs() > time.Minute {
+				t.Errorf("cookie expiry %s, expected the token expiry %s", cookieExpiresAt, tokenExpiresAt)
+			}
+
+			if expected := time.Now().Add(15 * time.Minute); tokenExpiresAt.Sub(expected).Abs() > time.Minute {
+				t.Errorf("token expiry %s, expected roughly %s", tokenExpiresAt, expected)
 			}
 		})
 	}

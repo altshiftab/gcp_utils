@@ -41,6 +41,8 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
+const setCookieHeaderName = "Set-Cookie"
+
 type Manager struct {
 	Signer       motmedelCryptoInterfaces.NamedSigner
 	Issuer       string
@@ -361,11 +363,11 @@ func (m *Manager) CreateSession(ctx context.Context, authMethod string, emailAdd
 	return &response.Response{
 		Headers: []*response.HeaderEntry{
 			{
-				Name:  "Set-Cookie",
+				Name:  setCookieHeaderName,
 				Value: sessionCookie.String(),
 			},
 			{
-				Name: "Sec-Session-Registration",
+				Name: session.DbscSessionRegistrationHeaderName,
 				Value: fmt.Sprintf(
 					"(%s); path=\"%s\"; challenge=\"%s\"",
 					strings.Join(dbscAlgs, " "),
@@ -503,7 +505,213 @@ func (m *Manager) RefreshSession(
 	}
 
 	return &response.Response{
-		Headers: []*response.HeaderEntry{{Name: "Set-Cookie", Value: sessionCookie.String()}},
+		Headers: []*response.HeaderEntry{{Name: setCookieHeaderName, Value: sessionCookie.String()}},
+	}, nil
+}
+
+// MintSession issues a session for an authentication that presents no session token, and returns the
+// response carrying it as a cookie. A DBSC refresh arrives without the bound cookie — that is what
+// triggers it — so there is no previous token whose claims could be carried over, as RefreshSession
+// does. The authentication is verified the same way: it must not have ended or expired, and the
+// account must not be locked.
+//
+// As elsewhere, the cookie expires with the token when the session is device bound, so that the
+// browser keeps refreshing it.
+func (m *Manager) MintSession(
+	authentication *authenticationPkg.Authentication,
+	authenticationMethod string,
+	sessionDuration time.Duration,
+) (*response.Response, *response_error.ResponseError) {
+	if authentication == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication")),
+		}
+	}
+
+	if authenticationMethod == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication method")),
+		}
+	}
+
+	signer := m.Signer
+	if utils.IsNil(signer) {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("signer")),
+		}
+	}
+
+	audience := m.CookieDomain
+	if audience == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("audience (cookie domain)")),
+		}
+	}
+
+	authenticationId := authentication.Id
+	if authenticationId == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+		}
+	}
+
+	authenticationExpiresAt := authentication.ExpiresAt
+	if authenticationExpiresAt == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication expires at")),
+		}
+	}
+
+	authenticationCreatedAt := authentication.CreatedAt
+	if authenticationCreatedAt == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication created at")),
+		}
+	}
+
+	if authentication.Ended {
+		return nil, &response_error.ResponseError{
+			Headers: []*response.HeaderEntry{{Name: "Clear-Site-Data", Value: `"cookies"`}},
+			ProblemDetail: problem_detail.New(
+				http.StatusBadRequest,
+				problem_detail_config.WithDetail("The session's authentication has ended."),
+			),
+		}
+	}
+
+	if time.Now().After(*authenticationExpiresAt) {
+		return nil, &response_error.ResponseError{
+			ProblemDetail: problem_detail.New(
+				http.StatusBadRequest,
+				problem_detail_config.WithDetail("The session's authentication has expired."),
+			),
+		}
+	}
+
+	account := authentication.Account
+	if account == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("authentication account")),
+		}
+	}
+
+	if account.Locked {
+		return nil, &response_error.ResponseError{
+			ProblemDetail: problem_detail.New(
+				http.StatusForbidden,
+				problem_detail_config.WithDetail("The account is locked."),
+			),
+		}
+	}
+
+	accountId := account.Id
+	if accountId == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account id")),
+		}
+	}
+
+	accountEmailAddress := account.EmailAddress
+	if accountEmailAddress == "" {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account email address")),
+		}
+	}
+
+	var authorizedParty string
+	if customer := account.Customer; customer != nil {
+		if customer.Id == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account customer id")),
+			}
+		}
+		if customer.Name == "" {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication account customer name")),
+			}
+		}
+		authorizedParty = strings.Join([]string{customer.Id, customer.Name}, ":")
+	}
+
+	sessionExpiresAt := motmedelTime.Min(new(time.Now().Add(sessionDuration)), authenticationExpiresAt)
+	if sessionExpiresAt == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session expires at")),
+		}
+	}
+
+	audienceClaimString, err := claim_strings.Convert(audience)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(fmt.Errorf("claim strings convert: %w", err), audience),
+		}
+	}
+
+	issuedAt := numeric_date.New(time.Now())
+
+	sessionClaims := &session_claims.Claims{
+		Claims: registered_claims.Claims{
+			Id:        strings.Join([]string{authenticationId, motmedelUuid.NewString()}, ":"),
+			Issuer:    m.Issuer,
+			Audience:  audienceClaimString,
+			Subject:   strings.Join([]string{accountId, accountEmailAddress}, ":"),
+			ExpiresAt: numeric_date.New(*sessionExpiresAt),
+			NotBefore: issuedAt,
+			IssuedAt:  issuedAt,
+		},
+		AuthenticationMethods: []string{authenticationMethod},
+		AuthenticatedAt:       numeric_date.New(*authenticationCreatedAt),
+		AuthorizedParty:       authorizedParty,
+		Roles:                 account.Roles,
+	}
+
+	sessionToken, err := session_token.Parse(sessionClaims)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(fmt.Errorf("session token parse: %w", err), sessionClaims),
+		}
+	}
+	if sessionToken == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session token")),
+		}
+	}
+
+	sessionTokenString, err := sessionToken.Encode(signer)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(fmt.Errorf("session token encode: %w", err), sessionToken),
+		}
+	}
+
+	cookieExpiresAt := *authenticationExpiresAt
+	if authenticationMethod == authentication_method.Dbsc {
+		cookieExpiresAt = *sessionExpiresAt
+	}
+
+	sessionCookie, err := session_cookie.New(
+		sessionTokenString,
+		cookieExpiresAt,
+		m.CookieName,
+		m.CookieDomain,
+		m.SessionCookieOptions...,
+	)
+	if err != nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.New(
+				fmt.Errorf("session cookie new: %w", err),
+				cookieExpiresAt, m.CookieName, m.CookieDomain,
+			),
+		}
+	}
+	if sessionCookie == nil {
+		return nil, &response_error.ResponseError{
+			ServerError: motmedelErrors.NewWithTrace(nil_error.New("session cookie")),
+		}
+	}
+
+	return &response.Response{
+		Headers: []*response.HeaderEntry{{Name: setCookieHeaderName, Value: sessionCookie.String()}},
 	}, nil
 }
 

@@ -85,7 +85,7 @@ func TestEndpoint(t *testing.T) {
 			args: &muxTesting.Args{
 				ExpectedStatusCode:     http.StatusSeeOther,
 				ExpectedHeaders:        [][2]string{{"Location", magicLinkTesting.RedirectUrl}},
-				ExpectedHeadersPresent: []string{"Set-Cookie", "Sec-Session-Registration"},
+				ExpectedHeadersPresent: []string{"Set-Cookie", "Secure-Session-Registration"},
 			},
 			token: mintToken(t, defaultPayload(magicLinkTesting.ValidEmail, "success-nonce")),
 		},
@@ -245,7 +245,7 @@ func TestEndpoint_RedirectClaimOverridesDefault(t *testing.T) {
 			Path:                   path,
 			ExpectedStatusCode:     http.StatusSeeOther,
 			ExpectedHeaders:        [][2]string{{"Location", overrideUrl}},
-			ExpectedHeadersPresent: []string{"Set-Cookie", "Sec-Session-Registration"},
+			ExpectedHeadersPresent: []string{"Set-Cookie", "Secure-Session-Registration"},
 		},
 		httpServer.URL,
 	)
@@ -274,7 +274,7 @@ func TestEndpoint_TokenReuse(t *testing.T) {
 			Path:                   path,
 			ExpectedStatusCode:     http.StatusSeeOther,
 			ExpectedHeaders:        [][2]string{{"Location", magicLinkTesting.RedirectUrl}},
-			ExpectedHeadersPresent: []string{"Set-Cookie", "Sec-Session-Registration"},
+			ExpectedHeadersPresent: []string{"Set-Cookie", "Secure-Session-Registration"},
 		},
 		httpServer.URL,
 	)

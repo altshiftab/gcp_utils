@@ -24,7 +24,6 @@ import (
 	"github.com/altshiftab/gcp_utils/pkg/http/login/database/types/dbsc_challenge"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	loginTesting "github.com/altshiftab/gcp_utils/pkg/http/login/session/testing"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor/dbsc_session_response_processor_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
@@ -34,8 +33,6 @@ import (
 
 var defaultTestEndpoint = New()
 var defaultHttpServer *httptest.Server
-var defaultSessionCookieString string
-var defaultAuthorizationRequestParser *authorizer_request_parser.Parser
 var defaultProcessor *dbsc_session_response_processor.Processor
 
 var db *sql.DB
@@ -45,7 +42,7 @@ var sessionManager *session_manager.Manager
 func TestMain(m *testing.M) {
 	var err error
 
-	defaultAuthorizationRequestParser, method, db = loginTesting.SetUp()
+	_, method, db = loginTesting.SetUp()
 	sessionManager, err = session_manager.New(method, db, loginTesting.Issuer, loginTesting.RegisteredDomain)
 	if err != nil {
 		panic(fmt.Errorf("session manager new: %w", err))
@@ -56,7 +53,7 @@ func TestMain(m *testing.M) {
 		panic(fmt.Errorf("dbsc session response processor new: %w", err))
 	}
 
-	if err := defaultTestEndpoint.Initialize(defaultAuthorizationRequestParser, defaultProcessor, sessionManager); err != nil {
+	if err := defaultTestEndpoint.Initialize(defaultProcessor, sessionManager); err != nil {
 		panic(fmt.Errorf("test endpoint initialize: %w", err))
 	}
 
@@ -64,8 +61,6 @@ func TestMain(m *testing.M) {
 	mux.Add(defaultTestEndpoint.Endpoint.Endpoint)
 	defaultHttpServer = httptest.NewServer(mux)
 	defer defaultHttpServer.Close()
-
-	defaultSessionCookieString = loginTesting.MakeStandardCookie(loginTesting.AuthenticationId, method)
 
 	code := m.Run()
 	if db != nil {
@@ -101,17 +96,17 @@ func TestEndpoint(t *testing.T) {
 		{
 			name: "valid session response token happy path",
 			args: &muxTesting.Args{
-				Headers:            [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, validToken}},
+				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
 				ExpectedStatusCode: http.StatusNoContent,
 			},
 		},
 		{
 			name: "valid session response token, no db authentication",
 			args: &muxTesting.Args{
-				Headers:            [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, validToken}},
+				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
 				ExpectedStatusCode: http.StatusBadRequest,
 				ExpectedProblemDetail: &problem_detail.Detail{
-					Detail: "No authentication matches the authentication id.",
+					Detail: "No authentication matches the session id.",
 				},
 			},
 			noDbAuthentication: true,
@@ -119,7 +114,7 @@ func TestEndpoint(t *testing.T) {
 		{
 			name: "valid session response token, empty public key",
 			args: &muxTesting.Args{
-				Headers:            [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, validToken}},
+				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
 				ExpectedStatusCode: http.StatusBadRequest,
 				ExpectedProblemDetail: &problem_detail.Detail{
 					Detail: "No public key for authentication.",
@@ -130,7 +125,7 @@ func TestEndpoint(t *testing.T) {
 		{
 			name: "valid session response token, public key mismatch",
 			args: &muxTesting.Args{
-				Headers:            [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, validToken}},
+				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, validToken}},
 				ExpectedStatusCode: http.StatusBadRequest,
 				ExpectedProblemDetail: &problem_detail.Detail{
 					Detail: "Public key mismatch.",
@@ -141,7 +136,7 @@ func TestEndpoint(t *testing.T) {
 		{
 			name: "invalid session response token",
 			args: &muxTesting.Args{
-				Headers:               [][2]string{{"Cookie", defaultSessionCookieString}, {session.DbscSessionResponseHeaderName, "invalid"}},
+				Headers:               [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}, {session.DbscSessionResponseHeaderName, "invalid"}},
 				ExpectedStatusCode:    http.StatusBadRequest,
 				ExpectedProblemDetail: &problem_detail.Detail{Detail: "Invalid token."},
 			},
@@ -150,9 +145,9 @@ func TestEndpoint(t *testing.T) {
 			name: "multiple session response headers",
 			args: &muxTesting.Args{
 				Headers: [][2]string{
-					{"Cookie", defaultSessionCookieString},
-					{"Sec-Session-Response", "val1"},
-					{"Sec-Session-Response", "val2"},
+					{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId},
+					{"Secure-Session-Response", "val1"},
+					{"Secure-Session-Response", "val2"},
 				},
 				ExpectedStatusCode: http.StatusBadRequest,
 				ExpectedProblemDetail: &problem_detail.Detail{
@@ -162,10 +157,22 @@ func TestEndpoint(t *testing.T) {
 			},
 		},
 		{
+			// The session cannot be identified without it, and there is no cookie to fall back on.
+			name: "missing session id header",
+			args: &muxTesting.Args{
+				Headers:            [][2]string{{session.DbscSessionResponseHeaderName, validToken}},
+				ExpectedStatusCode: http.StatusBadRequest,
+				ExpectedProblemDetail: &problem_detail.Detail{
+					Detail:    "A single session id is required.",
+					Extension: map[string]any{"header": session.DbscSessionIdHeaderName},
+				},
+			},
+		},
+		{
 			name: "no session response header happy path",
 			args: &muxTesting.Args{
-				Headers:            [][2]string{{"Cookie", defaultSessionCookieString}},
-				ExpectedStatusCode: http.StatusUnauthorized,
+				Headers:            [][2]string{{session.DbscSessionIdHeaderName, loginTesting.AuthenticationId}},
+				ExpectedStatusCode: http.StatusForbidden,
 				ExpectedHeaders: [][2]string{
 					{session.DbscSessionChallengeHeaderName, fmt.Sprintf("\"%s\";id=\"%s\"", testChallenge, loginTesting.AuthenticationId)},
 				},
@@ -200,7 +207,7 @@ func TestEndpoint(t *testing.T) {
 				t.Fatalf("dbsc session response processor new: %v", err)
 			}
 
-			if err := testEndpoint.Initialize(defaultAuthorizationRequestParser, testEndpointProcessor, sessionManager); err != nil {
+			if err := testEndpoint.Initialize(testEndpointProcessor, sessionManager); err != nil {
 				t.Fatalf("test endpoint initialize: %v", err)
 			}
 
@@ -223,11 +230,17 @@ func TestEndpoint(t *testing.T) {
 				}
 
 				expiresAt := time.Now().Add(time.Hour)
+				createdAt := time.Now().Add(-time.Hour)
 				return &authenticationPkg.Authentication{
-					Id:            id,
-					Account:       &accountPkg.Account{Roles: []string{"test-role"}},
+					Id: id,
+					Account: &accountPkg.Account{
+						Id:           "test-account-id",
+						EmailAddress: "test@example.com",
+						Roles:        []string{"test-role"},
+					},
 					Ended:         false,
 					DbscPublicKey: publicKey,
+					CreatedAt:     &createdAt,
 					ExpiresAt:     &expiresAt,
 				}, nil
 			}
@@ -269,12 +282,10 @@ func TestEndpoint_Initialize(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
-		arp *authorizer_request_parser.Parser
-		pr  *dbsc_session_response_processor.Processor
-		sm  *session_manager.Manager
+		pr *dbsc_session_response_processor.Processor
+		sm *session_manager.Manager
 	}
 
-	arp, _, _ := loginTesting.SetUp()
 	sm, err := session_manager.New(method, db, loginTesting.Issuer, "example.com")
 	if err != nil {
 		t.Fatalf("session manager new: %v", err)
@@ -285,16 +296,15 @@ func TestEndpoint_Initialize(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		{name: "nil authorizer parser", args: args{arp: nil, pr: defaultProcessor, sm: sm}, wantErr: true},
-		{name: "nil processor", args: args{arp: arp, pr: nil, sm: sm}, wantErr: true},
-		{name: "nil session manager", args: args{arp: arp, pr: defaultProcessor, sm: nil}, wantErr: true},
-		{name: "nil db in session manager", args: args{arp: arp, pr: defaultProcessor, sm: &session_manager.Manager{}}, wantErr: true},
-		{name: "success", args: args{arp: arp, pr: defaultProcessor, sm: sm}},
+		{name: "nil processor", args: args{pr: nil, sm: sm}, wantErr: true},
+		{name: "nil session manager", args: args{pr: defaultProcessor, sm: nil}, wantErr: true},
+		{name: "nil db in processor", args: args{pr: &dbsc_session_response_processor.Processor{}, sm: sm}, wantErr: true},
+		{name: "success", args: args{pr: defaultProcessor, sm: sm}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := New().Initialize(tt.args.arp, tt.args.pr, tt.args.sm); (err != nil) != tt.wantErr {
+			if err := New().Initialize(tt.args.pr, tt.args.sm); (err != nil) != tt.wantErr {
 				t.Errorf("Initialize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -329,6 +339,7 @@ func TestNew(t *testing.T) {
 					Endpoint: &endpoint.Endpoint{
 						Path:      dbsc_refresh_endpoint_config.DefaultPath,
 						Method:    http.MethodPost,
+						Public:    true,
 						UrlParser: adapter.New(query_extractor.Empty),
 					},
 				},
@@ -344,6 +355,7 @@ func TestNew(t *testing.T) {
 					Endpoint: &endpoint.Endpoint{
 						Path:      "/test",
 						Method:    http.MethodPost,
+						Public:    true,
 						UrlParser: adapter.New(query_extractor.Empty),
 					},
 				},

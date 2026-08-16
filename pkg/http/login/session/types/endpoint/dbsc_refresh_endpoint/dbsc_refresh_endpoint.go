@@ -17,12 +17,10 @@ import (
 	motmedelHttpErrors "github.com/Motmedel/utils_go/pkg/http/errors"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/endpoint/initialization_endpoint"
-	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/adapter"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/request_parser/query_extractor"
 	muxResponse "github.com/Motmedel/utils_go/pkg/http/mux/types/response"
 	"github.com/Motmedel/utils_go/pkg/http/mux/types/response_error"
-	muxUtils "github.com/Motmedel/utils_go/pkg/http/mux/utils"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail"
 	"github.com/Motmedel/utils_go/pkg/http/types/problem_detail/problem_detail_config"
 	"github.com/Motmedel/utils_go/pkg/http/utils"
@@ -30,17 +28,16 @@ import (
 	authenticationPkg "github.com/altshiftab/gcp_utils/pkg/http/login/database/types/authentication"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authentication_method"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/authorizer_request_parser"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/dbsc_session_response_processor"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/endpoint/dbsc_refresh_endpoint/dbsc_refresh_endpoint_config"
 	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_manager"
-	"github.com/altshiftab/gcp_utils/pkg/http/login/session/types/session_token"
 )
 
 // Use centralized DBSC header constants from the session package.
 const (
 	sessionResponseHeaderName  = session.DbscSessionResponseHeaderName
 	sessionChallengeHeaderName = session.DbscSessionChallengeHeaderName
+	sessionIdHeaderName        = session.DbscSessionIdHeaderName
 )
 
 type Endpoint struct {
@@ -53,15 +50,14 @@ type Endpoint struct {
 	generateDbscChallenge       func() (string, error)
 }
 
+// Initialize wires the endpoint. It deliberately takes no session authorizer: a device bound
+// session is refreshed when its bound cookie expires, so the request carries no session token. The
+// session is identified by the Sec-Secure-Session-Id header and authenticated by a signature made
+// with the device bound key registered for it.
 func (e *Endpoint) Initialize(
-	authorizerRequestParser *authorizer_request_parser.Parser,
 	dbscSessionResponseProcessor *dbsc_session_response_processor.Processor,
 	sessionManager *session_manager.Manager,
 ) error {
-	if authorizerRequestParser == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("authorizer request parser"))
-	}
-
 	if dbscSessionResponseProcessor == nil {
 		return motmedelErrors.NewWithTrace(nil_error.New("dbsc session response processor"))
 	}
@@ -70,83 +66,67 @@ func (e *Endpoint) Initialize(
 		return motmedelErrors.NewWithTrace(nil_error.New("session manager"))
 	}
 
-	db := sessionManager.Db
+	db := dbscSessionResponseProcessor.Db
 	if db == nil {
-		return motmedelErrors.NewWithTrace(nil_error.New("session manager sql db"))
+		return motmedelErrors.NewWithTrace(nil_error.New("dbsc session response processor sql db"))
 	}
-
-	e.AuthenticationParser = adapter.New(authorizerRequestParser)
-	e.HeaderParser = request_parser.New(
-		func(request *http.Request) (any, *response_error.ResponseError) {
-			if request == nil {
-				return nil, &response_error.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(nil_error.New("http request")),
-				}
-			}
-			requestHeader := request.Header
-			if requestHeader == nil {
-				return nil, &response_error.ResponseError{
-					ServerError: motmedelErrors.NewWithTrace(nil_error.New("http request header")),
-				}
-			}
-
-			sessionToken, responseError := muxUtils.GetServerNonZeroParsedRequestAuthentication[*session_token.Token](request.Context())
-			if responseError != nil {
-				return nil, responseError
-			}
-
-			sessionResponseValue, err := utils.GetSingleHeader(sessionResponseHeaderName, requestHeader)
-			if err != nil {
-				wrappedErr := motmedelErrors.New(fmt.Errorf("get single header: %w", err))
-				if errors.Is(err, motmedelHttpErrors.ErrMissingHeader) {
-					return []byte{}, nil
-				} else if errors.Is(err, motmedelHttpErrors.ErrMultipleHeaderValues) {
-					return nil, &response_error.ResponseError{
-						ClientError: wrappedErr,
-						ProblemDetail: problem_detail.New(
-							http.StatusBadRequest,
-							problem_detail_config.WithDetail("Multiple header values."),
-							problem_detail_config.WithExtension(map[string]any{"header": sessionResponseHeaderName}),
-						),
-					}
-				}
-
-				return nil, &response_error.ResponseError{ServerError: wrappedErr}
-			}
-
-			return dbscSessionResponseProcessor.Process(
-				request.Context(),
-				&dbsc_session_response_processor.Input{
-					TokenString:      sessionResponseValue,
-					DbscSessionId:    sessionToken.SessionId,
-					AuthenticationId: sessionToken.AuthenticationId,
-				},
-			)
-		},
-	)
 
 	e.Handler = func(request *http.Request, _ []byte) (*muxResponse.Response, *response_error.ResponseError) {
 		ctx := request.Context()
 
-		// TODO: Check `amr` claim?
-		sessionToken, responseError := muxUtils.GetServerNonZeroParsedRequestAuthentication[*session_token.Token](ctx)
-		if responseError != nil {
-			return nil, responseError
-		}
-
-		authenticationId := sessionToken.AuthenticationId
-		if authenticationId == "" {
+		requestHeader := request.Header
+		if requestHeader == nil {
 			return nil, &response_error.ResponseError{
-				ServerError: motmedelErrors.NewWithTrace(empty_error.New("authentication id")),
+				ServerError: motmedelErrors.NewWithTrace(nil_error.New("http request header")),
 			}
 		}
 
-		publicKey, responseError := muxUtils.GetServerParsedRequestHeaders[[]byte](ctx)
-		if responseError != nil {
-			return nil, responseError
+		sessionId, err := utils.GetSingleHeader(sessionIdHeaderName, requestHeader)
+		if err != nil {
+			wrappedErr := motmedelErrors.New(fmt.Errorf("get single header: %w", err), sessionIdHeaderName)
+			if errors.Is(err, motmedelHttpErrors.ErrMissingHeader) || errors.Is(err, motmedelHttpErrors.ErrMultipleHeaderValues) {
+				return nil, &response_error.ResponseError{
+					ClientError: wrappedErr,
+					ProblemDetail: problem_detail.New(
+						http.StatusBadRequest,
+						problem_detail_config.WithDetail("A single session id is required."),
+						problem_detail_config.WithExtension(map[string]any{"header": sessionIdHeaderName}),
+					),
+				}
+			}
+			return nil, &response_error.ResponseError{ServerError: wrappedErr}
+		}
+		if sessionId == "" {
+			return nil, &response_error.ResponseError{
+				ClientError: motmedelErrors.NewWithTrace(empty_error.New("session id")),
+				ProblemDetail: problem_detail.New(
+					http.StatusBadRequest,
+					problem_detail_config.WithDetail("The session id is empty."),
+				),
+			}
 		}
 
-		if len(publicKey) == 0 {
+		// The session identifier handed out at registration is the authentication id.
+		authenticationId := sessionId
+
+		sessionResponseValue, err := utils.GetSingleHeader(sessionResponseHeaderName, requestHeader)
+		if err != nil && !errors.Is(err, motmedelHttpErrors.ErrMissingHeader) {
+			wrappedErr := motmedelErrors.New(fmt.Errorf("get single header: %w", err), sessionResponseHeaderName)
+			if errors.Is(err, motmedelHttpErrors.ErrMultipleHeaderValues) {
+				return nil, &response_error.ResponseError{
+					ClientError: wrappedErr,
+					ProblemDetail: problem_detail.New(
+						http.StatusBadRequest,
+						problem_detail_config.WithDetail("Multiple header values."),
+						problem_detail_config.WithExtension(map[string]any{"header": sessionResponseHeaderName}),
+					),
+				}
+			}
+			return nil, &response_error.ResponseError{ServerError: wrappedErr}
+		}
+
+		// Without a proof of possession, answer with a challenge for the browser to sign.
+		if sessionResponseValue == "" {
 			challenge, err := e.generateDbscChallenge()
 			if err != nil {
 				return nil, &response_error.ResponseError{
@@ -167,14 +147,31 @@ func (e *Endpoint) Initialize(
 			}
 
 			return &muxResponse.Response{
-				StatusCode: http.StatusUnauthorized,
+				StatusCode: http.StatusForbidden,
 				Headers: []*muxResponse.HeaderEntry{
 					{
 						Name:  sessionChallengeHeaderName,
-						Value: fmt.Sprintf("\"%s\";id=\"%s\"", challenge, authenticationId),
+						Value: fmt.Sprintf("\"%s\";id=\"%s\"", challenge, sessionId),
 					},
 				},
 			}, nil
+		}
+
+		publicKey, responseError := dbscSessionResponseProcessor.Process(
+			ctx,
+			&dbsc_session_response_processor.Input{
+				TokenString:      sessionResponseValue,
+				DbscSessionId:    sessionId,
+				AuthenticationId: authenticationId,
+			},
+		)
+		if responseError != nil {
+			return nil, responseError
+		}
+		if len(publicKey) == 0 {
+			return nil, &response_error.ResponseError{
+				ServerError: motmedelErrors.NewWithTrace(empty_error.New("public key")),
+			}
 		}
 
 		selectDbCtx, selectDbCtxCancel := motmedelDatabase.MakeTimeoutCtx(ctx)
@@ -184,12 +181,11 @@ func (e *Endpoint) Initialize(
 		if err != nil {
 			wrappedErr := motmedelErrors.New(fmt.Errorf("select refresh authentication: %w", err), authenticationId)
 			if errors.Is(err, sql.ErrNoRows) {
-				// TODO: Should 404 be returned?
 				return nil, &response_error.ResponseError{
 					ClientError: wrappedErr,
 					ProblemDetail: problem_detail.New(
 						http.StatusBadRequest,
-						problem_detail_config.WithDetail("No authentication matches the authentication id."),
+						problem_detail_config.WithDetail("No authentication matches the session id."),
 					),
 				}
 			}
@@ -221,7 +217,7 @@ func (e *Endpoint) Initialize(
 			}
 		}
 
-		return sessionManager.RefreshSession(authentication, sessionToken, authentication_method.Dbsc, e.SessionDuration)
+		return sessionManager.MintSession(authentication, authentication_method.Dbsc, e.SessionDuration)
 	}
 
 	e.Initialized = true
@@ -234,8 +230,10 @@ func New(options ...dbsc_refresh_endpoint_config.Option) *Endpoint {
 	return &Endpoint{
 		Endpoint: &initialization_endpoint.Endpoint{
 			Endpoint: &endpoint.Endpoint{
-				Path:      config.Path,
-				Method:    http.MethodPost,
+				Path:   config.Path,
+				Method: http.MethodPost,
+				// Authentication is the device bound signature, not a session token.
+				Public:    true,
 				UrlParser: adapter.New(query_extractor.Empty),
 			},
 		},

@@ -29,7 +29,7 @@ func isIdTokenUniqueViolation(err error) bool {
 
 const (
 	authenticationInsertQuery                  = `INSERT INTO authentication (account, created_at, expires_at, id_token_hash, ip_address, ip_address_country, ip_address_city, user_agent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id;`
-	authenticationSelectRefreshQuery           = `SELECT au.ended, au.expires_at, au.dbsc_public_key, a.locked, COALESCE(a.roles, '{}'::text[]) AS roles FROM authentication au JOIN account a ON a.id = au.account WHERE au.id = $1;`
+	authenticationSelectRefreshQuery           = `SELECT au.ended, au.expires_at, au.created_at, au.dbsc_public_key, a.id, a.email_address, a.locked, c.id, c.name, COALESCE(a.roles, '{}'::text[]) AS roles FROM authentication au JOIN account a ON a.id = au.account LEFT JOIN customer c ON c.id = a.customer WHERE au.id = $1;`
 	authenticationUpdateWithDbscPublicKeyQuery = `UPDATE authentication SET dbsc_public_key = $1 WHERE id = $2;`
 	authenticationUpdateWithEndedQuery         = `UPDATE authentication SET ended = true, ended_at = now() WHERE id = $1;`
 )
@@ -144,20 +144,38 @@ func SelectRefreshAuthentication(ctx context.Context, id string, database *sql.D
 		return nil, motmedelErrors.NewWithTrace(nil_error.New("sql row"))
 	}
 
+	// The account identity is selected too, so that a session can be minted from the
+	// authentication alone. A DBSC refresh arrives without the session cookie, so there is no
+	// existing token to derive the new one from.
 	var ended bool
 	var expiresAt time.Time
+	var createdAt time.Time
 	var dbscPublicKey []byte
+	var accountId string
+	var emailAddress string
 	var locked bool
+	var customerId sql.NullString
+	var customerName sql.NullString
 	var roles []string
-	if err := row.Scan(&ended, &expiresAt, &dbscPublicKey, &locked, postgres.TextArrayScanner{Target: &roles}); err != nil {
+	if err := row.Scan(
+		&ended, &expiresAt, &createdAt, &dbscPublicKey,
+		&accountId, &emailAddress, &locked, &customerId, &customerName,
+		postgres.TextArrayScanner{Target: &roles},
+	); err != nil {
 		return nil, motmedelErrors.NewWithTrace(fmt.Errorf("sql row scan: %w", err))
+	}
+
+	account := &accountPkg.Account{Id: accountId, EmailAddress: emailAddress, Locked: locked, Roles: roles}
+	if customerId.Valid {
+		account.Customer = &customer.Customer{Id: customerId.String, Name: customerName.String}
 	}
 
 	return &authenticationPkg.Authentication{
 		Id: id, Ended: ended,
+		CreatedAt:     &createdAt,
 		ExpiresAt:     &expiresAt,
 		DbscPublicKey: dbscPublicKey,
-		Account:       &accountPkg.Account{Locked: locked, Roles: roles},
+		Account:       account,
 	}, nil
 }
 

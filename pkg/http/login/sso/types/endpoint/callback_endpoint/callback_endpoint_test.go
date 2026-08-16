@@ -64,7 +64,7 @@ func TestEndpoint(t *testing.T) {
 			args: &muxTesting.Args{
 				ExpectedStatusCode:     http.StatusSeeOther,
 				ExpectedHeaders:        [][2]string{{"Location", testing2.RedirectUrl}},
-				ExpectedHeadersPresent: []string{"Set-Cookie", "Sec-Session-Registration"},
+				ExpectedHeadersPresent: []string{"Set-Cookie", "Secure-Session-Registration"},
 			},
 		},
 		{
