@@ -12,10 +12,14 @@ import (
 
 var (
 	DefaultPath = "/api/session/dbsc/refresh"
+	// The same fifteen minutes as an ordinary session: revocation is only enforced when a session
+	// is refreshed, so this is how long a revoked session stays usable, and binding it to a device
+	// does not change that.
+	//
 	// The browser refreshes a device bound session proactively once its cookie has two minutes or
 	// less remaining (Chromium's kProactiveRefreshThreshold). A duration at or below that makes it
 	// refresh on essentially every request, so keep this comfortably above two minutes.
-	DefaultSessionDuration             = 30 * time.Minute
+	DefaultSessionDuration             = 15 * time.Minute
 	DefaultChallengeDuration           = 5 * time.Minute
 	DefaultInsertDbscChallenge         = database.InsertDbscChallenge
 	DefaultSelectRefreshAuthentication = database.SelectRefreshAuthentication
